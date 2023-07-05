@@ -1,0 +1,67 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.35.2.
+--
+-- see: https://github.com/sol/hpack
+
+name:           sc2hs-stack
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/sc2hs-stack#readme>
+homepage:       https://github.com/githubuser/sc2hs-stack#readme
+bug-reports:    https://github.com/githubuser/sc2hs-stack/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2023 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/sc2hs-stack
+
+library
+  exposed-modules:
+      SC2
+      TestProto
+  other-modules:
+      Paths_sc2hs_stack
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      base >=4.12
+    , bytestring
+    , directory
+    , filepath
+    , microlens
+    , process
+    , proto-lens
+    , sc2-proto
+    , text
+    , websockets
+  default-language: Haskell2010
+
+executable sc2hs-stack-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_sc2hs_stack
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.12
+    , bytestring
+    , directory
+    , filepath
+    , microlens
+    , process
+    , proto-lens
+    , sc2-proto
+    , sc2hs-stack
+    , text
+    , websockets
+  default-language: Haskell2010
