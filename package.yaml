@@ -21,7 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.12
-- websockets
+- websockets >= 0.12.7.3
 - proto-lens
 - microlens
 - text

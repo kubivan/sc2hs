@@ -1,3 +1,5 @@
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module SC2 (startStarCraft, withSC2, startClient, Client (..)) where
@@ -5,7 +7,7 @@ module SC2 (startStarCraft, withSC2, startClient, Client (..)) where
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception
 import Control.Monad
-import qualified Data.ByteString as B
+import Data.ByteString qualified as B
 import Data.ProtoLens.Encoding
 import Network.WebSockets as WS
 import Proto.S2clientprotocol.Sc2api as S
@@ -14,7 +16,7 @@ import System.Directory
 import System.FilePath
 import System.IO
 import System.Process
-import qualified TestProto
+import TestProto qualified
 
 host = "127.0.0.1"
 
@@ -60,9 +62,16 @@ startClient = do
   where
     clientApp conn = forever $ do
       putStrLn "ping"
-      WS.sendBinaryData conn $ encodeMessage TestProto.requestPing
-      -- responsePing <- WS.receiveData conn
-      -- testPrint $ decodeMessage responsePing
+      WS.sendTextData conn $ B.drop 3 (encodeMessage TestProto.requestPing)
+      -- send conn TestProto.requestPing
+      -- send conn (ControlMessage (Ping "pinping"))
+      responsePing <- WS.receiveData conn
+      testPrint $ decodeMessage responsePing
+
+      -- putStrLn "ping2"
+      -- WS.sendTextData conn $ encodeMessage TestProto.requestPing
+      -- responsePing2 <- WS.receiveData conn
+      -- testPrint $ decodeMessage responsePing2
 
       putStrLn "maps"
       WS.sendBinaryData conn $ encodeMessage TestProto.requestAvailableMaps
