@@ -1,8 +1,8 @@
-name:                sc2hs-stack
+name:                sc2hs
 version:             0.1.0.0
 github:              "githubuser/sc2hs-stack"
 license:             BSD3
-author:              "Author name here"
+author:              "kubi"
 maintainer:          "example@example.com"
 copyright:           "2023 Author name here"
 
@@ -46,7 +46,7 @@ library:
   source-dirs: src
 
 executables:
-  sc2hs-stack-exe:
+  sc2hs-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -54,7 +54,7 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - sc2hs-stack
+    - sc2hs
 
       #tests:
       #  sc2hs-stack-test:
