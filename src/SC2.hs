@@ -10,13 +10,13 @@ import Control.Monad
 import Data.ByteString qualified as B
 import Data.ProtoLens.Encoding
 import Network.WebSockets as WS
+import Proto qualified
 import Proto.S2clientprotocol.Sc2api as S
 import Proto.S2clientprotocol.Sc2api_Fields as S
 import System.Directory
 import System.FilePath
 import System.IO
 import System.Process
-import TestProto qualified
 
 host = "127.0.0.1"
 
@@ -60,39 +60,29 @@ startClient = do
   let connectOpts = connect opts
   WS.runClient host port "/sc2api" clientApp
   where
-    clientApp conn = forever $ do
+    clientApp conn = do
       putStrLn "ping"
-      WS.sendTextData conn $ B.drop 3 (encodeMessage TestProto.requestPing)
-      -- send conn TestProto.requestPing
-      -- send conn (ControlMessage (Ping "pinping"))
+      WS.sendTextData conn $ B.drop 3 (encodeMessage Proto.requestPing)
       responsePing <- WS.receiveData conn
       testPrint $ decodeMessage responsePing
 
-      -- putStrLn "ping2"
-      -- WS.sendTextData conn $ encodeMessage TestProto.requestPing
-      -- responsePing2 <- WS.receiveData conn
-      -- testPrint $ decodeMessage responsePing2
-
       putStrLn "maps"
-      WS.sendBinaryData conn $ encodeMessage TestProto.requestAvailableMaps
+      WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
       responseMaps <- WS.receiveData conn
       testPrint $ decodeMessage responseMaps
 
-    --
-    -- WS.sendBinaryData conn $ encodeMessage TestProto.requestPing
-    -- responsePing <- WS.receiveData conn
-    -- testPrint $ decodeMessage responsePing
+      putStrLn "creating game..."
+      WS.sendBinaryData conn $ encodeMessage (Proto.requestCreateGame (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing))
+      responseCreateGame <- WS.receiveData conn
+      testPrint $ decodeMessage responseCreateGame
 
-    -- responseMaps <- WS.receiveData conn
-    -- testPrint $ decodeMessage responseMaps
+      putStrLn "joining game..."
+      let requestJoin = encodeMessage (Proto.requestJoinGame)
+      print requestJoin
+      WS.sendBinaryData conn $ requestJoin
+      responseJoinGame <- WS.receiveData conn
+      testPrint $ decodeMessage responseJoinGame
 
-    -- WS.sendBinaryData conn $ encodeMessage TestProto.requestPing
-    -- responsePing <- WS.receiveData conn
-    -- testPrint $ decodeMessage responsePing
-
-    -- return $ newClient ph conn
-
-    -- connect = runClient host port "/sc2api" $ \con -> return $ newClient ph con
     connect opts = WS.runClientWith host port "/sc2api" opts
 
 -- tryConnect retries

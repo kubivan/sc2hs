@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.1.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
 
@@ -25,8 +25,8 @@ source-repository head
 
 library
   exposed-modules:
+      Proto
       SC2
-      TestProto
   other-modules:
       Paths_sc2hs
   hs-source-dirs:
