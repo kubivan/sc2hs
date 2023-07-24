@@ -1,7 +1,6 @@
 name: sc2-proto
 version: 0.1.0.2
 synopsis: A protocol buffer model for the Starcraft II bot API
-maintainer: Sophie Taylor <sophie@spacekitteh.moe>
 license: MIT
 category: Proto
 extra-source-files:
