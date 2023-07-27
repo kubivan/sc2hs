@@ -4,6 +4,8 @@
 
 module SC2 (startStarCraft, withSC2, startClient, Client (..)) where
 
+import Actions
+
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception
 import Control.Monad
@@ -77,13 +79,26 @@ startClient = do
       testPrint $ decodeMessage responseCreateGame
 
       putStrLn "joining game..."
-      let requestJoin = encodeMessage (Proto.requestJoinGame)
+      let requestJoin = encodeMessage Proto.requestJoinGame
       print requestJoin
       WS.sendBinaryData conn $ requestJoin
       responseJoinGame <- WS.receiveData conn
       testPrint $ decodeMessage responseJoinGame
 
+      gameLoop conn
+
     connect opts = WS.runClientWith host port "/sc2api" opts
+    gameLoop conn = forever $ do
+      putStrLn "observation game..."
+      WS.sendBinaryData conn $ encodeMessage Proto.requestObservation
+      responseObs <- WS.receiveData conn
+      testPrint $ decodeMessage responseObs
+
+      --TODO: bot logic here
+      WS.sendBinaryData conn $ encodeMessage $ Proto.requestAction (Chat "Hello")
+
+      WS.sendBinaryData conn $ encodeMessage Proto.requestStep
+
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))

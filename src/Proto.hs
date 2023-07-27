@@ -3,15 +3,19 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds         #-}
 
-module Proto (test, requestPing, requestAvailableMaps, requestCreateGame, Map(LocalMap), requestJoinGame) where
+module Proto (test, requestPing, requestAvailableMaps, requestCreateGame, Map(LocalMap), requestJoinGame, requestObservation, requestStep, requestAction) where
+
+import Actions
 
 import Data.ByteString qualified as BS
 import Data.ProtoLens (defMessage, showMessage)
 import Data.ProtoLens.Labels ()
+import Data.ProtoLens.Field (field)
 --import Data.ProtoLens.Prism qualified as P
 import Data.Text
-import Lens.Micro
+import Lens.Micro((&), (.~), (^.))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Sc2api as A
@@ -45,7 +49,10 @@ test = putStrLn . showMessage $ testPoint
 --              deriving (Show, Eq)
 
 bot :: A.PlayerSetup
-bot =  defMessage & #race .~ C.Protoss & #type' .~ Participant
+bot = defMessage & #race .~ C.Protoss & #type' .~ Participant
+
+opponent :: A.PlayerSetup
+opponent = defMessage & #race .~ C.Protoss & #type' .~ A.Computer & #difficulty .~ A.Hard
 
 requestCreateGame:: Map -> A.Request
 requestCreateGame lm@(LocalMap m d) = defMessage& #createGame .~ mods defMessage
@@ -62,7 +69,7 @@ requestCreateGame lm@(LocalMap m d) = defMessage& #createGame .~ mods defMessage
     setMap (LocalMap m d) = #localMap .~ (defMessage & #mapPath .~ m & #maybe'mapData .~ d)
 
     setPlayers :: A.RequestCreateGame -> A.RequestCreateGame
-    setPlayers = #playerSetup .~ [bot]
+    setPlayers = #playerSetup .~ [bot, opponent]
 
 requestJoinGame :: A.Request
 requestJoinGame = defMessage & #joinGame .~ mods defMessage 
@@ -74,3 +81,18 @@ requestJoinGame = defMessage & #joinGame .~ mods defMessage
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
     setOptions =  #options .~ (defMessage & #raw .~ True & #score .~ True)
+
+requestObservation :: A.Request
+requestObservation = defMessage & #observation .~ defMessage
+
+requestStep :: A.Request
+requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
+
+actionChat:: Text -> A.ActionChat
+actionChat msg = defMessage & #message .~ msg
+
+act :: A.ActionChat -> A.Action
+act chat = defMessage & #actionChat .~ chat
+
+requestAction :: Actions.Action -> A.Request
+requestAction (Chat msg) = defMessage & #action .~ ((defMessage & #actions .~ [act $ Proto.actionChat msg])::A.RequestAction)
