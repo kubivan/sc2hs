@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Actions
+      Bot
       Proto
       SC2
   other-modules:
@@ -39,6 +40,7 @@ library
     , directory
     , filepath
     , microlens
+    , mtl
     , process
     , proto-lens
     , sc2-proto
@@ -59,6 +61,7 @@ executable sc2hs-exe
     , directory
     , filepath
     , microlens
+    , mtl
     , process
     , proto-lens
     , sc2-proto

@@ -1,14 +1,19 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module SC2 (startStarCraft, withSC2, startClient, Client (..)) where
 
 import Actions
+import Bot
 
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception
 import Control.Monad
+import Control.Monad.Writer.Strict
+import Control.Monad.Except(ExceptT(..), runExceptT, throwError)
 import Data.ByteString qualified as B
 import Data.ProtoLens.Encoding
 import Network.WebSockets as WS
@@ -20,19 +25,45 @@ import System.FilePath
 import System.IO
 import System.Process
 
-host = "127.0.0.1"
+import System.IO.Error (tryIOError)
 
+import Data.Bifunctor (first)
+
+import Lens.Micro((&), (.~), (^.))
+import Data.ProtoLens.Labels ()
+
+import Data.Either (either)
+
+host = "127.0.0.1"
 port = 8167
 
 testPrint :: Either String S.Response -> IO ()
 testPrint responseMessage = case responseMessage of
-  Left errMsg -> print $ "Error decoding message: " ++ errMsg
-  Right message -> print $ "Received message: " ++ show message
+  Left errMsg -> print $ ("Error decoding message: " ++ errMsg)
+  Right message -> print $ ("Received message: " ++ show message)
+
+decodeResponseIObak :: WS.Connection -> IO (Either String S.Response)
+decodeResponseIObak conn = decodeMessage <$> (WS.receiveData conn)
+
+mapIOError :: IO a -> ExceptT String IO a
+mapIOError = ExceptT . fmap (first (\_ -> "TODO: map errors")) . tryIOError
+
+-- TODO: sequence? 
+decodeMessage' :: B.ByteString -> ExceptT String IO S.Response
+decodeMessage' msg = case decodeMessage msg of
+    Left e -> throwError e
+    Right r -> return r
+
+receiveData' :: WS.Connection -> ExceptT String IO B.ByteString
+receiveData' conn = mapIOError $ WS.receiveData conn
+
+decodeResponseIO :: WS.Connection -> ExceptT String IO S.Response
+decodeResponseIO conn = do
+  rd <- receiveData' conn
+  decodeMessage' rd
 
 withSC2 :: (Client -> IO a) -> IO a
 withSC2 = undefined
-
--- withSC2 = bracket startClient (\(Client ph con) -> waitForProcess ph)
 
 startStarCraft :: IO ProcessHandle
 startStarCraft = do
@@ -53,8 +84,8 @@ data Client = Client
 newClient :: ProcessHandle -> WS.Connection -> Client
 newClient ph con = Client {processHandle = ph, connection = con}
 
-startClient :: IO ()
-startClient = do
+startClient :: Bot bot => bot -> IO ()
+startClient initialBot = do
   ph <- startStarCraft
   -- tryConnect 60
   threadDelay 30000000
@@ -85,24 +116,26 @@ startClient = do
       responseJoinGame <- WS.receiveData conn
       testPrint $ decodeMessage responseJoinGame
 
-      gameLoop conn
+      gameRes <- runExceptT $ gameLoop conn initialBot
+      case gameRes of
+        Left e -> putStrLn $ "game failed: " ++ e
+        Right _ -> return ()
 
     connect opts = WS.runClientWith host port "/sc2api" opts
-    gameLoop conn = forever $ do
-      putStrLn "observation game..."
-      WS.sendBinaryData conn $ encodeMessage Proto.requestObservation
-      responseObs <- WS.receiveData conn
-      testPrint $ decodeMessage responseObs
+    gameLoop :: Bot bot => Connection -> bot -> ExceptT String IO ()
+    gameLoop conn bot = do
+      liftIO . putStrLn $ "observation game..."
+      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestObservation
 
-      --TODO: bot logic here
-      WS.sendBinaryData conn $ encodeMessage $ Proto.requestAction (Chat "Hello")
-
-      WS.sendBinaryData conn $ encodeMessage Proto.requestStep
-
+      responseObs <- decodeResponseIO conn
+      let obs = responseObs ^. #observation ^. observation
+      let (newBot, actions) = runWriter (Bot.step bot obs)
+          
+      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestAction actions
+      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestStep
+      gameLoop conn newBot
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))
 --   | otherwise = connect (const (pure ()))
 -- tryAgain i = putStrLn "retry" >> threadDelay 5000000 >> tryConnect (i - 1)
-
--- conn <- WS.connect "localhost" 8167 "/sc2api"

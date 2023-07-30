@@ -88,11 +88,7 @@ requestObservation = defMessage & #observation .~ defMessage
 requestStep :: A.Request
 requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
-actionChat:: Text -> A.ActionChat
-actionChat msg = defMessage & #message .~ msg
 
-act :: A.ActionChat -> A.Action
-act chat = defMessage & #actionChat .~ chat
 
-requestAction :: Actions.Action -> A.Request
-requestAction (Chat msg) = defMessage & #action .~ ((defMessage & #actions .~ [act $ Proto.actionChat msg])::A.RequestAction)
+requestAction :: [Actions.Action] -> A.Request
+requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (Prelude.map toAction acts))::A.RequestAction)

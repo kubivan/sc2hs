@@ -17,13 +17,14 @@ import Proto.S2clientprotocol.Sc2api_Fields as S
 import SC2
 import System.Process
 import qualified Proto
+import Bot
 
 testPrint responseMessage = case responseMessage of
   Left errMsg -> print $ "Error decoding message: " ++ errMsg
   Right message -> print $ "Received message: " ++ show message
 
 main :: IO ()
-main = startClient
+main = startClient (Dummy 0)
 
 testEcho :: IO ()
 testEcho = do

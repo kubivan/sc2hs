@@ -30,6 +30,7 @@ dependencies:
 - filepath
 - sc2-proto
 - process
+- mtl
 
 ghc-options:
 - -Wall
