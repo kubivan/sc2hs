@@ -66,6 +66,12 @@ startStarCraft = do
 
   return sc2Handle
 
+sc2Observation :: WS.Connection -> ExceptT String IO (S.Observation, [S.PlayerResult])
+sc2Observation conn = do
+  liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestObservation
+  responseObs <- decodeResponseIO conn
+  return $ (responseObs ^. #observation ^. #observation, responseObs ^. #observation ^. #playerResult)
+
 data Client = Client
   { processHandle :: ProcessHandle,
     connection :: WS.Connection
@@ -77,7 +83,6 @@ startClient initialBot = do
   -- tryConnect 60
   threadDelay 30000000
   let opts = WS.defaultConnectionOptions -- {connectionSentClose = False}
-  let connectOpts = connect opts
   WS.runClient host port "/sc2api" clientApp
   where
     clientApp conn = do
@@ -103,24 +108,26 @@ startClient initialBot = do
       responseJoinGame <- WS.receiveData conn
       testPrint $ decodeMessage responseJoinGame
 
-      gameRes <- runExceptT $ gameLoop conn initialBot
-      case gameRes of
+      gameOver <- runExceptT $ gameLoop conn initialBot
+      case gameOver of
         Left e -> putStrLn $ "game failed: " ++ e
-        Right _ -> return ()
+        Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
 
     connect opts = WS.runClientWith host port "/sc2api" opts
-    gameLoop :: Bot bot => Connection -> bot -> ExceptT String IO ()
-    gameLoop conn bot = do
-      liftIO . putStrLn $ "observation game..."
-      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestObservation
 
-      responseObs <- decodeResponseIO conn
-      let obs = responseObs ^. #observation ^. observation
-      let (newBot, actions) = runWriter (Bot.step bot obs)
-          
-      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestAction actions
-      liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestStep
-      gameLoop conn newBot
+    gameLoop :: Bot bot => Connection -> bot -> ExceptT String IO [S.PlayerResult]
+    gameLoop conn bot = do
+      (obs, gameOver) <- sc2Observation conn
+      liftIO . print $ gameOver
+
+      if not (null gameOver)
+        then return gameOver
+        else do
+          let (newBot, actions) = runWriter (Bot.step bot obs)
+              
+          liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestAction actions
+          liftIO . (WS.sendBinaryData conn) . encodeMessage $ Proto.requestStep
+          gameLoop conn newBot
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))
