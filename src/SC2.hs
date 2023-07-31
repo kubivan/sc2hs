@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module SC2 (startStarCraft, withSC2, startClient, Client (..)) where
+module SC2 (startStarCraft, startClient) where
 
 import Actions
 import Bot
@@ -42,28 +42,18 @@ testPrint responseMessage = case responseMessage of
   Left errMsg -> print $ ("Error decoding message: " ++ errMsg)
   Right message -> print $ ("Received message: " ++ show message)
 
-decodeResponseIObak :: WS.Connection -> IO (Either String S.Response)
-decodeResponseIObak conn = decodeMessage <$> (WS.receiveData conn)
-
 mapIOError :: IO a -> ExceptT String IO a
 mapIOError = ExceptT . fmap (first (\_ -> "TODO: map errors")) . tryIOError
 
 -- TODO: sequence? 
 decodeMessage' :: B.ByteString -> ExceptT String IO S.Response
-decodeMessage' msg = case decodeMessage msg of
-    Left e -> throwError e
-    Right r -> return r
+decodeMessage' msg = either throwError return (decodeMessage msg)
 
 receiveData' :: WS.Connection -> ExceptT String IO B.ByteString
 receiveData' conn = mapIOError $ WS.receiveData conn
 
 decodeResponseIO :: WS.Connection -> ExceptT String IO S.Response
-decodeResponseIO conn = do
-  rd <- receiveData' conn
-  decodeMessage' rd
-
-withSC2 :: (Client -> IO a) -> IO a
-withSC2 = undefined
+decodeResponseIO conn = receiveData' conn >>= decodeMessage'
 
 startStarCraft :: IO ProcessHandle
 startStarCraft = do
@@ -80,9 +70,6 @@ data Client = Client
   { processHandle :: ProcessHandle,
     connection :: WS.Connection
   }
-
-newClient :: ProcessHandle -> WS.Connection -> Client
-newClient ph con = Client {processHandle = ph, connection = con}
 
 startClient :: Bot bot => bot -> IO ()
 startClient initialBot = do

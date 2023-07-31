@@ -91,4 +91,4 @@ requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
 
 requestAction :: [Actions.Action] -> A.Request
-requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (Prelude.map toAction acts))::A.RequestAction)
+requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toAction <$> acts))::A.RequestAction)
