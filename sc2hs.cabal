@@ -29,6 +29,7 @@ library
       Bot
       Proto
       SC2
+      Utils
   other-modules:
       Paths_sc2hs
   hs-source-dirs:

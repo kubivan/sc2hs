@@ -88,7 +88,5 @@ requestObservation = defMessage & #observation .~ defMessage
 requestStep :: A.Request
 requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
-
-
 requestAction :: [Actions.Action] -> A.Request
 requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toAction <$> acts))::A.RequestAction)
