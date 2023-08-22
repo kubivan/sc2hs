@@ -576,12 +576,78 @@ instance Enum UnitTypeId where
       69 -> ProtossDarkshrine
       76 -> ProtossDarktemplar
       694 -> ProtossDisruptor
-      733 -> Protoss
+      733 -> ProtossDisruptorphased
+      64 -> ProtossFleetbeacon
+      63 -> ProtossForge
+      62 -> ProtossGateway
+      75 -> ProtossHightemplar
+      83 -> ProtossImmortal
+      85 -> ProtossInterceptor
+      10 -> ProtossMothership
+      488 -> ProtossMothershipcore
+      59 -> ProtossNexus
+      82 -> ProtossObserver
+      495 -> ProtossOracle
+      732 -> ProtossOraclestasistrap
+      78 -> ProtossPhoenix
+      66 -> ProtossPhotoncannon
+      84 -> ProtossProbe
+      60 -> ProtossPylon
+      894 -> ProtossPylonovercharged
+      70 -> ProtossRoboticsbay
+      71 -> ProtossRoboticsfacility
+      77 -> ProtossSentry
+      1910 -> ProtossShieldbattery
+      74 -> ProtossStalker
+      67 -> ProtossStargate
+      496 -> ProtossTempest
+      68 -> ProtossTemplararchive
+      65 -> ProtossTwilightcouncil
+      80 -> ProtossVoidray
+      133 -> ProtossWarpgate
+      81 -> ProtossWarpprism
+      136 -> ProtossWarpprismphasing
+      73 -> ProtossZealot
+      886 -> NeutralBattlestationmineralfield
+      887 -> NeutralBattlestationmineralfield750
+      490 -> NeutralCollapsiblerocktowerdebris
+      588 -> NeutralCollapsiblerocktowerdiagonal
+      561 -> NeutralCollapsiblerocktowerpushunit
+      485 -> NeutralCollapsibleterrantowerdebris
+      589 -> NeutralCollapsibleterrantowerdiagonal
+      562 -> NeutralCollapsibleterrantowerpushunit
+      559 -> NeutralCollapsibleterrantowerpushunitrampleft
+      560 -> NeutralCollapsibleterrantowerpushunitrampright
+      590 -> NeutralCollapsibleterrantowerrampleft
+      591 -> NeutralCollapsibleterrantowerrampright
+      486 -> NeutralDebrisrampleft
+      487 -> NeutralDebrisrampright
+      365 -> NeutralDestructibledebris6x6
+      377 -> NeutralDestructibledebrisrampdiagonalhugeblur
+      376 -> NeutralDestructibledebrisrampdiagonalhugeulbr
+      371 -> NeutralDestructiblerock6x6
+      641 -> NeutralDestructiblerockex1diagonalhugeblur
+      135 -> NeutralForcefield
+      324 -> NeutralKarakfemale
+      665 -> NeutralLabmineralfield
+      666 -> NeutralLabmineralfield750
+      341 -> NeutralMineralfield
+      483 -> NeutralMineralfield750
+      608 -> NeutralProtossvespenegeyser
+      884 -> NeutralPurifiermineralfield
+      885 -> NeutralPurifiermineralfield750
+      796 -> NeutralPurifierrichmineralfield
+      797 -> NeutralPurifierrichmineralfield750
+      880 -> NeutralPurifiervespenegeyser
+      146 -> NeutralRichmineralfield
+      147 -> NeutralRichmineralfield750
+      344 -> NeutralRichvespenegeyser
+      335 -> NeutralScantipede
+      881 -> NeutralShakurasvespenegeyser
+      343 -> NeutralSpaceplatformgeyser
+      473 -> NeutralUnbuildablebricksdestructible
+      474 -> NeutralUnbuildableplatesdestructible
+      330 -> NeutralUtilitybot
+      342 -> NeutralVespenegeyser
+      149 -> NeutralXelnagatower
       _ -> Invalid
-
-
-toInt :: UnitTypeId -> Int
-toInt = fromEnum
-
--- findIntValue :: UnitTypeId -> Maybe Int
--- findIntValue unit = intValue <$> find (\e -> unitTypeId e == unit) unitTypeMap
