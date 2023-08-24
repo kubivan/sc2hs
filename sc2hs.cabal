@@ -25,10 +25,14 @@ source-repository head
 
 library
   exposed-modules:
+      AbilityId
       Actions
       Bot
+      BuffId
       Proto
       SC2
+      UnitTypeId
+      UpgradeId
       Utils
   other-modules:
       Paths_sc2hs
