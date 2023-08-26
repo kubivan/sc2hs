@@ -3,7 +3,6 @@
 module Main where
 
 import Control.Exception
--- test
 
 import Control.Monad
 import qualified Data.ByteString.Lazy as B
@@ -18,13 +17,14 @@ import SC2
 import System.Process
 import qualified Proto
 import Bot
+import Data.ProtoLens (Message(defMessage))
 
 testPrint responseMessage = case responseMessage of
   Left errMsg -> print $ "Error decoding message: " ++ errMsg
   Right message -> print $ "Received message: " ++ show message
 
 main :: IO ()
-main = startClient (Dummy 0)
+main = startClient $ TestBot {aGameInfo = defMessage, aBotInfo = defMessage}
 
 testEcho :: IO ()
 testEcho = do

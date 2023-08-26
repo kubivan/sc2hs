@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds         #-}
 
-module Proto (test, requestPing, requestAvailableMaps, requestCreateGame, Map(LocalMap), requestJoinGame, requestObservation, requestStep, requestAction) where
+module Proto (test, requestPing, requestAvailableMaps, requestCreateGame, Map(LocalMap), requestJoinGame, requestObservation, requestStep, requestAction, requestGameInfo) where
 
 import Actions
 
@@ -90,3 +90,6 @@ requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
 requestAction :: [Actions.Action] -> A.Request
 requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toAction <$> acts))::A.RequestAction)
+
+requestGameInfo :: A.Request
+requestGameInfo = defMessage & #gameInfo .~ defMessage
