@@ -1,7 +1,7 @@
  module AbilityId (AbilityId(..)) where
 
 data AbilityId =
-   Invalid  -- 0
+   Invalid Int  -- 0
  | Smart  -- 1,      Target: Unit, Point.
  | Attack  -- 3674,   Target: Unit, Point.
  | AttackAttack  -- 23,     Target: Unit, Point.
@@ -477,7 +477,7 @@ instance Enum AbilityId where
 
   --fromEnum :: AbilityId -> Int
   fromEnum x = case x of
-    Invalid -> 0
+    Invalid _ -> 0
     Smart -> 1
     Attack -> 3674
     AttackAttack -> 23
@@ -950,7 +950,7 @@ instance Enum AbilityId where
 
   --toEnum :: Int -> AbilityId
   toEnum x = case x of
-    0 -> Invalid
+    0 -> Invalid 0
     1 -> Smart
     3674 -> Attack
     23 -> AttackAttack
@@ -1420,4 +1420,4 @@ instance Enum AbilityId where
     1440 -> UnloadunitNydasnetwork
     1409 -> UnloadunitOverlord
     914 -> UnloadunitWarpprism
-    _ -> Invalid
+    _ -> Invalid x
