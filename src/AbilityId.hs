@@ -1,4 +1,6 @@
- module AbilityId (AbilityId(..)) where
+ module AbilityId (AbilityId(..), toEnum, fromEnum, isBuildAbility) where
+
+import Data.List (isPrefixOf)
 
 data AbilityId =
    Invalid Int  -- 0
@@ -1421,3 +1423,7 @@ instance Enum AbilityId where
     1409 -> UnloadunitOverlord
     914 -> UnloadunitWarpprism
     _ -> Invalid x
+
+isBuildAbility:: AbilityId -> Bool
+isBuildAbility x = "Build" `isPrefixOf` (show x)
+
