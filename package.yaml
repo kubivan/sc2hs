@@ -31,6 +31,7 @@ dependencies:
 - sc2-proto
 - process
 - mtl
+- conduit
 
 ghc-options:
 - -Wall

@@ -20,10 +20,13 @@ import Network.WebSockets as WS
 import Proto qualified
 import Proto.S2clientprotocol.Sc2api as S
 import Proto.S2clientprotocol.Sc2api_Fields as S
+import Proto.S2clientprotocol.Query as S
+import Proto.S2clientprotocol.Query_Fields as S
 import System.Directory
 import System.FilePath
 import System.IO
 import System.Process
+import Conduit
 
 import Control.Exception
 
@@ -37,6 +40,10 @@ import Lens.Micro((&), (.~), (^.))
 import Data.ProtoLens.Labels ()
 
 import Data.Either (either)
+
+import AbilityId
+import UnitTypeId
+import AbilityId (isBuildAbility)
 
 
 data StringException = StringException String deriving Show
@@ -94,6 +101,12 @@ sc2Observation conn = do
   responseObs <- decodeResponseIO conn
   return (responseObs ^. (#observation . #observation), responseObs ^. (#observation . #playerResult))
 
+unitAbilities :: WS.Connection -> S.Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
+unitAbilities conn obs = do
+  liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestUnitAbilities obs
+  resp <- decodeResponseIO conn
+  return $ resp ^. #query ^. #abilities
+
 startClient :: (Bot bot) => bot -> IO ()
 startClient initialBot = do
   ph <- startStarCraft
@@ -145,20 +158,32 @@ startClient initialBot = do
 
     gameLoop :: Bot bot => Connection -> bot -> ExceptT String IO [S.PlayerResult]
     gameLoop conn bot = do
-      liftIO $ putStrLn "step"
-      (obs, gameOver) <- sc2Observation conn
-      liftIO . print $ length $ Utils.unitsSelf obs 
+        liftIO $ putStrLn "step"
+        (obs, gameOver) <- sc2Observation conn
+        
+        abilitiesRaw <- unitAbilities conn obs
+        let abilities = runConduitPure $ yieldMany abilitiesRaw
+              .| mapC (\a ->
+                      let unitTypeId = UnitTypeId.toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
+                          abilityIds = filter isBuildAbility [ AbilityId.toEnum (fromIntegral (x ^. #abilityId)) :: AbilityId | x <- a ^. #abilities]
+                      in
+                      (unitTypeId, abilityIds)
+                  )
+              .| sinkList
+        
+        liftIO . print $ abilities
 
-      if not (null gameOver)
-        then return gameOver
-        else do
-          let (newBot, acts) = runWriter (Bot.step bot obs)
+        if not (null gameOver)
+            then return gameOver
+            else do
+                let (newBot, acts) = runWriter (Bot.step bot obs)
 
-          liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestAction acts
-          responseActions <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-          liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestStep
-          responseStep <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-          gameLoop conn newBot
+                liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestAction acts
+                responseActions <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestStep
+                responseStep <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                gameLoop conn newBot
+
 
     connect = WS.runClientWith host port "/sc2api"
 

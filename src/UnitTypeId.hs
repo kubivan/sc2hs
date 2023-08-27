@@ -1,4 +1,4 @@
-module UnitTypeId(UnitTypeId(..)) where
+module UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
 data UnitTypeId =
    Invalid  -- 0

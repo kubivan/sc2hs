@@ -31,6 +31,7 @@ library
       BuffId
       Proto
       SC2
+      UnitPool
       UnitTypeId
       UpgradeId
       Utils
@@ -42,6 +43,7 @@ library
   build-depends:
       base >=4.12
     , bytestring
+    , conduit
     , directory
     , filepath
     , microlens
@@ -63,6 +65,7 @@ executable sc2hs-exe
   build-depends:
       base >=4.12
     , bytestring
+    , conduit
     , directory
     , filepath
     , microlens

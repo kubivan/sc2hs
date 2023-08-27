@@ -2,10 +2,20 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds         #-}
 
-module Proto (test, requestPing, requestAvailableMaps, requestCreateGame, Map(LocalMap), requestJoinGame, requestObservation, requestStep, requestAction, requestGameInfo) where
+module Proto ( requestPing
+             , requestAvailableMaps
+             , requestCreateGame
+             , Map(LocalMap)
+             , requestJoinGame
+             , requestObservation
+             , requestStep
+             , requestAction
+             , requestGameInfo
+             , requestUnitAbilities) where
 
 import Actions
 
@@ -20,23 +30,23 @@ import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Sc2api as A
 import Proto.S2clientprotocol.Sc2api_Fields as A
+import Proto.S2clientprotocol.Query_Fields (ignoreResourceRequirements, abilities, unitTag)
 
--- import Data.ProtoLens (defMessage, showMessage)
+import Conduit
+import Proto.S2clientprotocol.Raw_Fields (alliance)
+import qualified Proto.S2clientprotocol.Raw as A
+import qualified Proto.S2clientprotocol.Query as A
 
-testPoint :: C.Point2D
-testPoint = defMessage & C.x .~ 10 & C.y .~ 5
+import GHC.Word (Word64)
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123
 
 requestPing :: A.Request
-requestPing = defMessage 
+requestPing = defMessage
   & #ping .~ defMessage & #id .~ 123
 
 data Map = LocalMap Text (Maybe BS.ByteString)
-
-test :: IO ()
-test = putStrLn . showMessage $ testPoint
 
 --data Race = Terran
 --          | Zerg
@@ -72,7 +82,7 @@ requestCreateGame lm@(LocalMap m d) = defMessage& #createGame .~ mods defMessage
     setPlayers = #playerSetup .~ [bot, opponent]
 
 requestJoinGame :: A.Request
-requestJoinGame = defMessage & #joinGame .~ mods defMessage 
+requestJoinGame = defMessage & #joinGame .~ mods defMessage
   where
     mods = setParticipation . setOptions
 
@@ -93,3 +103,21 @@ requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toActio
 
 requestGameInfo :: A.Request
 requestGameInfo = defMessage & #gameInfo .~ defMessage
+
+--TODO: add ignoreResourceRequirements param
+requestUnitAbilities :: A.Observation -> A.Request
+requestUnitAbilities obs = defMessage & #query .~ requestQueryAbilities obs where
+  requestQueryAbilities :: A.Observation -> A.RequestQuery
+  requestQueryAbilities obs = defMessage & #abilities .~ unitTags obs
+  units :: A.Observation -> [A.Unit]
+  units obs = obs ^. (#rawData . #units)
+  toRequest:: Word64 -> A.RequestQueryAvailableAbilities
+  toRequest ut = defMessage & #unitTag .~ ut
+  unitTags :: A.Observation -> [A.RequestQueryAvailableAbilities]
+  unitTags obs = runConduitPure $
+    yieldMany (units obs)
+    .| filterC (\u -> u ^. alliance == A.Self) -- Filter based on some condition (e.g., health > 50)
+    .| mapC (\u -> u ^. #tag)
+    -- .| concatMapC (\u -> [u ^. #unitTag]) -- Use concatMapC to flatten the lists
+    .| mapC toRequest
+    .| sinkList

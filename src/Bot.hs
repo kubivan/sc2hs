@@ -46,6 +46,6 @@ instance Bot TestBot where
         let msg = fromString $ "test hello " ++ (show $ (aGameInfo b) ^. #mapName) -- ++ show i -- ++ " " ++ show (playerInfo ^. #player_id) 
         let enemyBase = Utils.enemyBaseLocation (aGameInfo b) obs
         --tell [Actions.Chat msg, Actions.Chat (fromString.show $ enemyBase) ]
-        tell [Actions.UnitCommand AbilityId.Attack ((head (Utils.unitsSelf obs)) ^. #tag) enemyBase ]
+        --tell [Actions.UnitCommand AbilityId.Attack (head (Utils.unitsSelf obs) ^. #tag) enemyBase ]
         --tell [Actions.Chat msg]
         return $ b
