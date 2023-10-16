@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds         #-}
+{-# LANGUAGE GADTs #-}
 
 module Proto ( requestPing
              , requestAvailableMaps
@@ -14,10 +15,13 @@ module Proto ( requestPing
              , requestObservation
              , requestStep
              , requestAction
+             , requestDebug
              , requestGameInfo
-             , requestUnitAbilities) where
+             , requestUnitAbilities
+             , Participant(..)) where
 
 import Actions
+import Agent
 
 import Data.ByteString qualified as BS
 import Data.ProtoLens (defMessage, showMessage)
@@ -64,10 +68,14 @@ bot = defMessage & #race .~ C.Protoss & #type' .~ Participant
 opponent :: A.PlayerSetup
 opponent = defMessage & #race .~ C.Protoss & #type' .~ A.Computer & #difficulty .~ A.Hard
 
-requestCreateGame:: Map -> A.Request
-requestCreateGame lm@(LocalMap m d) = defMessage& #createGame .~ mods defMessage
+data Participant where
+    Computer :: C.Race -> Participant
+    Player :: Agent a => a -> Participant
+
+requestCreateGame:: Map -> [Participant] -> A.Request
+requestCreateGame lm@(LocalMap m d) participants = defMessage& #createGame .~ mods defMessage
   where
-    mods = setMap lm . setFog . setRealTime . setPlayers
+    mods = setMap lm . setFog . setRealTime . setPlayers participants
 
     setFog :: A.RequestCreateGame -> A.RequestCreateGame
     setFog = #disableFog .~ False
@@ -78,16 +86,20 @@ requestCreateGame lm@(LocalMap m d) = defMessage& #createGame .~ mods defMessage
     setMap :: Map -> A.RequestCreateGame -> A.RequestCreateGame
     setMap (LocalMap m d) = #localMap .~ (defMessage & #mapPath .~ m & #maybe'mapData .~ d)
 
-    setPlayers :: A.RequestCreateGame -> A.RequestCreateGame
-    setPlayers = #playerSetup .~ [bot, opponent]
+    setPlayers :: [Participant] -> A.RequestCreateGame -> A.RequestCreateGame
+    setPlayers participants = #playerSetup .~ (toPlayerSetup <$> participants)
 
-requestJoinGame :: A.Request
-requestJoinGame = defMessage & #joinGame .~ mods defMessage
+    toPlayerSetup :: Participant -> A.PlayerSetup
+    toPlayerSetup (Proto.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.Hard --TODO: computer
+    toPlayerSetup (Player agent) = defMessage & #race .~ Agent.race agent & #type' .~ Participant
+
+requestJoinGame :: C.Race -> A.Request
+requestJoinGame race = defMessage & #joinGame .~ mods defMessage
   where
-    mods = setParticipation . setOptions
+    mods = setParticipation race . setOptions
 
-    setParticipation :: A.RequestJoinGame -> A.RequestJoinGame
-    setParticipation = #race .~ Protoss
+    setParticipation :: C.Race -> A.RequestJoinGame -> A.RequestJoinGame
+    setParticipation r = #race .~ r
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
     setOptions =  #options .~ (defMessage & #raw .~ True & #score .~ True)
@@ -100,6 +112,9 @@ requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
 requestAction :: [Actions.Action] -> A.Request
 requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toAction <$> acts))::A.RequestAction)
+
+requestDebug :: [Actions.DebugCommand] -> A.Request
+requestDebug acts = defMessage & #debug .~ ((defMessage & #debug .~ (toDebug <$> acts))::A.RequestDebug)
 
 requestGameInfo :: A.Request
 requestGameInfo = defMessage & #gameInfo .~ defMessage

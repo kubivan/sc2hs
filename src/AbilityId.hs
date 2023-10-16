@@ -1425,5 +1425,5 @@ instance Enum AbilityId where
     _ -> Invalid x
 
 isBuildAbility:: AbilityId -> Bool
-isBuildAbility x = "Build" `isPrefixOf` (show x)
+isBuildAbility x = "Build" `isPrefixOf` show x
 

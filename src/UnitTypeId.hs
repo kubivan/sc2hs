@@ -1,5 +1,7 @@
 module UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
+import Data.Hashable
+
 data UnitTypeId =
    Invalid  -- 0
  | TerranArmory  -- 29,     CANCEL, HALT, CANCEL_LAST, RESEARCH_TERRANSHIPWEAPONS, RESEARCH_TERRANVEHICLEANDSHIPPLATING, RESEARCH_TERRANVEHICLEWEAPONS
@@ -219,6 +221,7 @@ data UnitTypeId =
 
 instance Enum UnitTypeId where
 
+  --fromEnum :: UnitTypeId -> Int
   --fromEnum :: UnitTypeId -> Int
   fromEnum x = case x of
     Invalid -> 0
@@ -653,3 +656,7 @@ instance Enum UnitTypeId where
     342 -> NeutralVespenegeyser
     149 -> NeutralXelnagatower
     _ -> Invalid
+
+instance Hashable UnitTypeId where
+  hash = fromEnum
+  hashWithSalt s val = fromEnum val + s

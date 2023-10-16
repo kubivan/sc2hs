@@ -3,13 +3,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 
-module SC2 (startStarCraft, startClient) where
+module SC2 (startClient, Proto.Participant(..)) where
 
 import Actions
-import Bot
+import Agent
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, forkIO)
 import Control.Exception
 import Control.Monad
 import Control.Monad.Writer.Strict
@@ -20,13 +21,17 @@ import Network.WebSockets as WS
 import Proto qualified
 import Proto.S2clientprotocol.Sc2api as S
 import Proto.S2clientprotocol.Sc2api_Fields as S
+import Proto.S2clientprotocol.Common as S
+import Proto.S2clientprotocol.Common_Fields as S
 import Proto.S2clientprotocol.Query as S
-import Proto.S2clientprotocol.Query_Fields as S
+import Proto.S2clientprotocol.Query_Fields as S ()
 import System.Directory
 import System.FilePath
 import System.IO
 import System.Process
-import Conduit
+import Conduit ( sinkList, yieldMany, mapC, (.|), runConduitPure )
+import Data.Conduit.List (catMaybes)
+import Grid
 
 import Control.Exception
 
@@ -43,8 +48,13 @@ import Data.Either (either)
 
 import AbilityId
 import UnitTypeId
-import AbilityId (isBuildAbility)
+import Proto.S2clientprotocol.Raw_Fields (placementGrid)
 
+import qualified Data.Vector as V
+import Utils (enemyBaseLocation)
+
+import qualified Data.HashMap.Strict as HashMap
+import Data.Maybe (isNothing)
 
 data StringException = StringException String deriving Show
 instance Exception StringException
@@ -52,8 +62,8 @@ instance Exception StringException
 makeException :: String -> StringException
 makeException e = StringException e
 
-host :: String
-host = "127.0.0.1"
+hostName :: String
+hostName = "127.0.0.1"
 port :: Int
 port = 8167
 
@@ -61,12 +71,6 @@ testPrint :: Either String S.Response -> IO ()
 testPrint responseMessage = case responseMessage of
   Left errMsg -> print ("Error decoding message: " ++ errMsg)
   Right message -> print ("Received message: " ++ show message)
-
--- calculateValue :: Integer -> IO Integer
--- calculateValue input = do
---     when (input > 100) $ throwIO ("input" :: String)
---     return (input * 2)
-
 
 mapIOError :: IO a -> ExceptT String IO a
 mapIOError = ExceptT . fmap (first (const "TODO: map errors")) . tryIOError
@@ -88,7 +92,7 @@ startStarCraft :: IO ProcessHandle
 startStarCraft = do
   let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base87702\\SC2_x64.exe\""
       cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
-      args = ["-listen", host, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
+      args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
       proc = (shell $ sc2 ++ " " ++ unwords args) {cwd = cwd}
 
   (_, _, _, sc2Handle) <- createProcess proc
@@ -101,91 +105,118 @@ sc2Observation conn = do
   responseObs <- decodeResponseIO conn
   return (responseObs ^. (#observation . #observation), responseObs ^. (#observation . #playerResult))
 
-unitAbilities :: WS.Connection -> S.Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
-unitAbilities conn obs = do
+unitAbilitiesRaw :: WS.Connection -> S.Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
+unitAbilitiesRaw conn obs = do
   liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestUnitAbilities obs
   resp <- decodeResponseIO conn
-  return $ resp ^. #query ^. #abilities
+  return $ resp ^. (#query . #abilities)
 
-startClient :: (Bot bot) => bot -> IO ()
-startClient initialBot = do
-  ph <- startStarCraft
-  -- tryConnect 60
-  threadDelay 30000000
-  let opts = WS.defaultConnectionOptions -- {connectionSentClose = False}
-  WS.runClient host port "/sc2api" clientApp
-  where
-    clientApp conn = do
-      putStrLn "ping"
-      WS.sendTextData conn $ B.drop 3 (encodeMessage Proto.requestPing)
-      responsePing <- WS.receiveData conn
-      testPrint $ decodeMessage responsePing
+unitAbilities :: [S.ResponseQueryAvailableAbilities] -> UnitAbilities
+unitAbilities raw = HashMap.fromList $ runConduitPure $ yieldMany raw
+    .| mapC (\a ->
+            let unit = UnitTypeId.toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
+                abilityIds = [ AbilityId.toEnum . fromIntegral $ (x ^. #abilityId) :: AbilityId | x <- a ^. #abilities]
+            in
+            (unit, abilityIds)
+        )
+    .| sinkList
 
-      putStrLn "maps"
-      WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
-      responseMaps <- WS.receiveData conn
-      testPrint $ decodeMessage responseMaps
+mirrorGrid :: Grid -> Grid
+mirrorGrid grid =
+    V.fromList [V.fromList [grid V.! j V.! i | j <- [0..V.length grid - 1]] | i <- [0..V.length (V.head grid) - 1]]
 
-      putStrLn "creating game..."
-      WS.sendBinaryData conn $ encodeMessage (Proto.requestCreateGame (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing))
-      responseCreateGame <- WS.receiveData conn
-      testPrint $ decodeMessage responseCreateGame
+printGrid grid = V.sequence_ $ putStrLn . V.toList <$> (V.reverse . mirrorGrid $ grid)
 
-      putStrLn "joining game..."
-      let requestJoin = encodeMessage Proto.requestJoinGame
-      print requestJoin
-      WS.sendBinaryData conn requestJoin
-      responseJoinGame <- WS.receiveData conn >>= decodeMessageThrowing
-      let playerId = responseJoinGame ^. #joinGame ^. #playerId
-      --testPrint $ responseJoinGame
+-- extractAgents :: Agent a => [Proto.Participant] -> [a]
+-- extractAgents ps = runConduitPure $ yieldMany ps
+--           .| mapC (\x -> case x of Proto.Player a -> Just a; _ -> Nothing)
+--           .| catMaybes
+--           .| sinkList
 
-      putStrLn "getting game inf..."
-      WS.sendBinaryData conn $ encodeMessage Proto.requestGameInfo
-      resp <- WS.receiveData conn >>= decodeMessageThrowing
-      let gameInfo :: S.ResponseGameInfo = resp ^. #gameInfo
-      let playerInfos = gameInfo ^. #playerInfo
-      let playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
-      let testBot = TestBot gameInfo playerGameInfo
-      --playerGameInfo <- case filter (\gi -> gi ^. #playerId == playerId ) playerInfos of 
-      --  [x] -> return x  
-      --  [x:xs] -> return $ head x  
-      --  [] -> throwIO $ StringException "invalid gameinfo"
+data AnyAgent = forall a. Agent a => AnyAgent a
 
-      gameOver <- runExceptT $ gameLoop conn testBot
-      case gameOver of
-        Left e -> putStrLn $ "game failed: " ++ e
-        Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
-
-    gameLoop :: Bot bot => Connection -> bot -> ExceptT String IO [S.PlayerResult]
-    gameLoop conn bot = do
-        liftIO $ putStrLn "step"
-        (obs, gameOver) <- sc2Observation conn
-        
-        abilitiesRaw <- unitAbilities conn obs
-        let abilities = runConduitPure $ yieldMany abilitiesRaw
-              .| mapC (\a ->
-                      let unitTypeId = UnitTypeId.toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
-                          abilityIds = filter isBuildAbility [ AbilityId.toEnum (fromIntegral (x ^. #abilityId)) :: AbilityId | x <- a ^. #abilities]
-                      in
-                      (unitTypeId, abilityIds)
-                  )
-              .| sinkList
-        
-        liftIO . print $ abilities
-
-        if not (null gameOver)
-            then return gameOver
-            else do
-                let (newBot, acts) = runWriter (Bot.step bot obs)
-
-                liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestAction acts
-                responseActions <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-                liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestStep
-                responseStep <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-                gameLoop conn newBot
+getAgents :: [Proto.Participant] -> [AnyAgent]
+getAgents participants = [AnyAgent a | Proto.Player a <- participants]
 
 
-    connect = WS.runClientWith host port "/sc2api"
+-- host/players
+splitParticipants :: [Proto.Participant] -> (Proto.Participant, [Proto.Participant])
+splitParticipants = doSplit (Nothing, []) where
+  doSplit :: (Maybe Proto.Participant, [Proto.Participant]) -> [Proto.Participant] -> (Proto.Participant, [Proto.Participant])
+  doSplit (host, players) (r:rest) = case r of
+    Proto.Player _  -> if isNothing host then doSplit (Just r, players) rest else doSplit (host, r:players) rest
+    Proto.Computer _ -> doSplit (host, players) rest
+  doSplit (Just h, p) [] = (h, p)
+  doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
+
+startClient :: [Proto.Participant] -> IO ()
+startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players where
+  (host, players) = splitParticipants participants
+  runPlayer _ = return ()
+  runHost (Proto.Computer _) = Prelude.error "computer cannot be the host"
+  runHost (Proto.Player agent) = do
+    ph <- startStarCraft
+    -- tryConnect 60
+    threadDelay 30000000
+    WS.runClient hostName port "/sc2api" clientApp
+    where
+      clientApp conn = do
+        putStrLn "ping"
+        WS.sendTextData conn $ B.drop 3 (encodeMessage Proto.requestPing)
+        responsePing <- WS.receiveData conn
+        testPrint $ decodeMessage responsePing
+
+        putStrLn "maps"
+        WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
+        responseMaps <- WS.receiveData conn
+        testPrint $ decodeMessage responseMaps
+
+        putStrLn "creating game..."
+        WS.sendBinaryData conn $ encodeMessage $ Proto.requestCreateGame (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing) participants
+        responseCreateGame <- WS.receiveData conn
+        testPrint $ decodeMessage responseCreateGame
+
+        putStrLn "joining game..."
+        let requestJoin = encodeMessage $ Proto.requestJoinGame (Agent.race agent)
+        print requestJoin
+        WS.sendBinaryData conn requestJoin
+        responseJoinGame <- WS.receiveData conn >>= decodeMessageThrowing
+        let playerId = responseJoinGame ^. #joinGame ^. #playerId
+        --testPrint $ responseJoinGame
+
+        putStrLn "getting game inf..."
+        WS.sendBinaryData conn $ encodeMessage Proto.requestGameInfo
+        resp <- WS.receiveData conn >>= decodeMessageThrowing
+        let gi :: S.ResponseGameInfo = resp ^. #gameInfo
+        let playerInfos = gi ^. #playerInfo
+        let playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
+        let pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+        printGrid pathingGrid
+
+        gameOver <- runExceptT $ gameLoop conn agent
+        case gameOver of
+          Left e -> putStrLn $ "game failed: " ++ e
+          Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
+
+      gameLoop :: Agent bot => Connection -> bot -> ExceptT String IO [S.PlayerResult]
+      gameLoop conn bot = do
+          liftIO $ putStrLn "step"
+          (obs, gameOver) <- sc2Observation conn
+
+          abilitiesRaw <- unitAbilitiesRaw conn obs
+
+          if not (null gameOver)
+              then return gameOver
+              else do
+                  let (newBot, acts) = runWriter (Agent.step bot obs (unitAbilities abilitiesRaw))
+
+                  liftIO . WS.sendBinaryData conn . encodeMessage . Proto.requestAction . botCommands $ acts
+                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                  liftIO . WS.sendBinaryData conn . encodeMessage . Proto.requestDebug . botDebug $ acts
+                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                  liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestStep
+                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                  gameLoop conn newBot
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))

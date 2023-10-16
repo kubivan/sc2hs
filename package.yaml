@@ -32,6 +32,10 @@ dependencies:
 - process
 - mtl
 - conduit
+- vector
+- containers
+- unordered-containers
+- hashable
 
 ghc-options:
 - -Wall
@@ -58,13 +62,13 @@ executables:
     dependencies:
     - sc2hs
 
-      #tests:
-      #  sc2hs-stack-test:
-      #    main:                Spec.hs
-      #    source-dirs:         test
-      #    ghc-options:
-      #    - -threaded
-      #    - -rtsopts
-      #    - -with-rtsopts=-N
-      #    dependencies:
-      #    - sc2hs-stack
+tests:
+  sc2hs-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - sc2hs
