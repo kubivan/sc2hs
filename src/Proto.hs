@@ -18,13 +18,18 @@ module Proto ( requestPing
              , requestDebug
              , requestGameInfo
              , requestUnitAbilities
+             , sendRequestSync
              , Participant(..)) where
 
 import Actions
 import Agent
 
+import Network.WebSockets as WS
+
+import Control.Exception
+
 import Data.ByteString qualified as BS
-import Data.ProtoLens (defMessage, showMessage)
+import Data.ProtoLens (defMessage, encodeMessage, decodeMessage)
 import Data.ProtoLens.Labels ()
 import Data.ProtoLens.Field (field)
 --import Data.ProtoLens.Prism qualified as P
@@ -42,6 +47,23 @@ import qualified Proto.S2clientprotocol.Raw as A
 import qualified Proto.S2clientprotocol.Query as A
 
 import GHC.Word (Word64)
+import Data.ByteString (ByteString)
+
+--        WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
+--        responseMaps <- WS.receiveData conn
+--        testPrint $ decodeMessage responseMaps
+
+newtype ProtoException = ProtoException String deriving Show
+instance Exception ProtoException
+
+makeException :: String -> ProtoException
+makeException = ProtoException
+
+decodeMessageThrowing :: BS.ByteString -> IO A.Response
+decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
+
+sendRequestSync :: WS.Connection -> A.Request -> IO A.Response
+sendRequestSync conn request = WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123
@@ -61,12 +83,6 @@ data Map = LocalMap Text (Maybe BS.ByteString)
 --              | Participant Proto.Race
 --              | Computer Proto.Race A.Difficulty
 --              deriving (Show, Eq)
-
-bot :: A.PlayerSetup
-bot = defMessage & #race .~ C.Protoss & #type' .~ Participant
-
-opponent :: A.PlayerSetup
-opponent = defMessage & #race .~ C.Protoss & #type' .~ A.Computer & #difficulty .~ A.Hard
 
 data Participant where
     Computer :: C.Race -> Participant

@@ -33,8 +33,6 @@ import Conduit ( sinkList, yieldMany, mapC, (.|), runConduitPure )
 import Data.Conduit.List (catMaybes)
 import Grid
 
-import Control.Exception
-
 import Utils qualified
 
 import System.IO.Error (tryIOError)
@@ -55,12 +53,6 @@ import Utils (enemyBaseLocation)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
-
-data StringException = StringException String deriving Show
-instance Exception StringException
-
-makeException :: String -> StringException
-makeException e = StringException e
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -84,9 +76,6 @@ receiveData' conn = mapIOError $ WS.receiveData conn
 
 decodeResponseIO :: WS.Connection -> ExceptT String IO S.Response
 decodeResponseIO conn = receiveData' conn >>= decodeMessage'
-
-decodeMessageThrowing :: B.ByteString -> IO S.Response
-decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
 
 startStarCraft :: IO ProcessHandle
 startStarCraft = do
@@ -138,7 +127,6 @@ data AnyAgent = forall a. Agent a => AnyAgent a
 getAgents :: [Proto.Participant] -> [AnyAgent]
 getAgents participants = [AnyAgent a | Proto.Player a <- participants]
 
-
 -- host/players
 splitParticipants :: [Proto.Participant] -> (Proto.Participant, [Proto.Participant])
 splitParticipants = doSplit (Nothing, []) where
@@ -161,32 +149,25 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
     WS.runClient hostName port "/sc2api" clientApp
     where
       clientApp conn = do
-        putStrLn "ping"
-        WS.sendTextData conn $ B.drop 3 (encodeMessage Proto.requestPing)
-        responsePing <- WS.receiveData conn
-        testPrint $ decodeMessage responsePing
+        -- putStrLn "ping"
+        -- WS.sendTextData conn $ B.drop 3 (encodeMessage Proto.requestPing)
+        -- responsePing <- WS.receiveData conn
+        -- print responsePing
 
         putStrLn "maps"
-        WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
-        responseMaps <- WS.receiveData conn
-        testPrint $ decodeMessage responseMaps
+        responseMaps <- Proto.sendRequestSync conn Proto.requestAvailableMaps
+        print responseMaps
 
         putStrLn "creating game..."
-        WS.sendBinaryData conn $ encodeMessage $ Proto.requestCreateGame (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing) participants
-        responseCreateGame <- WS.receiveData conn
-        testPrint $ decodeMessage responseCreateGame
+        responseCreateGame <- Proto.sendRequestSync conn $ Proto.requestCreateGame  (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing) participants
+        print responseCreateGame
 
         putStrLn "joining game..."
-        let requestJoin = encodeMessage $ Proto.requestJoinGame (Agent.race agent)
-        print requestJoin
-        WS.sendBinaryData conn requestJoin
-        responseJoinGame <- WS.receiveData conn >>= decodeMessageThrowing
-        let playerId = responseJoinGame ^. #joinGame ^. #playerId
-        --testPrint $ responseJoinGame
+        responseJoinGame <- Proto.sendRequestSync conn . Proto.requestJoinGame $ Agent.race agent
+        let playerId = responseJoinGame ^. (#joinGame . #playerId)
 
-        putStrLn "getting game inf..."
-        WS.sendBinaryData conn $ encodeMessage Proto.requestGameInfo
-        resp <- WS.receiveData conn >>= decodeMessageThrowing
+        putStrLn "getting game info..."
+        resp <- Proto.sendRequestSync conn Proto.requestGameInfo
         let gi :: S.ResponseGameInfo = resp ^. #gameInfo
         let playerInfos = gi ^. #playerInfo
         let playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
@@ -210,12 +191,9 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
               else do
                   let (newBot, acts) = runWriter (Agent.step bot obs (unitAbilities abilitiesRaw))
 
-                  liftIO . WS.sendBinaryData conn . encodeMessage . Proto.requestAction . botCommands $ acts
-                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-                  liftIO . WS.sendBinaryData conn . encodeMessage . Proto.requestDebug . botDebug $ acts
-                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
-                  liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestStep
-                  _ <- liftIO $ WS.receiveData conn >>= decodeMessageThrowing
+                  _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction . botCommands $ acts
+                  _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug . botDebug $ acts
+                  _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
                   gameLoop conn newBot
 
 -- tryConnect retries
