@@ -6,7 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 
-module TestBot(TestBot(..)) where
+module TestBot(TestBot(..), ProbeRush(..)) where
 
 import Data.String
 
@@ -27,21 +27,26 @@ import Proto.S2clientprotocol.Debug_Fields (unitTag)
 import qualified AbilityId
 import UnitTypeId
 
-data TestBot = TestBot
-  { aGameInfo :: A.ResponseGameInfo
-  , aBotInfo  :: A.PlayerInfo
-  , stepCount :: Int
-  }
-  | EmptyBot
+data ProbeRush = ProbeRush {probeRushRace :: C.Race}
+
+instance Agent ProbeRush where
+    agentRace = probeRushRace 
+    agentStep a gameInfo _ obs abilities stepCount = do
+        let enemyBase = Utils.enemyBaseLocation gameInfo obs
+        command [Actions.UnitCommand AbilityId.Attack (head (Utils.unitsSelf obs) ^. #tag) enemyBase ]
+        return a 
+
+data TestBot = Opening | EmptyBot
 
 instance Agent TestBot where
-    race _ = C.Protoss
-    step e@EmptyBot _ _ = return e
-    step b obs abilities = do
-        let msg = fromString $ "test hello " ++ (show $ (aGameInfo b) ^. #mapName) -- ++ show i -- ++ " " ++ show (playerInfo ^. #player_id) 
-        let enemyBase = Utils.enemyBaseLocation (aGameInfo b) obs
-        if stepCount b `mod` 10 == 0 then command [Actions.Chat msg, Actions.Chat (fromString.show $ enemyBase) ] else command []
+    agentRace _ = C.Protoss
+    agentStep e@EmptyBot _ _ _ _ _ = return e
+    --step :: s -> A.ResponseGameInfo -> A.PlayerInfo -> A.Observation -> UnitAbilities -> Int -> Writer AgentLog s
+    agentStep a gameInfo playerInfo obs abilities stepCount = do
+        let msg = fromString $ "test hello " ++ (show $ gameInfo ^. #mapName) -- ++ show i -- ++ " " ++ show (playerInfo ^. #player_id) 
+        let enemyBase = Utils.enemyBaseLocation gameInfo obs
+        if stepCount `mod` 10 == 0 then command [Actions.Chat msg, Actions.Chat (fromString.show $ enemyBase) ] else command []
         debug [Actions.DebugText "testU" (c ^. #pos) | c <- Utils.unitsSelf obs ]
         --tell [Actions.UnitCommand AbilityId.Attack (head (Utils.unitsSelf obs) ^. #tag) enemyBase ]
         --tell [Actions.Chat msg]
-        return $ TestBot (aGameInfo b) (aBotInfo b) (stepCount b +1)
+        return a

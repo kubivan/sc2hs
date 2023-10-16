@@ -163,7 +163,7 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
         print responseCreateGame
 
         putStrLn "joining game..."
-        responseJoinGame <- Proto.sendRequestSync conn . Proto.requestJoinGame $ Agent.race agent
+        responseJoinGame <- Proto.sendRequestSync conn . Proto.requestJoinGame $ Agent.agentRace agent
         let playerId = responseJoinGame ^. (#joinGame . #playerId)
 
         putStrLn "getting game info..."
@@ -174,13 +174,13 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
         let pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
         printGrid pathingGrid
 
-        gameOver <- runExceptT $ gameLoop conn agent
+        gameOver <- runExceptT $ gameLoop conn gi playerGameInfo agent 0
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e
           Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
 
-      gameLoop :: Agent bot => Connection -> bot -> ExceptT String IO [S.PlayerResult]
-      gameLoop conn bot = do
+      gameLoop :: Agent agent => Connection -> S.ResponseGameInfo -> PlayerInfo -> agent -> Int -> ExceptT String IO [S.PlayerResult]
+      gameLoop conn gameInfo playerInfo bot stepCount = do
           liftIO $ putStrLn "step"
           (obs, gameOver) <- sc2Observation conn
 
@@ -189,12 +189,12 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
           if not (null gameOver)
               then return gameOver
               else do
-                  let (newBot, acts) = runWriter (Agent.step bot obs (unitAbilities abilitiesRaw))
+                  let (nextAgent, acts) = runWriter (Agent.agentStep agent gameInfo playerInfo obs (unitAbilities abilitiesRaw) stepCount)
 
                   _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction . botCommands $ acts
                   _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug . botDebug $ acts
                   _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
-                  gameLoop conn newBot
+                  gameLoop conn gameInfo playerInfo nextAgent (stepCount + 1)
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))

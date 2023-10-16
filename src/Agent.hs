@@ -7,10 +7,9 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 
-module Agent(Agent(..), Dummy(..), AgentLog(..), UnitAbilities, debug, command) where
+module Agent(Agent(..), AgentLog(..), UnitAbilities, debug, command) where
 
 import Actions qualified
-import Data.String
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -46,15 +45,5 @@ instance Monoid AgentLog where
     mempty = AgentLog [] []
 
 class Agent s where
-    race :: s -> C.Race
-    --step :: (Agent a) => s -> A.Observation -> UnitAbilities -> Writer AgentLog s
-    --step :: forall a. (Agent a) => s -> A.Observation -> UnitAbilities -> Writer AgentLog Agent s
-    step :: s -> A.Observation -> UnitAbilities -> Writer AgentLog s
-
-newtype Dummy = Dummy Integer
-instance Agent Dummy where
-    race _ = C.Protoss
-    step (Dummy i) obs abs = do
-        let msg = fromString $ "dummy hello " ++ show i -- ++ " " ++ show (playerInfo ^. #player_id) 
-        command [Actions.Chat msg | i `mod` 100 == 0]
-        return $ Dummy (i+1)
+    agentRace :: s -> C.Race
+    agentStep :: s -> A.ResponseGameInfo -> A.PlayerInfo -> A.Observation -> UnitAbilities -> Int -> Writer AgentLog s

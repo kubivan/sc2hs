@@ -5,4 +5,4 @@ import TestBot
 import qualified Proto.S2clientprotocol.Common as A
 
 main :: IO ()
-main = startClient [Computer A.Protoss, Player EmptyBot]
+main = startClient [Computer A.Protoss, Player Opening]
