@@ -17,6 +17,7 @@ module Proto ( requestPing
              , requestAction
              , requestDebug
              , requestGameInfo
+             , requestData
              , requestUnitAbilities
              , sendRequestSync
              , Participant(..)) where
@@ -39,7 +40,7 @@ import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Sc2api as A
 import Proto.S2clientprotocol.Sc2api_Fields as A
-import Proto.S2clientprotocol.Query_Fields (ignoreResourceRequirements, abilities, unitTag)
+import Proto.S2clientprotocol.Query_Fields (ignoreResourceRequirements, abilities, unitTag, unitTypeId)
 
 import Conduit
 import Proto.S2clientprotocol.Raw_Fields (alliance)
@@ -135,6 +136,9 @@ requestDebug acts = defMessage & #debug .~ ((defMessage & #debug .~ (toDebug <$>
 requestGameInfo :: A.Request
 requestGameInfo = defMessage & #gameInfo .~ defMessage
 
+requestData :: A.Request
+requestData = defMessage & #data' .~ (defMessage & #abilityId .~ True & #unitTypeId .~ True & #upgradeId .~ True & #buffId .~ False & #effectId .~ True)
+
 --TODO: add ignoreResourceRequirements param
 requestUnitAbilities :: A.Observation -> A.Request
 requestUnitAbilities obs = defMessage & #query .~ requestQueryAbilities obs where
@@ -149,6 +153,6 @@ requestUnitAbilities obs = defMessage & #query .~ requestQueryAbilities obs wher
     yieldMany (units obs)
     .| filterC (\u -> u ^. alliance == A.Self) -- Filter based on some condition (e.g., health > 50)
     .| mapC (\u -> u ^. #tag)
-    -- .| concatMapC (\u -> [u ^. #unitTag]) -- Use concatMapC to flatten the lists
+
     .| mapC toRequest
     .| sinkList

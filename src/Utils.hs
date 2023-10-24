@@ -1,21 +1,28 @@
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, dot, enemyBaseLocation, unitsSelf, Pointable(..)) where
+module Utils ((-), distSquared, dot, enemyBaseLocation, unitsSelf, Pointable(..), tileX, tileY, tilePos, findNexus, fromTuple, to2D, Utils.debug) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Sc2api as A
+    ( ResponseGameInfo, Observation )
 import Proto.S2clientprotocol.Sc2api_Fields as A
 
 import Proto.S2clientprotocol.Raw as R
 import Proto.S2clientprotocol.Raw_Fields as R
+    ( alliance, pos, startLocations, unitType, units )
 
 import Data.ProtoLens (defMessage)
 import Lens.Micro((&), (.~), (^.))
 import qualified GHC.Word
 import qualified Proto.S2clientprotocol.Raw as A
+
+import UnitPool (unitsSelf)
 
 import Debug.Trace
 
@@ -37,34 +44,65 @@ import Debug.Trace
 --   signum (Pair (a,b)) = Pair (signum a, signum b) 
 --   fromInteger i = Pair (fromInteger i, fromInteger i)
 
+class Pointable a where
+  make2D :: Float -> Float -> a
+  x :: a -> Float
+  y :: a -> Float
+
 instance Num C.Point2D where
-   a - b = defMessage & C.x .~ (a ^. C.x) - (b ^. C.x) & C.y .~ (a ^. C.y) - (b ^. C.y)
+  a - b = make2D (x1 `subtract` x2) (y1 `subtract` y2) where 
+    x1 = (Utils.x a) :: Float
+    x2 = (Utils.x b) :: Float
+    y1 = (Utils.y a) :: Float
+    y2 = (Utils.y b) :: Float
 
-createPoint2D x y = defMessage & C.x .~ x & C.y .~ y
+  (+) = undefined
+  (*) = undefined
+  negate = undefined
+  abs = undefined
+  signum = undefined
+  fromInteger = undefined
 
-dot a b = a ^. C.x * b ^. C.x + a ^. C.y * b ^. C.y
+dot :: Pointable p => p -> p -> Float
+dot a b = Utils.x a * Utils.x b + Utils.y a* Utils.y b
 
 distSquared a b = dot diff diff where
   diff = a - b
 
-toPoint2D p = defMessage & C.x .~ (p ^. #x) & C.x .~ (p ^. #x)
+toPoint2D p = defMessage & C.x .~ (p ^. #x) & C.y .~ (p ^. #y)
 
-class Pointable a where
-  to2D :: a -> C.Point2D
-  x :: a -> Float
-  y :: a -> Float
+fromTuple :: (Integral a) => (a, a) -> Point2D
+fromTuple (px, py) = defMessage & C.x .~ fromIntegral px & C.y .~ fromIntegral py
+
+tileX :: Pointable a => a -> Int
+tileX = floor . Utils.x
+
+tileY :: Pointable a => a -> Int
+tileY = floor . Utils.y
+
+tilePos :: Pointable a => a -> (Int, Int)
+tilePos p = (tileX p, tileY p)
+
+--tileY :: Pointable a => a -> Int 
 
 instance Pointable C.Point2D where
   x p = p ^. C.x
   y p = p ^. C.y
 
-  to2D p = p
+  make2D xp yp = defMessage & C.x .~ xp & C.y .~ yp
 
 instance Pointable C.Point where
   x p = p ^. C.x
   y p = p ^. C.y
 
-  to2D p = createPoint2D (Utils.x p) (Utils.y p)
+
+to2D :: Pointable a => a -> Point2D
+to2D p = make2D (Utils.x p) (Utils.y p)
+-- type Point2DI = (Int, Int)
+-- instance Pointable Point2DI where
+--   x (a, _) = fromIntegral a
+--   y (_, b) = fromIntegral b
+--   to2D p = createPoint2D (Utils.x p) (Utils.y p)
 
 -- Point2D
 -- enemy_base_location(const Observation& obs)
@@ -93,7 +131,8 @@ debug = flip trace
 protossNexus :: GHC.Word.Word32
 protossNexus = 59
 
-unitsSelf obs = filter (\u -> u ^. alliance == A.Self) (obs ^. (A.rawData . R.units))
+findNexus :: A.Observation -> A.Unit
+findNexus obs = head $ filter (\u -> (u ^. R.unitType) == protossNexus) (unitsSelf obs) -- `Utils.debug` ("unitself " ++ (show unitsSelf))
 
 enemyBaseLocation :: A.ResponseGameInfo -> A.Observation -> C.Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where

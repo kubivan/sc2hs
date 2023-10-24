@@ -16,10 +16,13 @@ import Control.Monad
 import Control.Monad.Writer.Strict
 import Control.Monad.Except(ExceptT(..), runExceptT, throwError)
 import Data.ByteString qualified as B
-import Data.ProtoLens.Encoding
+import Data.ProtoLens.Encoding ( decodeMessage, encodeMessage )
 import Network.WebSockets as WS
 import Proto qualified
+
 import Proto.S2clientprotocol.Sc2api as S
+    ( PlayerResult, Response, ResponseGameInfo )
+import Proto.S2clientprotocol.Data as S
 import Proto.S2clientprotocol.Sc2api_Fields as S
 import Proto.S2clientprotocol.Common as S
 import Proto.S2clientprotocol.Common_Fields as S
@@ -31,9 +34,8 @@ import System.IO
 import System.Process
 import Conduit ( sinkList, yieldMany, mapC, (.|), runConduitPure )
 import Data.Conduit.List (catMaybes)
+import Data.Functor((<&>))
 import Grid
-
-import Utils qualified
 
 import System.IO.Error (tryIOError)
 
@@ -53,6 +55,8 @@ import Utils (enemyBaseLocation)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
+import Proto (Participant)
+import qualified Agent as S
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -77,8 +81,8 @@ receiveData' conn = mapIOError $ WS.receiveData conn
 decodeResponseIO :: WS.Connection -> ExceptT String IO S.Response
 decodeResponseIO conn = receiveData' conn >>= decodeMessage'
 
-startStarCraft :: IO ProcessHandle
-startStarCraft = do
+startStarCraft :: Int -> IO ProcessHandle
+startStarCraft port = do
   let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base87702\\SC2_x64.exe\""
       cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
       args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
@@ -101,7 +105,7 @@ unitAbilitiesRaw conn obs = do
   return $ resp ^. (#query . #abilities)
 
 unitAbilities :: [S.ResponseQueryAvailableAbilities] -> UnitAbilities
-unitAbilities raw = HashMap.fromList $ runConduitPure $ yieldMany raw
+unitAbilities raw = HashMap.fromList . runConduitPure $ yieldMany raw
     .| mapC (\a ->
             let unit = UnitTypeId.toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
                 abilityIds = [ AbilityId.toEnum . fromIntegral $ (x ^. #abilityId) :: AbilityId | x <- a ^. #abilities]
@@ -110,17 +114,12 @@ unitAbilities raw = HashMap.fromList $ runConduitPure $ yieldMany raw
         )
     .| sinkList
 
-mirrorGrid :: Grid -> Grid
-mirrorGrid grid =
-    V.fromList [V.fromList [grid V.! j V.! i | j <- [0..V.length grid - 1]] | i <- [0..V.length (V.head grid) - 1]]
+unitsData :: [S.UnitTypeData] -> UnitTraits
+unitsData raw = HashMap.fromList . runConduitPure $ yieldMany raw
+    .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
+    .| sinkList
 
-printGrid grid = V.sequence_ $ putStrLn . V.toList <$> (V.reverse . mirrorGrid $ grid)
 
--- extractAgents :: Agent a => [Proto.Participant] -> [a]
--- extractAgents ps = runConduitPure $ yieldMany ps
---           .| mapC (\x -> case x of Proto.Player a -> Just a; _ -> Nothing)
---           .| catMaybes
---           .| sinkList
 
 data AnyAgent = forall a. Agent a => AnyAgent a
 
@@ -137,13 +136,37 @@ splitParticipants = doSplit (Nothing, []) where
   doSplit (Just h, p) [] = (h, p)
   doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
 
+
+
+
+
+gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> agent -> ExceptT String IO [S.PlayerResult]
+gameStepLoop conn si agent = do
+  liftIO $ putStrLn "step"
+  (obs, gameOver) <- sc2Observation conn
+
+  abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
+
+  if not (null gameOver)
+      then return gameOver
+      else do
+          let (nextAgent, AgentLog cmds dbgs) = runWriter $ Agent.agentStep agent si obs abilities
+          liftIO . print $ cmds
+          liftIO . agentDebug $ nextAgent
+
+          _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
+          _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
+          _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
+          gameStepLoop conn si nextAgent
+
+
+
 startClient :: [Proto.Participant] -> IO ()
-startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players where
+startClient participants = runHost host where
   (host, players) = splitParticipants participants
-  runPlayer _ = return ()
   runHost (Proto.Computer _) = Prelude.error "computer cannot be the host"
   runHost (Proto.Player agent) = do
-    ph <- startStarCraft
+    ph <- startStarCraft port
     -- tryConnect 60
     threadDelay 30000000
     WS.runClient hostName port "/sc2api" clientApp
@@ -174,27 +197,14 @@ startClient participants = runHost host >> mapM_ (forkIO . runPlayer) players wh
         let pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
         printGrid pathingGrid
 
-        gameOver <- runExceptT $ gameLoop conn gi playerGameInfo agent 0
+        gameDataResp <- Proto.sendRequestSync conn Proto.requestData
+        print gameDataResp
+        let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
+
+        gameOver <- runExceptT $ gameStepLoop conn (Agent.StaticInfo gi playerGameInfo unitTraits) agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e
           Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
-
-      gameLoop :: Agent agent => Connection -> S.ResponseGameInfo -> PlayerInfo -> agent -> Int -> ExceptT String IO [S.PlayerResult]
-      gameLoop conn gameInfo playerInfo bot stepCount = do
-          liftIO $ putStrLn "step"
-          (obs, gameOver) <- sc2Observation conn
-
-          abilitiesRaw <- unitAbilitiesRaw conn obs
-
-          if not (null gameOver)
-              then return gameOver
-              else do
-                  let (nextAgent, acts) = runWriter (Agent.agentStep agent gameInfo playerInfo obs (unitAbilities abilitiesRaw) stepCount)
-
-                  _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction . botCommands $ acts
-                  _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug . botDebug $ acts
-                  _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
-                  gameLoop conn gameInfo playerInfo nextAgent (stepCount + 1)
 
 -- tryConnect retries
 --   | retries > 0 = connect (const (pure ())) `catch` (\(x :: SomeException) -> tryAgain (retries - 1))

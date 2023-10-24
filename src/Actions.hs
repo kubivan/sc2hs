@@ -26,13 +26,18 @@ import Utils
 --import qualified GHC.Word
 import GHC.Word (Word64)
 import qualified Proto.S2clientprotocol.Debug as D
+import Proto.S2clientprotocol.Raw_Fields (targetUnitTag)
 
 type UnitTag = Word64
 
 --data Action = Chat Text | Attack GHC.Word.Word64 Pointable
 data Action =
    Chat Text 
-  | forall a. Pointable a => UnitCommand AbilityId UnitTag a
+  -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
+  | PointCommand AbilityId UnitTag Point2D
+  | UnitCommand AbilityId UnitTag UnitTag
+  | SelfCommand AbilityId UnitTag
+  deriving (Show)
 
 -- // Display debug text on screen.
 -- message DebugText {
@@ -56,7 +61,7 @@ toAction (Chat msg) = defMessage & #actionChat .~ chat
   where
     chat = defMessage & #message .~ msg
 
-toAction (UnitCommand ability u target) = defMessage
+toAction (PointCommand ability u target) = defMessage
   & #actionRaw .~ attackRaw
   where
     attackRaw = defMessage
@@ -64,4 +69,23 @@ toAction (UnitCommand ability u target) = defMessage
     attactCommand = defMessage
       & #abilityId .~ fromIntegral (fromEnum ability)
       & #targetWorldSpacePos .~ to2D target
+      & #unitTags .~ [u]
+
+toAction (UnitCommand ability u target) = defMessage
+  & #actionRaw .~ attackRaw
+  where
+    attackRaw = defMessage
+      & #unitCommand .~ attactCommand
+    attactCommand = defMessage
+      & #abilityId .~ fromIntegral (fromEnum ability)
+      & #targetUnitTag .~ target
+      & #unitTags .~ [u]
+
+toAction (SelfCommand ability u) = defMessage
+  & #actionRaw .~ attackRaw
+  where
+    attackRaw = defMessage
+      & #unitCommand .~ attactCommand
+    attactCommand = defMessage
+      & #abilityId .~ fromIntegral (fromEnum ability)
       & #unitTags .~ [u]

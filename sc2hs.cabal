@@ -29,6 +29,7 @@ library
       Actions
       Agent
       BuffId
+      Footprint
       Grid
       Proto
       SC2

@@ -7,7 +7,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
 
-module Agent(Agent(..), AgentLog(..), UnitAbilities, debug, command) where
+module Agent(Agent(..), AgentLog(..), StaticInfo(..), UnitAbilities, UnitTraits, Observation, debug, command) where
 
 import Actions qualified
 
@@ -22,9 +22,13 @@ import qualified Data.HashMap.Strict as HashMap
 
 import qualified AbilityId
 import UnitTypeId
+import qualified Proto.S2clientprotocol.Data as A
 
+type Observation = A.Observation
 
 type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
+
+type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
 
 data AgentLog = AgentLog
   {
@@ -44,6 +48,9 @@ instance Semigroup AgentLog where
 instance Monoid AgentLog where
     mempty = AgentLog [] []
 
-class Agent s where
-    agentRace :: s -> C.Race
-    agentStep :: s -> A.ResponseGameInfo -> A.PlayerInfo -> A.Observation -> UnitAbilities -> Int -> Writer AgentLog s
+data StaticInfo = StaticInfo { gameInfo :: A.ResponseGameInfo, playerInfo :: A.PlayerInfo, unitTraits :: UnitTraits}
+
+class Agent a where
+    agentRace :: a -> C.Race
+    agentStep :: a -> StaticInfo -> A.Observation -> UnitAbilities -> Writer AgentLog a
+    agentDebug :: a -> IO ()
