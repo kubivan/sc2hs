@@ -27,7 +27,7 @@ import Proto.S2clientprotocol.Sc2api_Fields as S
 import Proto.S2clientprotocol.Common as S
 import Proto.S2clientprotocol.Common_Fields as S
 import Proto.S2clientprotocol.Query as S
-import Proto.S2clientprotocol.Query_Fields as S ()
+import Proto.S2clientprotocol.Query_Fields as S (abilities)
 import System.Directory
 import System.FilePath
 import System.IO
@@ -51,12 +51,13 @@ import UnitTypeId
 import Proto.S2clientprotocol.Raw_Fields (placementGrid)
 
 import qualified Data.Vector as V
-import Utils (enemyBaseLocation)
+import Utils (enemyBaseLocation, tilePos)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
-import qualified Agent as S
+import Footprint(getFootprint)
+import UnitPool (unitsSelf)
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -92,13 +93,13 @@ startStarCraft port = do
 
   return sc2Handle
 
-sc2Observation :: WS.Connection -> ExceptT String IO (S.Observation, [S.PlayerResult])
+sc2Observation :: WS.Connection -> ExceptT String IO (Observation, [S.PlayerResult])
 sc2Observation conn = do
   liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestObservation
   responseObs <- decodeResponseIO conn
   return (responseObs ^. (#observation . #observation), responseObs ^. (#observation . #playerResult))
 
-unitAbilitiesRaw :: WS.Connection -> S.Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
+unitAbilitiesRaw :: WS.Connection -> Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
 unitAbilitiesRaw conn obs = do
   liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestUnitAbilities obs
   resp <- decodeResponseIO conn
@@ -119,8 +120,6 @@ unitsData raw = HashMap.fromList . runConduitPure $ yieldMany raw
     .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
     .| sinkList
 
-
-
 data AnyAgent = forall a. Agent a => AnyAgent a
 
 getAgents :: [Proto.Participant] -> [AnyAgent]
@@ -136,30 +135,27 @@ splitParticipants = doSplit (Nothing, []) where
   doSplit (Just h, p) [] = (h, p)
   doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
 
-
-
-
-
-gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> agent -> ExceptT String IO [S.PlayerResult]
-gameStepLoop conn si agent = do
-  liftIO $ putStrLn "step"
+gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> Grid -> agent -> ExceptT String IO [S.PlayerResult]
+gameStepLoop conn si grid agent = do
+  --liftIO $ putStrLn "step"
   (obs, gameOver) <- sc2Observation conn
 
   abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
 
   if not (null gameOver)
-      then return gameOver
-      else do
-          let (nextAgent, AgentLog cmds dbgs) = runWriter $ Agent.agentStep agent si obs abilities
-          liftIO . print $ cmds
-          liftIO . agentDebug $ nextAgent
+    then return gameOver
+    else do
+      let (agent', StepPlan cmds dbgs, grid') = runStep si abilities (obs, grid) (Agent.agentStep agent)
+      --liftIO . print $ cmds
+      liftIO . agentDebug $ agent'
+      let gameLoop = obs ^. #gameLoop
+      liftIO $ writeGridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+      --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
 
-          _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
-          _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
-          _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
-          gameStepLoop conn si nextAgent
-
-
+      _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
+      _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
+      _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
+      gameStepLoop conn si grid' agent'
 
 startClient :: [Proto.Participant] -> IO ()
 startClient participants = runHost host where
@@ -198,10 +194,11 @@ startClient participants = runHost host where
         printGrid pathingGrid
 
         gameDataResp <- Proto.sendRequestSync conn Proto.requestData
-        print gameDataResp
-        let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
 
-        gameOver <- runExceptT $ gameStepLoop conn (Agent.StaticInfo gi playerGameInfo unitTraits) agent
+        let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
+        let si = Agent.StaticInfo gi playerGameInfo unitTraits
+        let grid = gridFromImage $ Agent.gameInfo si ^. (#startRaw . #placementGrid)
+        gameOver <- runExceptT $ gameStepLoop conn si grid agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e
           Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults

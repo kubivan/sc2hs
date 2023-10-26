@@ -36,6 +36,7 @@ dependencies:
 - containers
 - unordered-containers
 - hashable
+- transformers
 
 ghc-options:
 - -Wall
@@ -61,6 +62,8 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - sc2hs
+    - transformers
+    - safe
 
 tests:
   sc2hs-test:

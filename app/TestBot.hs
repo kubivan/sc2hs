@@ -7,37 +7,36 @@
 module TestBot (TestBot (..)) where
 
 import AbilityId
--- (filterC, mapC, runConduitPure)
 
-import AbilityId (AbilityId (HarvestGatherProbe))
 import Actions
 import Actions (UnitTag)
 import Actions qualified
 import Agent
-import Agent (AgentLog, Observation, StaticInfo (unitTraits), UnitTraits)
 import Conduit
 import Control.Applicative (Alternative (..))
 import Control.Monad
-import Control.Monad.Writer.Strict (listen)
+import Control.Monad.Writer.Strict
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.State
 import Data.ByteString (putStr)
+import Data.ProtoLens (defMessage)
+import Data.Maybe ( isJust, catMaybes, fromJust, isNothing )
 import Data.ByteString.Char8 (putStrLn)
 import Data.Conduit.List (catMaybes)
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find)
-import Data.Maybe (catMaybes)
+import Data.List (find, mapAccumL)
 import Data.Maybe qualified as Data
 import Data.Sequence (Seq (..), empty, (|>))
 import Data.String
 import Data.Text (pack)
 import Data.Vector qualified as V
 import Footprint
-import Footprint (Footprint (Footprint), getFootprint)
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid
-import Grid (addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile)
-import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Grid (addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString)
+import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Debug_Fields (pos, unitTag)
@@ -53,19 +52,15 @@ import Proto.S2clientprotocol.Raw_Fields as R
     units,
   )
 import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene)
+import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-import UnitPool
-import UnitPool (unitsSelf)
+import UnitPool ( unitsSelf )
 import UnitTypeId
-import UnitTypeId (UnitTypeId (ProtossProbe, ProtossPylon))
 import Utils
-import Utils (Pointable (make2D), fromTuple)
+import Safe (headMay)
+import Debug.Trace
 
 type BuildOrder = [UnitTypeId]
-
-toEnum' :: Enum e => GHC.Word.Word32 -> e
-toEnum' = toEnum . fromIntegral
 
 data Cost = Cost {mineralCost :: Int, gasCost :: Int}
   deriving (Show, Eq, Ord)
@@ -81,7 +76,7 @@ instance Num Cost where
 
 data TestBot
   = Opening
-  | BuildOrderExecutor Grid BuildOrder [Action] A.Observation
+  | BuildOrderExecutor BuildOrder [Action] A.Observation
 
 getExecutor :: Action -> GHC.Word.Word64
 getExecutor (UnitCommand _ u _) = u
@@ -120,31 +115,47 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-canAfford' :: Observation -> StaticInfo -> UnitAbilities -> UnitTypeId -> Cost -> Bool
-canAfford' obs si abilities id r = ability `elem` (abilities HashMap.! ProtossProbe) && (Cost minerals vespene >= cost)
+gridUpdate :: Observation -> Grid -> Grid
+gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> unitsSelf obs)
   where
-    minerals = fromIntegral $ obs ^. (#playerCommon . #minerals) -- `Utils.debug` ("minerals: " ++ show minerals)
-    vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-    cost = unitCost (unitTraits si) id + r
-    ability = unitToAbility (unitTraits si) id
+    getFootprints :: Unit -> (Footprint, (Int, Int))
+    getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos)
 
-findBuilder :: Observation -> [UnitTag] -> UnitTag
-findBuilder obs taken =
-  head $
+canAfford :: UnitTypeId -> Cost -> StepMonad (Bool, Cost)
+canAfford id r = do
+  si <- agentStatic
+  (obs, _) <- agentGet
+
+  let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals) -- `Utils.debug` ("minerals: " ++ show minerals)
+      vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
+      resources = Cost minerals vespene
+      cost = unitCost (unitTraits si) id
+  return (resources >= cost + r, cost)
+
+inBuildThechTree :: UnitTypeId -> StepMonad Bool
+inBuildThechTree id = do
+  abilities <- agentAbilities
+  si <- agentStatic
+  let ability = unitToAbility (unitTraits si) id
+  return $ ability `elem` (abilities HashMap.! ProtossProbe)
+
+findBuilder :: Observation -> Maybe UnitTag
+findBuilder obs =
+  headMay $
     runConduitPure $
       yieldMany (unitsSelf obs)
         .| filterC (\a -> fromEnum ProtossProbe == fromIntegral (a ^. #unitType))
         .| filterC (\x -> Prelude.null (x ^. #orders) || (HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
         .| mapC (^. #tag)
-        .| filterC (`notElem` taken)
         .| sinkList
 
 pylonRadius = 6.5
 
 findPlacementPos :: Observation -> Grid -> UnitTypeId -> Maybe (Int, Int)
-findPlacementPos obs grid ProtossPylon = findPlacementPoint grid (getFootprint ProtossPylon) (tilePos (nexus ^. #pos))
+findPlacementPos obs grid ProtossPylon = findPlacementPoint grid (getFootprint ProtossPylon) nexusPos
   where
-    nexus = findNexus obs
+    nexusPos = tilePos $ findNexus obs ^. #pos
+
 findPlacementPos obs grid id = go pylons
   where
     go :: [(Int, Int)] -> Maybe (Int, Int)
@@ -160,71 +171,112 @@ findPlacementPos obs grid id = go pylons
           .| mapC (\x -> tilePos $ x ^. #pos)
           .| sinkList
 
-updateGrid :: Observation -> Grid -> Grid
-updateGrid obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> unitsSelf obs)
+addOrder :: Observation -> UnitTag -> AbilityId -> Observation
+addOrder obs unitTag ability =
+    obs & #rawData . A.units . traverse . filtered (\unit -> unit ^. #tag == unitTag) . #orders %~ (order :) --TODO: append order to the end?
+    where
+      order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
+
+buildAction :: UnitTypeId -> Cost -> MaybeStepMonad (Action, Cost)
+buildAction order reservedRes = do
+  enabled <- lift . inBuildThechTree $ order
+  guard enabled --`Utils.dbg` (show order ++ " enabled " ++ show enabled)
+  (isAffordable, cost) <- lift $ canAfford order reservedRes
+  guard isAffordable --`Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
+
+  si <- lift agentStatic
+  (obs, grid) <- lift agentGet
+  let ability = unitToAbility (unitTraits si) order
+  let footprint = getFootprint order
+  guard (isBuildAbility ability)
+  pos <- MaybeT . return $ findPlacementPos obs grid order
+  builder <- MaybeT . return $ findBuilder obs
+  let grid' = addMark grid footprint pos
+  let obs' = addOrder obs builder ability
+  lift . agentPut $ (obs', grid') --`Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!") 
+
+  let res = PointCommand ability builder (fromTuple pos)
+
+  return (res, cost) --`Utils.dbg` ("buildAction PointCommand "  ++ show ability ++ " " ++ show pos ++ "\n" ++ gridToString grid')
+
+pylonBuildAction :: Cost -> MaybeStepMonad (Action, Cost)
+pylonBuildAction reservedRes = do
+  (isAffordable, cost) <- lift $ canAfford ProtossPylon reservedRes
+  guard isAffordable
+
+  si <- lift agentStatic
+  (obs, grid) <- lift agentGet
+  let hasPylonsInProgress = not $ Prelude.null $ runConduitPure $ yieldMany (unitsSelf obs) .| filterC (\u -> fromEnum ProtossPylon == fromIntegral (u ^. #unitType)) .| filterC (\u -> u ^. #buildProgress < 1) .| sinkList
+  if hasPylonsInProgress
+    then MaybeT $ return Nothing
+    else do
+      let nexus = findNexus obs
+      let footprint = getFootprint ProtossPylon
+      pylonPos <- MaybeT . return $ findPlacementPoint grid footprint (tilePos (nexus ^. #pos))
+      builder <- MaybeT . return $ findBuilder obs
+      let grid' = addMark grid footprint pylonPos
+      let obs' = addOrder obs builder AbilityId.BuildPylon
+      lift . agentPut $ (obs', grid')
+      return $ (PointCommand BuildPylon builder (fromTuple pylonPos), cost)
+
+createAction :: Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost)
+createAction reserved order = buildAction order reserved -- <|> pylonBuildAction reserved
+
+processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
+processQueue (a : as) (q', interrupted) = do
+  si <- agentStatic
+  (obs, grid) <- agentGet
+  case findAssignee obs a of
+    Nothing -> processQueue as (q', interrupted ++ [a])
+    Just u ->
+      if fromEnum (getCmd a) `elem` (u ^. #orders ^.. traverse . (A.abilityId . to fromIntegral))
+        then processQueue as (q' ++ [a], interrupted)
+        else processQueue as (q', interrupted)
+processQueue [] res = return res
+
+splitAffordable :: BuildOrder -> Cost -> StepMonad ([Action], BuildOrder)
+splitAffordable bo reserved = go bo Data.Sequence.empty reserved
   where
-    getFootprints :: Unit -> (Footprint, (Int, Int))
-    getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos)
+    go :: BuildOrder -> Seq Action -> Cost -> StepMonad ([Action], BuildOrder)
+    go bo@(uid:remaining) acc reservedCost = do
+      cres <- tryCreate reserved uid
+      case cres of
+        Just (action, cost) -> go remaining (acc |> action) (cost + reserved)
+        Nothing -> return (toList acc, bo)
+    go [] acc _ = return (toList acc, bo)
 
-createAction :: StaticInfo -> Observation -> [UnitTag] -> Grid -> UnitTypeId -> Maybe Action
-createAction si obs takenBuilders grid order = buildAction <|> pylonBuildAction
-  where
-    ability = unitToAbility (unitTraits si) order
-    buildAction = guard (isBuildAbility ability) >> findPlacementPos obs grid order >>= \pos -> return $ PointCommand ability (findBuilder obs takenBuilders) (fromTuple pos)
-
-    pylonBuildAction = do
-      guard (isBuildAbility ability)
-      let hasPylonsInProgress = not $ Prelude.null $ runConduitPure $ yieldMany (unitsSelf obs) .| filterC (\u -> fromEnum ProtossPylon == fromIntegral (u ^. #unitType)) .| filterC (\u -> u ^. #buildProgress < 1) .| sinkList
-
-      if hasPylonsInProgress
-        then Nothing
-        else do
-          let nexus = findNexus obs
-          pylonPos <- findPlacementPoint grid (getFootprint ProtossPylon) (tilePos (nexus ^. #pos))
-          return $ PointCommand BuildPylon (findBuilder obs takenBuilders) (fromTuple pylonPos)
+    tryCreate :: Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost))
+    tryCreate reserved uid = runMaybeT $ createAction reserved uid
 
 instance Agent TestBot where
-  agentDebug (BuildOrderExecutor gr bo q obs) = do
-    let gameLoop = obs ^. #gameLoop
-    writeGridToFile ("grids/grid" ++ show gameLoop ++ ".txt") gr
-    Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
   agentDebug _ = return ()
 
   agentRace _ = C.Protoss
-  agentStep Opening si obs _ = command [SelfCommand AbilityId.TrainProbe nexus] >> return (BuildOrderExecutor grid' fourGate [] obs)
-    where
-      gi = gameInfo si
-      grid' = updateGrid obs . gridFromImage $ gi ^. (#startRaw . #placementGrid)
-      nexus = findNexus obs ^. #tag
-      fourGate = [ProtossPylon, ProtossGateway, ProtossAssimilator, ProtossAssimilator, ProtossCyberneticscore, ProtossGateway, ProtossPylon, ProtossPylon]
-  agentStep (BuildOrderExecutor grid buildOrder queue obsPrev) si obs abilities =
-    command affordableActions >> Agent.debug [DebugText (pack ("upos " ++ (show . tilePos $ c ^. #pos))) (c ^. #pos) | c <- unitsSelf obs] >> return (BuildOrderExecutor grid' orders' (queue' ++ affordableActions) obs)
-    where
-      nexus = findNexus obs
-      gi = gameInfo si
-      grid' = updateGrid obs grid
-      (queue', interruptedAbilities) = processQueue queue ([], [])
-      interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
-      processQueue :: [Action] -> ([Action], [Action]) -> ([Action], [Action])
-      processQueue (a : as) (q', interrupted) = case findAssignee obs a of
-        Nothing -> processQueue as (q', interrupted ++ [a])
-        Just u ->
-          if fromEnum (getCmd a) `elem` (u ^. #orders ^.. traverse . (A.abilityId . to fromIntegral))
-            then processQueue as (q' ++ [a], interrupted)
-            else processQueue as (q', interrupted)
-      processQueue [] res = res
+  agentStep Opening = do
+    si <- agentStatic
+    (obs, grid) <- agentGet
+    let gi = gameInfo si
+    agentPut (obs, gridUpdate obs grid)
+    let nexus = findNexus obs ^. #tag
+    let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
 
-      reservedResources = actionsCost si queue'
+    command [SelfCommand AbilityId.TrainProbe nexus]
+    return $ BuildOrderExecutor fourGate [] obs
 
-      splitAffordable :: BuildOrder -> Cost -> ([Action], BuildOrder)
-      splitAffordable bo reserved = go Data.Sequence.empty bo reserved grid []
-        where
-          go :: Seq Action -> BuildOrder -> Cost -> Grid -> [UnitTag] -> ([Action], BuildOrder)
-          go affordable [] _ _ _ = (toList affordable, [])
-          go affordable bo@(o : remaining) reserved g builders = case tryCreateAction g builders of
-            Just a -> go (affordable |> a) remaining (reserved + unitCost (unitTraits si) o) (addMark g (getFootprint o) (tilePos (getTarget a))) (getExecutor a : builders) -- `Utils.debug` ("can afford " ++ show o)
-            Nothing -> (toList affordable, bo) `Utils.debug` ("cannot afford " ++ show o ++ "affordable " ++ show (toList affordable) ++ " remaining " ++ show bo)
-            where
-              tryCreateAction grid builders = guard (canAfford' obs si abilities o reserved) >> createAction si obs builders grid o
+  agentStep (BuildOrderExecutor buildOrder queue obsPrev) = do
+    si <- agentStatic
+    (obs, grid) <- agentGet
+    let gameLoop = obs ^. #gameLoop
+    let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals) -- `Utils.debug` ("minerals: " ++ show minerals)
+    let vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
+    let gi = gameInfo si
+    debug [DebugText (pack ("upos " ++ (show . tilePos $ c ^. #pos))) (c ^. #pos) | c <- unitsSelf obs]
+    (queue', interruptedAbilities) <- processQueue queue ([], [])
+    let reservedResources = actionsCost si queue'
+    let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
 
-      (affordableActions, orders') = splitAffordable (interruptedOrders ++ buildOrder) reservedResources -- `Utils.debug` (" reserved: " ++ show reservedResources ++ "buildOrder " ++ show buildOrder)
+    --(affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (interruptedOrders ++ buildOrder))
+    (affordableActions, orders') <- splitAffordable buildOrder reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
+    command affordableActions
+    return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs
+

@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, dot, enemyBaseLocation, unitsSelf, Pointable(..), tileX, tileY, tilePos, findNexus, fromTuple, to2D, Utils.debug) where
+module Utils ((-), distSquared, dot, enemyBaseLocation, unitsSelf, Pointable(..), tileX, tileY, tilePos, findNexus, fromTuple, to2D, dbg) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -126,7 +126,7 @@ to2D p = make2D (Utils.x p) (Utils.y p)
 --     return res;
 -- }
 
-debug = flip trace
+dbg = flip trace
 
 protossNexus :: GHC.Word.Word32
 protossNexus = 59

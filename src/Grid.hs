@@ -1,4 +1,6 @@
-module Grid(gridFromImage, createGrid, Grid, findPlacementPoint, findPlacementPointInRadius, addMark, printGrid, writeGridToFile, updatePixel) where
+{-# LANGUAGE OverloadedLabels #-}
+
+module Grid(gridFromImage, gridToString, createGrid, Grid, findPlacementPoint, findPlacementPointInRadius, addMark, printGrid, writeGridToFile, updatePixel) where
 
 import qualified Data.Vector as V
 import Data.Char (chr)
@@ -20,7 +22,7 @@ import qualified Proto.S2clientprotocol.Common as P
 import qualified Proto.S2clientprotocol.Common_Fields as P
 
 import Footprint
-import Utils (distSquared, tilePos, fromTuple, debug)
+import Utils (distSquared, tilePos, fromTuple, dbg)
 import Data.Maybe (isJust)
 
 dbg = flip trace
@@ -42,6 +44,9 @@ gridPixelSafe g (x, y) = g V.!? y >>= (V.!? x)
 
 createGrid :: [String] -> Grid
 createGrid rows = V.fromList [V.fromList row | row <- rows]
+
+gridToString :: Grid -> String
+gridToString = V.foldr (\row acc -> V.foldr (:) "\n" row ++ acc) ""
 
 gridFromImage :: P.ImageData -> Grid
 gridFromImage image = decodeImageData width height bpp bs
@@ -82,7 +87,7 @@ canPlaceBuilding :: Grid -> (Int, Int) -> Footprint -> Bool
 canPlaceBuilding grid (cx, cy) (Footprint building _)  =
 
     all pixelOk building where
-      pixelOk (x, y) = case gridPixelSafe grid (cx + x, cy + y) of 
+      pixelOk (x, y) = case gridPixelSafe grid (cx + x, cy + y) of
         Nothing -> False
         Just p -> p == ' '
 

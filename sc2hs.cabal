@@ -56,6 +56,7 @@ library
     , proto-lens
     , sc2-proto
     , text
+    , transformers
     , unordered-containers
     , vector
     , websockets >=0.12.7.3
@@ -81,9 +82,11 @@ executable sc2hs-exe
     , mtl
     , process
     , proto-lens
+    , safe
     , sc2-proto
     , sc2hs
     , text
+    , transformers
     , unordered-containers
     , vector
     , websockets >=0.12.7.3
@@ -112,6 +115,7 @@ test-suite sc2hs-test
     , sc2-proto
     , sc2hs
     , text
+    , transformers
     , unordered-containers
     , vector
     , websockets >=0.12.7.3
