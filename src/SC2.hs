@@ -51,7 +51,7 @@ import UnitTypeId
 import Proto.S2clientprotocol.Raw_Fields (placementGrid)
 
 import qualified Data.Vector as V
-import Utils (enemyBaseLocation, tilePos)
+import Utils (tilePos)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
@@ -141,6 +141,7 @@ gameStepLoop conn si grid agent = do
   (obs, gameOver) <- sc2Observation conn
 
   abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
+
 
   if not (null gameOver)
     then return gameOver

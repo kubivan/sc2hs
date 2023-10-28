@@ -6,7 +6,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Actions (Action(..), toAction, UnitTag, toDebug, DebugCommand(..)) where
+module Actions (Action(..), toAction, UnitTag, toDebug, DebugCommand(..), getCmd, getTarget, getExecutor) where
 
 import Data.Text
 import Lens.Micro ( (&), (.~), (&), (.~), (^.) )
@@ -38,6 +38,19 @@ data Action =
   | UnitCommand AbilityId UnitTag UnitTag
   | SelfCommand AbilityId UnitTag
   deriving (Show)
+
+getExecutor :: Action -> GHC.Word.Word64
+getExecutor (UnitCommand _ u _) = u
+getExecutor (SelfCommand _ u) = u
+getExecutor (PointCommand _ u _) = u
+
+getCmd :: Action -> AbilityId
+getCmd (UnitCommand a _ _) = a
+getCmd (SelfCommand a _) = a
+getCmd (PointCommand a _ _) = a
+
+getTarget :: Action -> Point2D
+getTarget (PointCommand _ _ t) = t
 
 -- // Display debug text on screen.
 -- message DebugText {

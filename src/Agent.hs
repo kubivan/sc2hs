@@ -6,7 +6,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 
-
 module Agent(Agent(..), StepPlan(..), StaticInfo(..), DynamicState, StepMonad, MaybeStepMonad, runStep, agentAsk, agentStatic, agentGet, agentAbilities, agentPut, UnitAbilities, UnitTraits, Observation, debug, command, toEnum', fromEnum') where
 
 import Actions
@@ -83,7 +82,7 @@ agentGet :: StepMonad DynamicState
 agentGet = lift get
 
 agentPut :: DynamicState -> StepMonad ()
-agentPut x@(_, grid) = lift $ put x `Utils.dbg` ("agentPut: \n" ++ gridToString grid)
+agentPut x@(_, grid) = lift $ put x --`Utils.dbg` ("agentPut: \n" ++ gridToString grid)
 
 runStep :: StaticInfo -> UnitAbilities -> DynamicState -> StepMonad a -> (a, StepPlan, Grid)
 --runStep staticInfo dynamicState stepMonad = runReaderT (runStateT (runWriterT stepMonad) dynamicState) staticInfo

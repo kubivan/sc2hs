@@ -9,8 +9,6 @@ module TestBot (TestBot (..)) where
 import AbilityId
 
 import Actions
-import Actions (UnitTag)
-import Actions qualified
 import Agent
 import Conduit
 import Control.Applicative (Alternative (..))
@@ -35,7 +33,7 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -54,45 +52,22 @@ import Proto.S2clientprotocol.Raw_Fields as R
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-import UnitPool ( unitsSelf )
+import UnitPool
 import UnitTypeId
 import Utils
 import Safe (headMay)
 import Debug.Trace
+import UnitPool (unitsChanged)
 
 type BuildOrder = [UnitTypeId]
 
-data Cost = Cost {mineralCost :: Int, gasCost :: Int}
-  deriving (Show, Eq, Ord)
-
-instance Num Cost where
-  a + b = Cost (mineralCost a + mineralCost b) (gasCost a + gasCost b)
-  a - b = Cost (mineralCost a - mineralCost b) (gasCost a - gasCost b)
-  a * b = Cost (mineralCost a * mineralCost b) (gasCost a * gasCost b)
-  negate (Cost mc gc) = Cost (-mc) (-gc)
-  abs (Cost mc gc) = Cost (abs mc) (abs gc)
-  signum (Cost mc gc) = Cost (signum mc) (signum gc)
-  fromInteger n = Cost (fromInteger n) (fromInteger n)
 
 data TestBot
   = Opening
-  | BuildOrderExecutor BuildOrder [Action] A.Observation
-
-getExecutor :: Action -> GHC.Word.Word64
-getExecutor (UnitCommand _ u _) = u
-getExecutor (SelfCommand _ u) = u
-getExecutor (PointCommand _ u _) = u
-
-getCmd :: Action -> AbilityId
-getCmd (UnitCommand a _ _) = a
-getCmd (SelfCommand a _) = a
-getCmd (PointCommand a _ _) = a
-
-getTarget :: Action -> Point2D
-getTarget (PointCommand _ _ t) = t
+  | BuildOrderExecutor BuildOrder [Action] A.Observation UnitAbilities
 
 findAssignee :: Observation -> Action -> Maybe Unit
-findAssignee obs a = find (\u -> u ^. #tag == getExecutor a) (UnitPool.unitsSelf obs)
+findAssignee obs a = find (\u -> u ^. #tag == getExecutor a) (obs ^. (#rawData . #units))
 
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
 abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
@@ -116,10 +91,11 @@ actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
 gridUpdate :: Observation -> Grid -> Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> unitsSelf obs)
-  where
-    getFootprints :: Unit -> (Footprint, (Int, Int))
-    getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos)
+gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
+  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
+  units = obs ^. (#rawData . #units)
+  getFootprints :: Unit -> (Footprint, (Int, Int))
+  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
 canAfford :: UnitTypeId -> Cost -> StepMonad (Bool, Cost)
 canAfford id r = do
@@ -136,7 +112,7 @@ inBuildThechTree :: UnitTypeId -> StepMonad Bool
 inBuildThechTree id = do
   abilities <- agentAbilities
   si <- agentStatic
-  let ability = unitToAbility (unitTraits si) id
+  let ability = unitToAbility (unitTraits si) id `Utils.dbg` ("abilities: " ++ show abilities)
   return $ ability `elem` (abilities HashMap.! ProtossProbe)
 
 findBuilder :: Observation -> Maybe UnitTag
@@ -145,11 +121,11 @@ findBuilder obs =
     runConduitPure $
       yieldMany (unitsSelf obs)
         .| filterC (\a -> fromEnum ProtossProbe == fromIntegral (a ^. #unitType))
-        .| filterC (\x -> Prelude.null (x ^. #orders) || (HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
+        .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
         .| mapC (^. #tag)
         .| sinkList
 
-pylonRadius = 6.5
+pylonRadius = 6
 
 findPlacementPos :: Observation -> Grid -> UnitTypeId -> Maybe (Int, Int)
 findPlacementPos obs grid ProtossPylon = findPlacementPoint grid (getFootprint ProtossPylon) nexusPos
@@ -177,15 +153,15 @@ addOrder obs unitTag ability =
     where
       order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
 
-buildAction :: UnitTypeId -> Cost -> MaybeStepMonad (Action, Cost)
-buildAction order reservedRes = do
+buildAction :: UnitTypeId -> Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
+buildAction order grid reservedRes = do
   enabled <- lift . inBuildThechTree $ order
-  guard enabled --`Utils.dbg` (show order ++ " enabled " ++ show enabled)
+  guard enabled `Utils.dbg` (show order ++ " enabled " ++ show enabled)
   (isAffordable, cost) <- lift $ canAfford order reservedRes
-  guard isAffordable --`Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
+  guard isAffordable `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
 
   si <- lift agentStatic
-  (obs, grid) <- lift agentGet
+  (obs, _) <- lift agentGet
   let ability = unitToAbility (unitTraits si) order
   let footprint = getFootprint order
   guard (isBuildAbility ability)
@@ -193,19 +169,19 @@ buildAction order reservedRes = do
   builder <- MaybeT . return $ findBuilder obs
   let grid' = addMark grid footprint pos
   let obs' = addOrder obs builder ability
-  lift . agentPut $ (obs', grid') --`Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!") 
+  lift . agentPut $ (obs', grid) `Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 
   let res = PointCommand ability builder (fromTuple pos)
 
-  return (res, cost) --`Utils.dbg` ("buildAction PointCommand "  ++ show ability ++ " " ++ show pos ++ "\n" ++ gridToString grid')
+  return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (getUnit obs' builder ^. #orders ) )
 
-pylonBuildAction :: Cost -> MaybeStepMonad (Action, Cost)
-pylonBuildAction reservedRes = do
+pylonBuildAction :: Grid -> Cost -> MaybeStepMonad (Action, Cost)
+pylonBuildAction grid reservedRes = do
   (isAffordable, cost) <- lift $ canAfford ProtossPylon reservedRes
   guard isAffordable
 
   si <- lift agentStatic
-  (obs, grid) <- lift agentGet
+  (obs, _) <- lift agentGet
   let hasPylonsInProgress = not $ Prelude.null $ runConduitPure $ yieldMany (unitsSelf obs) .| filterC (\u -> fromEnum ProtossPylon == fromIntegral (u ^. #unitType)) .| filterC (\u -> u ^. #buildProgress < 1) .| sinkList
   if hasPylonsInProgress
     then MaybeT $ return Nothing
@@ -219,8 +195,8 @@ pylonBuildAction reservedRes = do
       lift . agentPut $ (obs', grid')
       return $ (PointCommand BuildPylon builder (fromTuple pylonPos), cost)
 
-createAction :: Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost)
-createAction reserved order = buildAction order reserved -- <|> pylonBuildAction reserved
+createAction :: Grid -> Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost, Grid)
+createAction grid reserved order = buildAction order grid reserved -- <|> pylonBuildAction reserved
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
@@ -235,18 +211,18 @@ processQueue (a : as) (q', interrupted) = do
 processQueue [] res = return res
 
 splitAffordable :: BuildOrder -> Cost -> StepMonad ([Action], BuildOrder)
-splitAffordable bo reserved = go bo Data.Sequence.empty reserved
+splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.empty grid reserved) `Utils.dbg` ("splitAffordable " ++ show bo ++ " reserved" ++ show reserved)
   where
-    go :: BuildOrder -> Seq Action -> Cost -> StepMonad ([Action], BuildOrder)
-    go bo@(uid:remaining) acc reservedCost = do
-      cres <- tryCreate reserved uid
+    go :: BuildOrder -> Seq Action -> Grid -> Cost -> StepMonad ([Action], BuildOrder)
+    go bo@(uid:remaining) acc grid reservedCost = do
+      cres <- tryCreate grid reservedCost uid
       case cres of
-        Just (action, cost) -> go remaining (acc |> action) (cost + reserved)
+        Just (action, cost, grid') -> go remaining (acc |> action) grid' (cost + reserved)
         Nothing -> return (toList acc, bo)
-    go [] acc _ = return (toList acc, bo)
+    go [] acc _ _ = return (toList acc, [])
 
-    tryCreate :: Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost))
-    tryCreate reserved uid = runMaybeT $ createAction reserved uid
+    tryCreate :: Grid -> Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost, Grid))
+    tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
 instance Agent TestBot where
   agentDebug _ = return ()
@@ -261,22 +237,32 @@ instance Agent TestBot where
     let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor fourGate [] obs
+    return $ BuildOrderExecutor fourGate [] obs (HashMap.fromList [])
 
-  agentStep (BuildOrderExecutor buildOrder queue obsPrev) = do
+  agentStep boa@(BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     si <- agentStatic
-    (obs, grid) <- agentGet
+    (obs, grid0) <- agentGet
+    let nexus = findNexus obs ^. #pos
     let gameLoop = obs ^. #gameLoop
-    let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals) -- `Utils.debug` ("minerals: " ++ show minerals)
-    let vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-    let gi = gameInfo si
-    debug [DebugText (pack ("upos " ++ (show . tilePos $ c ^. #pos))) (c ^. #pos) | c <- unitsSelf obs]
-    (queue', interruptedAbilities) <- processQueue queue ([], [])
-    let reservedResources = actionsCost si queue'
-    let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
+    abilities <- agentAbilities
+    if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do
+      --command [Chat "unitsChanged !!!: "]
+      agentPut (obs, gridUpdate obs grid0)
+      debug [DebugText (pack ("upos " ++ (show . tilePos $ c ^. #pos))) (c ^. #pos) | c <- unitsSelf obs]
+      (queue', interruptedAbilities) <- processQueue queue ([], [])
+      let reservedResources = actionsCost si queue'
+      let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
+      unless (null interruptedOrders) $ 
+        command [Chat $ pack ("interrupted: " ++ show interruptedOrders)]
 
-    --(affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (interruptedOrders ++ buildOrder))
-    (affordableActions, orders') <- splitAffordable buildOrder reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
-    command affordableActions
-    return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs
+      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
+
+      unless (null affordableActions) $ do
+        command [Chat $ pack ("scheduling: " ++ show affordableActions ++ " buildOrder: " ++ show orders')]
+
+      debug [DebugText (pack ("planned " ++ show (getCmd a))) (defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 0) | a <- affordableActions]
+      command affordableActions
+      return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
+    else do
+      return $ BuildOrderExecutor buildOrder queue obs abilities
 

@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, dot, enemyBaseLocation, unitsSelf, Pointable(..), tileX, tileY, tilePos, findNexus, fromTuple, to2D, dbg) where
+module Utils ((-), distSquared, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -21,8 +21,6 @@ import Data.ProtoLens (defMessage)
 import Lens.Micro((&), (.~), (^.))
 import qualified GHC.Word
 import qualified Proto.S2clientprotocol.Raw as A
-
-import UnitPool (unitsSelf)
 
 import Debug.Trace
 
@@ -127,15 +125,3 @@ to2D p = make2D (Utils.x p) (Utils.y p)
 -- }
 
 dbg = flip trace
-
-protossNexus :: GHC.Word.Word32
-protossNexus = 59
-
-findNexus :: A.Observation -> A.Unit
-findNexus obs = head $ filter (\u -> (u ^. R.unitType) == protossNexus) (unitsSelf obs) -- `Utils.debug` ("unitself " ++ (show unitsSelf))
-
-enemyBaseLocation :: A.ResponseGameInfo -> A.Observation -> C.Point2D
-enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where
-  nexus = head $ filter (\u -> (u ^. R.unitType) == protossNexus) (unitsSelf obs) -- `Utils.debug` ("unitself " ++ (show unitsSelf))
-  notCloseToNexus p = distSquared p (to2D (nexus ^. R.pos) ) > 1
-  enemyBases = gi ^. (A.startRaw . R.startLocations)
