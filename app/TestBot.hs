@@ -158,7 +158,7 @@ buildAction order grid reservedRes = do
   enabled <- lift . inBuildThechTree $ order
   guard enabled `Utils.dbg` (show order ++ " enabled " ++ show enabled)
   (isAffordable, cost) <- lift $ canAfford order reservedRes
-  guard isAffordable `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
+  guard isAffordable
 
   si <- lift agentStatic
   (obs, _) <- lift agentGet
@@ -175,7 +175,7 @@ buildAction order grid reservedRes = do
 
   return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (getUnit obs' builder ^. #orders ) )
 
-pylonBuildAction :: Grid -> Cost -> MaybeStepMonad (Action, Cost)
+pylonBuildAction :: Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 pylonBuildAction grid reservedRes = do
   (isAffordable, cost) <- lift $ canAfford ProtossPylon reservedRes
   guard isAffordable
@@ -193,10 +193,14 @@ pylonBuildAction grid reservedRes = do
       let grid' = addMark grid footprint pylonPos
       let obs' = addOrder obs builder AbilityId.BuildPylon
       lift . agentPut $ (obs', grid')
-      return $ (PointCommand BuildPylon builder (fromTuple pylonPos), cost)
+      return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid')
 
 createAction :: Grid -> Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost, Grid)
-createAction grid reserved order = buildAction order grid reserved -- <|> pylonBuildAction reserved
+createAction grid reserved order = do
+  (isAffordable, cost) <- lift $ canAfford order reserved
+  guard isAffordable `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
+
+  buildAction order grid reserved <|> pylonBuildAction grid reserved
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
@@ -239,7 +243,7 @@ instance Agent TestBot where
     let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor fourGate [] obs (HashMap.fromList [])
+    return $ BuildOrderExecutor (replicate 20 ProtossGateway) [] obs (HashMap.fromList [])
 
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
