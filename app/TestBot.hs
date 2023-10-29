@@ -224,6 +224,8 @@ splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.emp
     tryCreate :: Grid -> Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost, Grid))
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
+debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ (show . tilePos $ c ^. #pos), c ^. #pos) | c <- unitsSelf obs]
+
 instance Agent TestBot where
   agentDebug _ = return ()
 
@@ -239,7 +241,8 @@ instance Agent TestBot where
     command [SelfCommand AbilityId.TrainProbe nexus]
     return $ BuildOrderExecutor fourGate [] obs (HashMap.fromList [])
 
-  agentStep boa@(BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
+  agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
+    debugUnitPos
     si <- agentStatic
     (obs, grid0) <- agentGet
     let nexus = findNexus obs ^. #pos
@@ -248,11 +251,10 @@ instance Agent TestBot where
     if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do
       --command [Chat "unitsChanged !!!: "]
       agentPut (obs, gridUpdate obs grid0)
-      debug [DebugText (pack ("upos " ++ (show . tilePos $ c ^. #pos))) (c ^. #pos) | c <- unitsSelf obs]
       (queue', interruptedAbilities) <- processQueue queue ([], [])
       let reservedResources = actionsCost si queue'
       let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
-      unless (null interruptedOrders) $ 
+      unless (null interruptedOrders) $
         command [Chat $ pack ("interrupted: " ++ show interruptedOrders)]
 
       (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
@@ -260,7 +262,7 @@ instance Agent TestBot where
       unless (null affordableActions) $ do
         command [Chat $ pack ("scheduling: " ++ show affordableActions ++ " buildOrder: " ++ show orders')]
 
-      debug [DebugText (pack ("planned " ++ show (getCmd a))) (defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 0) | a <- affordableActions]
+      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 0) | a <- affordableActions]
       command affordableActions
       return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     else do

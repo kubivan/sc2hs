@@ -6,31 +6,54 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 
-module Agent(Agent(..), StepPlan(..), StaticInfo(..), DynamicState, StepMonad, MaybeStepMonad, runStep, agentAsk, agentStatic, agentGet, agentAbilities, agentPut, UnitAbilities, UnitTraits, Observation, debug, command, toEnum', fromEnum') where
+module Agent
+  ( Agent (..),
+    StepPlan (..),
+    StaticInfo (..),
+    DynamicState,
+    StepMonad,
+    MaybeStepMonad,
+    runStep,
+    agentAsk,
+    agentStatic,
+    agentGet,
+    agentObs,
+    agentAbilities,
+    agentPut,
+    UnitAbilities,
+    UnitTraits,
+    Observation,
+    debug,
+    debugText,
+    debugTexts,
+    command,
+    toEnum',
+    fromEnum',
+  )
+where
 
-import Actions
-
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Common_Fields as C
-import qualified Proto.S2clientprotocol.Sc2api as A
-import qualified Proto.S2clientprotocol.Sc2api_Fields as A
-
-import Control.Monad.Writer.Strict
+import AbilityId qualified
+import Actions (Action, DebugCommand(..))
+import Control.Monad.Identity (Identity (..))
 import Control.Monad.Reader
 import Control.Monad.State
-
-import qualified Data.HashMap.Strict as HashMap
-
-import qualified AbilityId
-import UnitTypeId
-import qualified Proto.S2clientprotocol.Data as A
-import Grid
-import Control.Monad.Identity (Identity(..))
 import Control.Monad.Trans.Maybe
-import GHC.Word qualified
+import Control.Monad.Writer.Strict
 import Data.Functor
-import Utils(dbg)
-import Grid (gridToString)
+import Data.HashMap.Strict qualified as HashMap
+import Data.ProtoLens (defMessage)
+import Data.Text (Text, pack)
+import GHC.Word qualified
+import Grid
+import Lens.Micro ((^.), (.~), (&))
+import Proto.S2clientprotocol.Common as C
+import Proto.S2clientprotocol.Common_Fields as C
+import Proto.S2clientprotocol.Data qualified as A
+import Proto.S2clientprotocol.Sc2api qualified as A
+import Proto.S2clientprotocol.Sc2api_Fields qualified as A
+import UnitTypeId
+--import Utils (Pointable, dbg)
+import Utils
 
 type Observation = A.Observation
 
@@ -56,6 +79,12 @@ command acts = tell (StepPlan acts [])
 debug :: [DebugCommand] -> StepMonad ()
 debug acts = tell (StepPlan [] acts)
 
+debugText :: String -> C.Point -> StepMonad ()
+debugText text p = debug [DebugText (pack text) p]
+
+debugTexts :: [(String, C.Point)] -> StepMonad ()
+debugTexts = mapM_ (uncurry debugText)
+
 instance Semigroup StepPlan where
   (<>) (StepPlan as1 ds1) (StepPlan as2 ds2) = StepPlan (as1 <> as2) (ds1 <> ds2)
 
@@ -74,6 +103,9 @@ agentAsk = lift $ lift ask
 
 agentAbilities :: StepMonad UnitAbilities
 agentAbilities = agentAsk <&> snd
+
+agentObs :: StepMonad Observation
+agentObs = agentGet <&> fst
 
 agentStatic :: StepMonad StaticInfo
 agentStatic = agentAsk <&> fst
