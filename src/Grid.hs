@@ -58,8 +58,8 @@ gridFromImage image = decodeImageData width height bpp bs
 
 writeGridToFile :: FilePath -> Grid -> IO ()
 writeGridToFile filePath grid = do
-  let mirrored = V.toList <$> (V.reverse . mirrorGrid $ grid)
-  let flattened = unlines . V.toList $ mirrored
+  let mirrored = V.toList <$> grid -- (V.reverse . mirrorGrid $ grid)
+  let flattened = unlines . reverse . V.toList $ mirrored
   writeFile filePath flattened
 
 mirrorGrid :: Grid -> Grid

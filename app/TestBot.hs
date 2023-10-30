@@ -33,7 +33,7 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString, gridFromImage)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -60,7 +60,6 @@ import Debug.Trace
 import UnitPool (unitsChanged)
 
 type BuildOrder = [UnitTypeId]
-
 
 data TestBot
   = Opening
@@ -202,6 +201,22 @@ createAction grid reserved order = do
 
   buildAction order grid reserved <|> pylonBuildAction grid reserved
 
+reassignIdleProbes :: StepMonad ()
+reassignIdleProbes = do
+  obs <- agentObs
+  let units = unitsSelf obs
+      probes = yieldMany units .| filterC (\a -> fromEnum' ProtossProbe == a ^. #unitType)
+      mineralField = head $ runConduitPure $ probes
+        .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
+        .| mapC (\harvester -> head$ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
+        .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
+        .| sinkList
+      idleWorkers = runConduitPure $ probes
+        .| filterC (\u -> null$ u ^. #orders)
+        .| mapC (^. #tag)
+        .| sinkList
+  command [UnitCommand HarvestGatherProbe utag mineralField | utag <- idleWorkers ]
+
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
   si <- agentStatic
@@ -215,20 +230,25 @@ processQueue (a : as) (q', interrupted) = do
 processQueue [] res = return res
 
 splitAffordable :: BuildOrder -> Cost -> StepMonad ([Action], BuildOrder)
-splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.empty grid reserved) `Utils.dbg` ("splitAffordable " ++ show bo ++ " reserved" ++ show reserved)
+splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.empty grid reserved) -- `Utils.dbg` ("splitAffordable " ++ show bo ++ " reserved" ++ show reserved)
   where
     go :: BuildOrder -> Seq Action -> Grid -> Cost -> StepMonad ([Action], BuildOrder)
     go bo@(uid:remaining) acc grid reservedCost = do
+      (si, _) <- agentAsk
       cres <- tryCreate grid reservedCost uid
       case cres of
-        Just (action, cost, grid') -> go remaining (acc |> action) grid' (cost + reserved)
+        Just (action, cost, grid') -> go remainingOrBo (acc |> action) grid' (cost + reserved)
+          where
+            -- if we fallback to the BuildPylon, don't remove the order from BO
+            remainingOrBo = if getCmd action == unitToAbility (unitTraits si) uid then remaining else bo
+
         Nothing -> return (toList acc, bo)
     go [] acc _ _ = return (toList acc, [])
 
     tryCreate :: Grid -> Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost, Grid))
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
-debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ (show . tilePos $ c ^. #pos), c ^. #pos) | c <- unitsSelf obs]
+debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- unitsSelf obs]
 
 instance Agent TestBot where
   agentDebug _ = return ()
@@ -243,10 +263,11 @@ instance Agent TestBot where
     let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor (replicate 20 ProtossGateway) [] obs (HashMap.fromList [])
+    return $ BuildOrderExecutor (ProtossForge:replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
 
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
+    reassignIdleProbes
     si <- agentStatic
     (obs, grid0) <- agentGet
     let nexus = findNexus obs ^. #pos
@@ -254,7 +275,7 @@ instance Agent TestBot where
     abilities <- agentAbilities
     if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do
       --command [Chat "unitsChanged !!!: "]
-      agentPut (obs, gridUpdate obs grid0)
+      agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
       (queue', interruptedAbilities) <- processQueue queue ([], [])
       let reservedResources = actionsCost si queue'
       let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
@@ -264,11 +285,14 @@ instance Agent TestBot where
       (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
 
       unless (null affordableActions) $ do
-        command [Chat $ pack ("scheduling: " ++ show affordableActions ++ " buildOrder: " ++ show orders')]
+        command [Chat $ pack ("scheduling: " ++ show affordableActions ++ " buildOrder: " ++ show (take 5 orders'))]
 
-      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 0) | a <- affordableActions]
+      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 10) | a <- affordableActions]
       command affordableActions
-      return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
+      if null orders' then -- restart build order
+        return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
+      else
+        return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     else do
       return $ BuildOrderExecutor buildOrder queue obs abilities
 
