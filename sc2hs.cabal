@@ -33,7 +33,7 @@ library
       Grid
       Proto
       SC2
-      UnitPool
+      Units
       UnitTypeId
       UpgradeId
       Utils

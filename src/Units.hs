@@ -1,27 +1,31 @@
 
 {-# LANGUAGE FlexibleContexts #-}
-
 {-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE OverloadedStrings #-}
-
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+--{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UnitPool(unitsSelf, unitsNew, getUnit, unitsChanged, findNexus, enemyBaseLocation, obsResources, Cost(..)) where
+module Units
+  ( unitsSelf,
+    unitsNew,
+    getUnit,
+    unitsChanged,
+    findNexus,
+    enemyBaseLocation,
+    obsResources,
+    Cost (..),
+    Unit,
+    obsUnitsC,
+    runC,
+    unitTypeC,
+    equalsC,
+    allianceC
+  )
+where
 
 import Lens.Micro
 
--- import qualified Proto.S2clientprotocol.Sc2api as P
--- import qualified Proto.S2clientprotocol.Sc2api_Fields as P
--- 
--- import qualified Proto.S2clientprotocol.Common as PC
--- import qualified Proto.S2clientprotocol.Common_Fields as PC
--- import qualified Proto.S2clientprotocol.Raw as PR
--- import qualified Proto.S2clientprotocol.Raw_Fields as PR
-
-import GHC.Word (Word64, Word32)
+import GHC.Word (Word64)
 import Conduit
 import Utils
 
@@ -32,40 +36,51 @@ import qualified Proto.S2clientprotocol.Sc2api_Fields as A
 import qualified Proto.S2clientprotocol.Raw as PR
 import qualified Proto.S2clientprotocol.Raw_Fields as PR
 
-
-import Agent ( Observation ) --TODO: HACK: move observation to a separate module, resolve labels conflict
+import Agent ( Observation, fromEnum' ) --TODO: HACK: move observation to a separate module, resolve labels conflict
+import UnitTypeId
 type Unit = PR.Unit
 
-unitsSelf :: Observation -> [Unit]
-unitsSelf obs = filter (\u -> u ^. #alliance == PR.Self) (obs ^. (#rawData . #units))
-
-unitsNew obs obsPrev = filter notInPrev (unitsSelf obs) where
-    notInPrev u = (u ^. #tag) `notElem` map (^. #tag) unitsPrev
-    unitsPrev = unitsSelf obsPrev
-
+unitsChanged :: Observation -> Observation -> Bool
 unitsChanged obs obsPrev = ulen obs /= ulen obsPrev || firstStep where --`Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
-    ulen = length . unitsSelf
+    ulen obs = length $ runC (unitsSelf obs)
     firstStep = (obs ^. #gameLoop) == 1 &&  (obsPrev ^. #gameLoop) == 0
+
+unitsNew :: Observation -> Observation -> [Unit]
+unitsNew obs obsPrev = filter notInPrev (runC $ unitsSelf obs) where
+    notInPrev u = (u ^. #tag) `notElem` map (^. #tag) unitsPrev
+    unitsPrev = runC $ unitsSelf obsPrev
 
 getUnit :: Observation -> Word64 -> Unit
 getUnit obs utag =
-  head $
-    runConduitPure $
-      yieldMany (unitsSelf obs)
-        .| filterC (\u -> u ^. #tag == utag)
-        .| sinkList
+  head $ runC $ unitsSelf obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
 
-protossNexus = 59 :: Word32 -- TODO: fixme
+equalsC :: (Monad m, Eq a) => Getting a s a -> a -> ConduitT s s m ()
+equalsC label value = filterC (\u -> u ^. label == value)
+
+allianceC a = #alliance `equalsC` a
+
+unitTypeC t = #unitType `equalsC` fromEnum' t
+
+--unitsSelf :: Observation -> [Unit]
+unitsSelf :: Observation -> ConduitT a Unit Identity ()
+unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
+
+--runC :: a -> [Unit]
+runC x = runConduitPure (x .| sinkList)
+
+obsUnitsC :: Observation -> ConduitT i Unit Identity ()
+obsUnitsC obs = yieldMany (obs ^. (#rawData . #units))
 
 findNexus :: Observation -> PR.Unit
-findNexus obs = head $ filter (\u -> (u ^. #unitType) == protossNexus) (unitsSelf obs) -- `Utils.debug` ("unitself " ++ (show unitsSelf))
+findNexus obs = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
 
 enemyBaseLocation :: A.ResponseGameInfo -> Observation -> Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where
-  nexus = head $ filter (\u -> (u ^. #unitType) == protossNexus) (unitsSelf obs) -- `Utils.debug` ("unitself " ++ (show unitsSelf))
+  nexus = findNexus obs
   notCloseToNexus p = distSquared p (to2D (nexus ^. #pos) ) > 1
   enemyBases = gi ^. (#startRaw . #startLocations)
 
+-- TODO: move to a separate file
 data Cost = Cost {mineralCost :: Int, gasCost :: Int}
   deriving (Show, Eq, Ord)
 

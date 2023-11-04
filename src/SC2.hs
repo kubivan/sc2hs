@@ -57,7 +57,7 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
 import Footprint(getFootprint)
-import UnitPool (unitsSelf)
+import Units (unitsSelf)
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -84,7 +84,7 @@ decodeResponseIO conn = receiveData' conn >>= decodeMessage'
 
 startStarCraft :: Int -> IO ProcessHandle
 startStarCraft port = do
-  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base87702\\SC2_x64.exe\""
+  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base91115\\SC2_x64.exe\""
       cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
       args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
       proc = (shell $ sc2 ++ " " ++ unwords args) {cwd = cwd}

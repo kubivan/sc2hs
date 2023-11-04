@@ -52,12 +52,11 @@ import Proto.S2clientprotocol.Raw_Fields as R
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-import UnitPool
 import UnitTypeId
 import Utils
 import Safe (headMay)
 import Debug.Trace
-import UnitPool (unitsChanged)
+import Units
 
 type BuildOrder = [UnitTypeId]
 
@@ -65,7 +64,7 @@ data TestBot
   = Opening
   | BuildOrderExecutor BuildOrder [Action] A.Observation UnitAbilities
 
-findAssignee :: Observation -> Action -> Maybe Unit
+findAssignee :: Observation -> Action -> Maybe Units.Unit
 findAssignee obs a = find (\u -> u ^. #tag == getExecutor a) (obs ^. (#rawData . #units))
 
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
@@ -93,7 +92,7 @@ gridUpdate :: Observation -> Grid -> Grid
 gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
   --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
   units = obs ^. (#rawData . #units)
-  getFootprints :: Unit -> (Footprint, (Int, Int))
+  getFootprints :: Units.Unit -> (Footprint, (Int, Int))
   getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
 canAfford :: UnitTypeId -> Cost -> StepMonad (Bool, Cost)
@@ -117,12 +116,11 @@ inBuildThechTree id = do
 findBuilder :: Observation -> Maybe UnitTag
 findBuilder obs =
   headMay $
-    runConduitPure $
-      yieldMany (unitsSelf obs)
-        .| filterC (\a -> fromEnum ProtossProbe == fromIntegral (a ^. #unitType))
+    runC $
+      unitsSelf obs
+        .| unitTypeC ProtossProbe
         .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
         .| mapC (^. #tag)
-        .| sinkList
 
 pylonRadius = 6
 
@@ -139,12 +137,11 @@ findPlacementPos obs grid id = go pylons
       Nothing -> go ps
     go [] = Nothing
     pylons =
-      runConduitPure $
-        yieldMany (unitsSelf obs)
-          .| filterC (\u -> fromEnum ProtossPylon == fromIntegral (u ^. #unitType))
+      runC $
+        unitsSelf obs
+          .| unitTypeC ProtossPylon
           .| filterC (\u -> u ^. #buildProgress == 1)
           .| mapC (\x -> tilePos $ x ^. #pos)
-          .| sinkList
 
 addOrder :: Observation -> UnitTag -> AbilityId -> Observation
 addOrder obs unitTag ability =
@@ -181,7 +178,7 @@ pylonBuildAction grid reservedRes = do
 
   si <- lift agentStatic
   (obs, _) <- lift agentGet
-  let hasPylonsInProgress = not $ Prelude.null $ runConduitPure $ yieldMany (unitsSelf obs) .| filterC (\u -> fromEnum ProtossPylon == fromIntegral (u ^. #unitType)) .| filterC (\u -> u ^. #buildProgress < 1) .| sinkList
+  let hasPylonsInProgress = not $ Prelude.null $ runC $ unitsSelf obs .| unitTypeC ProtossPylon .| filterC (\u -> u ^. #buildProgress < 1)
   if hasPylonsInProgress
     then MaybeT $ return Nothing
     else do
@@ -205,16 +202,16 @@ reassignIdleProbes :: StepMonad ()
 reassignIdleProbes = do
   obs <- agentObs
   let units = unitsSelf obs
-      probes = yieldMany units .| filterC (\a -> fromEnum' ProtossProbe == a ^. #unitType)
-      mineralField = head $ runConduitPure $ probes
+      probes = units .| unitTypeC ProtossProbe
+      mineralField = head $ runC $ probes
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head$ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
-        .| sinkList
-      idleWorkers = runConduitPure $ probes
+
+      idleWorkers = runC $ probes
         .| filterC (\u -> null$ u ^. #orders)
         .| mapC (^. #tag)
-        .| sinkList
+
   command [UnitCommand HarvestGatherProbe utag mineralField | utag <- idleWorkers ]
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
@@ -248,7 +245,7 @@ splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.emp
     tryCreate :: Grid -> Cost -> UnitTypeId -> StepMonad (Maybe (Action, Cost, Grid))
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
-debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- unitsSelf obs]
+debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- runC $ unitsSelf obs]
 
 instance Agent TestBot where
   agentDebug _ = return ()

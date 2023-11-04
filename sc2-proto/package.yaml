@@ -20,7 +20,6 @@ dependencies:
   - filepath
   - proto-lens-runtime
   
-
 library:
   #source-dirs:      .
   build-tool-depends : proto-lens-protoc:proto-lens-protoc
