@@ -3,6 +3,7 @@ module Footprint (getFootprint, Footprint(..), createFootprint) where
 import UnitTypeId
 import Data.List (elemIndices)
 import Control.Monad (join)
+import qualified Utils
 
 data Footprint = Footprint
   { footprint :: [(Int, Int)]
@@ -15,7 +16,7 @@ findMark chars = head [c | c <- chars, c /= ' ' && c /= 'c']
 createFootprint :: String -> Footprint
 createFootprint str = Footprint footprint (findMark str) where
     rows = lines str
-    footprint = [ translatePoint (x, y) (ox, oy) | y <- [0..h-1], x <- [0..w-1] , (join rows !! (x + y*h)) /= ' ']
+    footprint = [ translatePoint (x, y) (ox, oy) | y <- [0..h-1], x <- [0..w-1] , (rows !! y !! x) /= ' ']
     ox = originIndex - w * oy 
     oy = originIndex `div` w
     w = length.head $ rows

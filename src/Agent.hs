@@ -91,7 +91,7 @@ instance Semigroup StepPlan where
 instance Monoid StepPlan where
     mempty = StepPlan [] []
 
-data StaticInfo = StaticInfo { gameInfo :: A.ResponseGameInfo, playerInfo :: A.PlayerInfo, unitTraits :: UnitTraits}
+data StaticInfo = StaticInfo { gameInfo :: A.ResponseGameInfo, playerInfo :: A.PlayerInfo, unitTraits :: UnitTraits, heightMap :: Grid}
 
 type DynamicState = (Observation, Grid)
 
@@ -114,7 +114,7 @@ agentGet :: StepMonad DynamicState
 agentGet = lift get
 
 agentPut :: DynamicState -> StepMonad ()
-agentPut x@(_, grid) = lift $ put x --`Utils.dbg` ("agentPut: \n" ++ gridToString grid)
+agentPut x@(_, grid) = lift $ put x
 
 runStep :: StaticInfo -> UnitAbilities -> DynamicState -> StepMonad a -> (a, StepPlan, Grid)
 --runStep staticInfo dynamicState stepMonad = runReaderT (runStateT (runWriterT stepMonad) dynamicState) staticInfo

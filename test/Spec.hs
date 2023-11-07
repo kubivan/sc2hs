@@ -9,13 +9,23 @@ import UnitTypeId (UnitTypeId(ProtossNexus))
 main :: IO ()
 main = do
     let mapRows =
-            [ "###########"
-            , "#         #"
-            , "#         #"
-            , "#         #"
-            , "#         #"
-            , "#         #"
-            , "###########"
+            [ "###################################################"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "#                                                 #"
+            , "###################################################"
             ]
     let buildingStr = unlines
             [ " bb"
@@ -34,5 +44,6 @@ main = do
 
             let placedMap = return (addMark myMap buildingFootprint placementPoint) >>= \x -> updatePixel x placementPoint 'c'
             putStrLn "\nPlaced Map:"
-            V.mapM_ putStrLn (V.toList <$> placedMap)
+            printGrid placedMap
+
         Nothing -> putStrLn "No suitable placement point found"

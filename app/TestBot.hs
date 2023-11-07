@@ -33,7 +33,7 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, writeGridToFile, gridToString, gridFromImage)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -124,15 +124,15 @@ findBuilder obs =
 
 pylonRadius = 6
 
-findPlacementPos :: Observation -> Grid -> UnitTypeId -> Maybe (Int, Int)
-findPlacementPos obs grid ProtossPylon = findPlacementPoint grid (getFootprint ProtossPylon) nexusPos
+findPlacementPos :: Observation -> Grid -> Grid -> UnitTypeId -> Maybe (Int, Int)
+findPlacementPos obs grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos
   where
     nexusPos = tilePos $ findNexus obs ^. #pos
 
-findPlacementPos obs grid id = go pylons
+findPlacementPos obs grid heightMap id = go pylons
   where
     go :: [(Int, Int)] -> Maybe (Int, Int)
-    go (p : ps) = case findPlacementPointInRadius grid (getFootprint id) p pylonRadius of
+    go (p : ps) = case findPlacementPointInRadius grid heightMap (getFootprint id) p pylonRadius of
       Just res -> Just res
       Nothing -> go ps
     go [] = Nothing
@@ -161,7 +161,7 @@ buildAction order grid reservedRes = do
   let ability = unitToAbility (unitTraits si) order
   let footprint = getFootprint order
   guard (isBuildAbility ability)
-  pos <- MaybeT . return $ findPlacementPos obs grid order
+  pos <- MaybeT . return $ findPlacementPos obs grid (heightMap si) order
   builder <- MaybeT . return $ findBuilder obs
   let grid' = addMark grid footprint pos
   let obs' = addOrder obs builder ability
@@ -184,7 +184,7 @@ pylonBuildAction grid reservedRes = do
     else do
       let nexus = findNexus obs
       let footprint = getFootprint ProtossPylon
-      pylonPos <- MaybeT . return $ findPlacementPoint grid footprint (tilePos (nexus ^. #pos))
+      pylonPos <- MaybeT . return $ findPlacementPoint grid (heightMap si) footprint (tilePos (nexus ^. #pos))
       builder <- MaybeT . return $ findBuilder obs
       let grid' = addMark grid footprint pylonPos
       let obs' = addOrder obs builder AbilityId.BuildPylon

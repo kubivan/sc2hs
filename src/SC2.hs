@@ -18,6 +18,7 @@ import Control.Monad.Except(ExceptT(..), runExceptT, throwError)
 import Data.ByteString qualified as B
 import Data.ProtoLens.Encoding ( decodeMessage, encodeMessage )
 import Network.WebSockets as WS
+    ( Connection, runClient, receiveData, sendBinaryData )
 import Proto qualified
 
 import Proto.S2clientprotocol.Sc2api as S
@@ -48,7 +49,7 @@ import Data.Either (either)
 
 import AbilityId
 import UnitTypeId
-import Proto.S2clientprotocol.Raw_Fields (placementGrid)
+import Proto.S2clientprotocol.Raw_Fields (placementGrid, terrainHeight)
 
 import qualified Data.Vector as V
 import Utils (tilePos)
@@ -135,13 +136,20 @@ splitParticipants = doSplit (Nothing, []) where
   doSplit (Just h, p) [] = (h, p)
   doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
 
+
+mergeGrids:: Grid -> Grid -> Grid
+mergeGrids placementGrid pathingGrid = 
+  V.fromList [ V.fromList [ pixelFunc (gridPixel placementGrid (x,y)) (gridPixel pathingGrid (x,y)) | x <- [0..(gridW placementGrid - 1)]] | y <- [0..(gridH placementGrid - 1)]] where
+    pixelFunc placement pathing
+      | pathing == ' ' && placement == '#' = '/' 
+      | otherwise = placement
+
 gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> Grid -> agent -> ExceptT String IO [S.PlayerResult]
 gameStepLoop conn si grid agent = do
   --liftIO $ putStrLn "step"
   (obs, gameOver) <- sc2Observation conn
 
   abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
-
 
   if not (null gameOver)
     then return gameOver
@@ -150,7 +158,7 @@ gameStepLoop conn si grid agent = do
       --liftIO . print $ cmds
       liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
-      liftIO $ writeGridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+      liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
 
       _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
@@ -196,9 +204,10 @@ startClient participants = runHost host where
 
         gameDataResp <- Proto.sendRequestSync conn Proto.requestData
 
+        let heightMap = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
         let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
-        let si = Agent.StaticInfo gi playerGameInfo unitTraits
-        let grid = gridFromImage $ Agent.gameInfo si ^. (#startRaw . #placementGrid)
+        let si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap
+        let grid = mergeGrids (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #placementGrid)) (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #pathingGrid))
         gameOver <- runExceptT $ gameStepLoop conn si grid agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e
