@@ -35,6 +35,7 @@ import GHC.Real (fromIntegral)
 import GHC.Word qualified
 import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
+import Lens.Micro.Extras(view)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Debug_Fields (pos, unitTag)
@@ -57,6 +58,7 @@ import Utils
 import Safe (headMay)
 import Debug.Trace
 import Units
+import Units(mapTilePosC, closestC)
 
 type BuildOrder = [UnitTypeId]
 
@@ -110,19 +112,20 @@ inBuildThechTree :: UnitTypeId -> StepMonad Bool
 inBuildThechTree id = do
   abilities <- agentAbilities
   si <- agentStatic
-  let ability = unitToAbility (unitTraits si) id `Utils.dbg` ("abilities: " ++ show abilities)
+  let ability = unitToAbility (unitTraits si) id --`Utils.dbg` ("abilities: " ++ show abilities)
   return $ ability `elem` (abilities HashMap.! ProtossProbe)
 
-findBuilder :: Observation -> Maybe UnitTag
+findBuilder :: Observation -> Maybe R.Unit
 findBuilder obs =
   headMay $
     runC $
       unitsSelf obs
         .| unitTypeC ProtossProbe
         .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
-        .| mapC (^. #tag)
 
-pylonRadius = 6
+
+pylonRadius :: Float
+pylonRadius = 6.5
 
 findPlacementPos :: Observation -> Grid -> Grid -> UnitTypeId -> Maybe (Int, Int)
 findPlacementPos obs grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
@@ -149,10 +152,16 @@ addOrder obs unitTag ability =
     where
       order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
 
+addUnit :: Observation -> UnitTag -> AbilityId -> Observation
+addUnit obs unitTag ability =
+    obs & #rawData . A.units . traverse . filtered (\unit -> unit ^. #tag == unitTag) . #orders %~ (order :) --TODO: append order to the end?
+    where
+      order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
+
 buildAction :: UnitTypeId -> Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 buildAction order grid reservedRes = do
   enabled <- lift . inBuildThechTree $ order
-  guard enabled `Utils.dbg` (show order ++ " enabled " ++ show enabled)
+  guard enabled --`Utils.dbg` (show order ++ " enabled " ++ show enabled)
   (isAffordable, cost) <- lift $ canAfford order reservedRes
   guard isAffordable
 
@@ -161,15 +170,17 @@ buildAction order grid reservedRes = do
   let ability = unitToAbility (unitTraits si) order
   let footprint = getFootprint order
   guard (isBuildAbility ability)
-  pos <- MaybeT . return $ findPlacementPos obs grid (heightMap si) order
   builder <- MaybeT . return $ findBuilder obs
+  pos <- MaybeT . return $ findPlacementPos obs grid (heightMap si) order
   let grid' = addMark grid footprint pos
-  let obs' = addOrder obs builder ability
+  let obs' = addOrder obs (builder ^. #tag) ability
   lift . agentPut $ (obs', grid) `Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 
-  let res = PointCommand ability builder (fromTuple pos)
+  let res = PointCommand ability (builder ^. #tag) (fromTuple pos)
 
-  return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (getUnit obs' builder ^. #orders ) )
+  return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (builder ^. #orders) )
+
+distantEnough units radius pos = all (\p -> distSquaredTile pos p >= radius*radius) units
 
 pylonBuildAction :: Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 pylonBuildAction grid reservedRes = do
@@ -182,19 +193,25 @@ pylonBuildAction grid reservedRes = do
   if hasPylonsInProgress
     then MaybeT $ return Nothing
     else do
-      let nexus = findNexus obs
-      let footprint = getFootprint ProtossPylon
-      pylonPos <- MaybeT . return $ findPlacementPoint grid (heightMap si) footprint (tilePos (nexus ^. #pos)) (const True)
       builder <- MaybeT . return $ findBuilder obs
+      let nexus = findNexus obs
+          footprint = getFootprint ProtossPylon
+          findPylonPlacementPoint = findPlacementPoint grid (heightMap si) footprint (tilePos (builder ^. #pos))
+          units = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
+          pylonCriteria = distantEnough units
+      pylonPos <- MaybeT . return $ findPylonPlacementPoint (pylonCriteria pylonRadius)
+        -- <|> findPylonPlacementPoint (pylonCriteria (pylonRadius / 2))
+        -- <|> findPylonPlacementPoint (const True)
+
       let grid' = addMark grid footprint pylonPos
-      let obs' = addOrder obs builder AbilityId.BuildPylon
+      let obs' = addOrder obs (builder ^. #tag) AbilityId.BuildPylon
       lift . agentPut $ (obs', grid')
-      return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid')
+      return (PointCommand BuildPylon (builder ^. #tag) (fromTuple pylonPos), cost, grid')
 
 createAction :: Grid -> Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost, Grid)
 createAction grid reserved order = do
   (isAffordable, cost) <- lift $ canAfford order reserved
-  guard isAffordable `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
+  guard isAffordable -- `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
 
   buildAction order grid reserved <|> pylonBuildAction grid reserved
 
@@ -203,16 +220,17 @@ reassignIdleProbes = do
   obs <- agentObs
   let units = unitsSelf obs
       probes = units .| unitTypeC ProtossProbe
-      mineralField = head $ runC $ probes
+      mineralField = headMay $ runC $ probes
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
-        .| mapC (\harvester -> head$ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
+        .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
+
+      closestMineral to = view #tag <$> runConduitPure (obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to)
 
       idleWorkers = runC $ probes
         .| filterC (\u -> null$ u ^. #orders)
-        .| mapC (^. #tag)
 
-  command [UnitCommand HarvestGatherProbe utag mineralField | utag <- idleWorkers ]
+  command [UnitCommand HarvestGatherProbe utag (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers, let utag = idle ^. #tag ]
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
