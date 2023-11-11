@@ -5,32 +5,25 @@ import Data.List (elemIndices)
 import Control.Monad (join)
 import qualified Utils
 
-data Footprint = Footprint
-  { footprint :: [(Int, Int)]
-  , mark :: Char
-  } deriving(Show, Eq)
-
-findMark :: [Char] -> Char
-findMark chars = head [c | c <- chars, c /= ' ' && c /= 'c']
+newtype Footprint = Footprint { pixels :: [(Int, Int, Char)] } deriving(Show, Eq)
 
 createFootprint :: String -> Footprint
-createFootprint str = Footprint footprint (findMark str) where
+createFootprint str = Footprint pixels where
     rows = lines str
-    footprint = [ translatePoint (x, y) (ox, oy) | y <- [0..h-1], x <- [0..w-1] , (rows !! y !! x) /= ' ']
+    pixels = [ (x - ox, y - oy, pixel) | y <- [0..h-1], x <- [0..w-1] , let pixel = rows !! y !! x, pixel /= ' ']
     ox = originIndex - w * oy 
     oy = originIndex `div` w
     w = length.head $ rows
     h = length rows
     originIndex = head $ elemIndices 'c' (join rows)
-    translatePoint (x, y) (ox, oy) = (x - ox, y - oy)
 
 getFootprint :: UnitTypeId -> Footprint
 getFootprint id = case id of 
-  ProtossNexus -> createFootprint $ unlines [ "#####"
-                                            , "#   #"
-                                            , "# c #"
-                                            , "#   #"
-                                            , "#####"]
+  ProtossNexus -> createFootprint $ unlines [ "nnnnn"
+                                            , "nnnnn"
+                                            , "nncnn"
+                                            , "nnnnn"
+                                            , "nnnnn"]
   ProtossForge -> createFootprint $ unlines [ "###"
                                             , "#c#"
                                             , "###"]
@@ -42,9 +35,14 @@ getFootprint id = case id of
                                                         , "###"]
   ProtossPylon -> createFootprint $ unlines ["##"
                                             ,"#c"]
+  ProtossPhotoncannon -> createFootprint $ unlines [ "...."
+                                                   , ".##."
+                                                   , ".#c."
+                                                   , "...."
+                                                   ]
   NeutralMineralfield -> createFootprint "#c"
   NeutralMineralfield750 -> createFootprint "#c"
-  ProtossProbe -> createFootprint "#c"
+  --ProtossProbe -> createFootprint "#c"
 
   _ -> createFootprint $ unlines [ "###"
                                  , "#c#"

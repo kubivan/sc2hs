@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg) where
+module Utils ((-), distSquared, distSquaredTile, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg, TilePos) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -64,8 +64,16 @@ instance Num C.Point2D where
 dot :: Pointable p => p -> p -> Float
 dot a b = Utils.x a * Utils.x b + Utils.y a* Utils.y b
 
+distSquared :: (Pointable p, Num p) => p -> p -> Float
 distSquared a b = dot diff diff where
   diff = a - b
+
+--TODO: there shoud be the way to clean this mess with Pointables 
+--to have one distSquared and so on
+distSquaredTile :: TilePos -> TilePos -> Float
+distSquaredTile (ax, ay) (bx, by) = dot diff diff where
+  diff :: C.Point2D
+  diff = defMessage & C.x .~ fromIntegral (ax - bx) & C.y .~ fromIntegral (ay - by)
 
 toPoint2D p = defMessage & C.x .~ (p ^. #x) & C.y .~ (p ^. #y)
 
@@ -78,7 +86,9 @@ tileX = floor . Utils.x
 tileY :: Pointable a => a -> Int
 tileY = floor . Utils.y
 
-tilePos :: Pointable a => a -> (Int, Int)
+type TilePos = (Int, Int)
+
+tilePos :: Pointable a => a -> TilePos
 tilePos p = (tileX p, tileY p)
 
 --tileY :: Pointable a => a -> Int 
@@ -92,7 +102,6 @@ instance Pointable C.Point2D where
 instance Pointable C.Point where
   x p = p ^. C.x
   y p = p ^. C.y
-
 
 to2D :: Pointable a => a -> Point2D
 to2D p = make2D (Utils.x p) (Utils.y p)

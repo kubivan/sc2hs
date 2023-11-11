@@ -125,7 +125,7 @@ findBuilder obs =
 pylonRadius = 6
 
 findPlacementPos :: Observation -> Grid -> Grid -> UnitTypeId -> Maybe (Int, Int)
-findPlacementPos obs grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos
+findPlacementPos obs grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
   where
     nexusPos = tilePos $ findNexus obs ^. #pos
 
@@ -184,7 +184,7 @@ pylonBuildAction grid reservedRes = do
     else do
       let nexus = findNexus obs
       let footprint = getFootprint ProtossPylon
-      pylonPos <- MaybeT . return $ findPlacementPoint grid (heightMap si) footprint (tilePos (nexus ^. #pos))
+      pylonPos <- MaybeT . return $ findPlacementPoint grid (heightMap si) footprint (tilePos (nexus ^. #pos)) (const True)
       builder <- MaybeT . return $ findBuilder obs
       let grid' = addMark grid footprint pylonPos
       let obs' = addOrder obs builder AbilityId.BuildPylon
