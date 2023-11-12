@@ -80,17 +80,11 @@ runC x = runConduitPure (x .| sinkList)
 obsUnitsC :: Observation -> ConduitT i Unit Identity ()
 obsUnitsC obs = yieldMany (obs ^. (#rawData . #units))
 
-
-
 closestC :: (Monad m) => Unit -> ConduitT Unit Void m (Maybe Unit)
-closestC to = await >>= process
+closestC to = await >>= foldlC (\mu u -> closest <$> mu <*> pure u)
   where
-    process elem@(Just e) = fmap Just $ foldlC (getClosest to) e
-
-getClosest :: Unit -> Unit -> Unit -> Unit
-getClosest to a b  = if distSquared (to2D $ a ^. #pos) toPos < distSquared (to2D $ b ^. #pos) toPos then a else b
-  where 
-    toPos = to2D $ to ^. #pos
+    toPos = to ^. #pos
+    closest a b = if distSquared (a ^. #pos) toPos < distSquared (b ^. #pos) toPos then a else b
 
 findNexus :: Observation -> PR.Unit
 findNexus obs = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus

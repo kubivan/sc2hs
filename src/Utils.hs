@@ -64,9 +64,9 @@ instance Num C.Point2D where
 dot :: Pointable p => p -> p -> Float
 dot a b = Utils.x a * Utils.x b + Utils.y a* Utils.y b
 
-distSquared :: (Pointable p, Num p) => p -> p -> Float
+distSquared :: (Pointable p1, Pointable p2) => p1 -> p2 -> Float
 distSquared a b = dot diff diff where
-  diff = a - b
+  diff = to2D a - to2D b
 
 --TODO: there shoud be the way to clean this mess with Pointables 
 --to have one distSquared and so on
