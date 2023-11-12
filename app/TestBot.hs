@@ -215,6 +215,18 @@ createAction grid reserved order = do
 
   buildAction order grid reserved <|> pylonBuildAction grid reserved
 
+trainProbes :: StepMonad ()
+trainProbes = do
+  obs <- agentObs
+  let units = unitsSelf obs
+      probeCount = runConduitPure $ units .| unitTypeC ProtossProbe .| lengthC
+      assimCount = runConduitPure $ units .| unitTypeC ProtossAssimilator .| lengthC
+      nexuses :: [Units.Unit]
+      nexuses = runC $ units .| unitTypeC ProtossNexus
+      nexusCount = length nexuses
+      optimalCount = assimCount * 3 + nexusCount * 16
+  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe (n ^. #tag) | n <- nexuses]
+
 reassignIdleProbes :: StepMonad ()
 reassignIdleProbes = do
   obs <- agentObs
@@ -283,6 +295,7 @@ instance Agent TestBot where
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
     reassignIdleProbes
+    trainProbes
     si <- agentStatic
     (obs, grid0) <- agentGet
     let nexus = findNexus obs ^. #pos
