@@ -5,7 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, distSquaredTile, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg, TilePos) where
+module Utils ((-), distSquared, distSquaredTile, distManhattan, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg, TilePos) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -67,6 +67,9 @@ dot a b = Utils.x a * Utils.x b + Utils.y a* Utils.y b
 distSquared :: (Pointable p1, Pointable p2) => p1 -> p2 -> Float
 distSquared a b = dot diff diff where
   diff = to2D a - to2D b
+
+distManhattan :: TilePos -> TilePos -> Int
+distManhattan (x1, y1) (x2, y2) = abs (x1 - x2) + abs (y1 - y2)
 
 --TODO: there shoud be the way to clean this mess with Pointables 
 --to have one distSquared and so on

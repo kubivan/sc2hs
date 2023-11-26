@@ -138,10 +138,10 @@ splitParticipants = doSplit (Nothing, []) where
 
 
 mergeGrids:: Grid -> Grid -> Grid
-mergeGrids placementGrid pathingGrid = 
+mergeGrids placementGrid pathingGrid =
   V.fromList [ V.fromList [ pixelFunc (gridPixel placementGrid (x,y)) (gridPixel pathingGrid (x,y)) | x <- [0..(gridW placementGrid - 1)]] | y <- [0..(gridH placementGrid - 1)]] where
     pixelFunc placement pathing
-      | pathing == ' ' && placement == '#' = '/' 
+      | pathing == ' ' && placement == '#' = '/'
       | otherwise = placement
 
 gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> Grid -> agent -> ExceptT String IO [S.PlayerResult]
@@ -159,6 +159,7 @@ gameStepLoop conn si grid agent = do
       liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
       liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+      liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
 
       _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
@@ -201,6 +202,7 @@ startClient participants = runHost host where
         let playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
         let pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
         printGrid pathingGrid
+        liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
         gameDataResp <- Proto.sendRequestSync conn Proto.requestData
 
@@ -208,6 +210,7 @@ startClient participants = runHost host where
         let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
         let si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap
         let grid = mergeGrids (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #placementGrid)) (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #pathingGrid))
+        qqq <- runExceptT $ sc2Observation conn
         gameOver <- runExceptT $ gameStepLoop conn si grid agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e

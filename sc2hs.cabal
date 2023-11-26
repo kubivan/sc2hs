@@ -108,6 +108,7 @@ test-suite sc2hs-test
     , directory
     , filepath
     , hashable
+    , hspec
     , microlens
     , mtl
     , process

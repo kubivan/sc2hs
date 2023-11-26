@@ -75,16 +75,6 @@ requestPing = defMessage
 
 data Map = LocalMap Text (Maybe BS.ByteString)
 
---data Race = Terran
---          | Zerg
---          | Protoss
---          deriving (Show, Eq)
---
---data PlayerType r = Observer
---              | Participant Proto.Race
---              | Computer Proto.Race A.Difficulty
---              deriving (Show, Eq)
-
 data Participant where
     Computer :: C.Race -> Participant
     Player :: Agent a => a -> Participant

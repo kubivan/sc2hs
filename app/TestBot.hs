@@ -18,24 +18,25 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import Data.ByteString (putStr)
-import Data.ProtoLens (defMessage)
+import Data.ProtoLens (defMessage, Tag (Tag))
 import Data.Maybe ( isJust, catMaybes, fromJust, isNothing )
 import Data.ByteString.Char8 (putStrLn)
 import qualified Data.Conduit.List as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, mapAccumL, sortBy, isPrefixOf, isSuffixOf)
+import Data.List (find, mapAccumL, sortBy, isPrefixOf, isSuffixOf, maximumBy, minimumBy)
 import Data.Function (on)
 import Data.Maybe qualified as Data
 import Data.Sequence (Seq (..), empty, (|>))
 import Data.String
 import qualified Data.Set as Set
 import Data.Text (pack)
+import Data.Char (ord)
 import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Lens.Micro.Extras(view)
 import Proto.S2clientprotocol.Common as C
@@ -251,7 +252,6 @@ reassignIdleProbes = do
 
   command [UnitCommand HarvestGatherProbe utag (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers, let utag = idle ^. #tag ]
 
-
 clusterizeGrid:: Observation -> Grid -> Grid -> Point -> [TilePos]
 clusterizeGrid obs grid heightMap start =
   let units = obsUnitsC obs
@@ -259,32 +259,49 @@ clusterizeGrid obs grid heightMap start =
       --groupedByHeight = geysers .| CL.groupBy ((==) `on` view (#pos . #z)) 
       sortedGeysers = sortBy (compare `on` distSquared start . to2D . view #pos) geysers
 
-      farEnough :: Units.Unit -> Set.Set -> Bool
+      farEnough :: Units.Unit -> Set.Set UnitTag -> Bool
       farEnough x visited = case closestAnother of
-        Just p -> distSquared (x ^. #pos) (p ^. #pos) > 15*15
+        Just p -> distSquared (x ^. #pos) (p ^. #pos) > 15*15 `Utils.dbg` (show $ distSquared (x ^. #pos) (p ^. #pos))
         Nothing -> True
         where
-          closestAnother = runConduitPure $ sourceList geysers .| filterC (`Set.notMember` visited) .| closestC x
+          closestAnother = runConduitPure $ sourceList geysers .| filterC (\g -> (g ^. #tag) `Set.notMember` visited) .| filterC (\g -> g ^. #tag /= x ^. #tag) .| closestC x
 
       dropSecondGeysers :: [Units.Unit] -> [Units.Unit]
       dropSecondGeysers = go [] Set.empty
         where
+          go :: [Units.Unit] -> Set.Set UnitTag -> [Units.Unit] -> [Units.Unit]
           go acc visited (x:xs)
-            | farEnough x acc visited = go (x:acc) (x `insert` visited) xs
-            | otherwise = go acc (x `insert` visited) xs
+            | farEnough x visited = go (x:acc) ((x ^. #tag) `Set.insert` visited) xs
+            | otherwise = go acc ((x ^. #tag) `Set.insert` visited) xs
           go acc _ [] = acc
 
       uniqueGeysers = dropSecondGeysers sortedGeysers
 
-  in mapMaybe uniqueGeysers (findPlacementPointInRadius grid heightMap (getFootprint ProtossNexus) p pylonRadius * 2)
+  in catMaybes $ (\p -> findPlacementPointInRadius grid heightMap (getFootprint ProtossNexus) (tilePos (p ^. #pos)) (pylonRadius * 20)) <$> uniqueGeysers `Utils.dbg` ("uniqueGeysers: " ++ show (length uniqueGeysers))
 
-clusterizeGridSM :: Point -> StepMonad ()
-clusterizeGridSM start = do
+clusterBoundingBox :: [Units.Unit] -> (TilePos, TilePos)
+clusterBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
+  where
+    minX = minimumBy (compare `on` view #x) points
+    maxX = maximumBy (compare `on` view #x) points
+
+    minY = minimumBy (compare `on` view #y) points
+    maxY = maximumBy (compare `on` view #y) points
+
+    points = view #pos <$> cluster
+
+clusterizeGridSM :: StepMonad ()
+clusterizeGridSM = do
   (obs, grid) <- agentGet
-  si <- agentAsk
-  let res = clusterizeGrid obs grid (heightMap si) start
+  si <- agentStatic
+  let clusters = clusterUnits obs NeutralMineralfield
       unitT = toEnum' . view #unitType :: Units.Unit -> UnitTypeId
-  debugTexts [("Expand: " ++ show x, x ^. #pos) | x <- res] `Utils.dbg` ("clusterize res: " ++ (show . length $ res))
+      bbs = clusterBoundingBox <$> clusters
+      bbCenters = (\((x1, y1), (x2, y2)) -> (x2 - x1, y2 - y1)) <$> bbs
+      getPoint :: TilePos -> Point
+      --getPoint (x,y) = defMessage & #x .~ fromIntegral x & #y .~ fromIntegral y & #z .~ 5.0 + fromIntegral (ord (gridPixel (heightMap si) (x,y))) `Utils.dbg` (show (x,y, fromIntegral (ord (gridPixel (heightMap si) (x,y)))))
+      getPoint (x,y) = defMessage & #x .~ fromIntegral x & #y .~ fromIntegral y & #z .~ 10.0
+  debugTexts [("Expand: XXX", head x ^. #pos) | x <- clusters] -- `Utils.dbg` ("clusterize res: " ++ (show bbs))
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
@@ -341,7 +358,7 @@ instance Agent TestBot where
     si <- agentStatic
     (obs, grid0) <- agentGet
     let nexus = findNexus obs ^. #pos
-    clusterizeGridSM nexus
+    clusterizeGridSM
     let gameLoop = obs ^. #gameLoop
     abilities <- agentAbilities
     if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do

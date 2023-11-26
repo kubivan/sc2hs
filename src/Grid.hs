@@ -7,6 +7,7 @@ module Grid
     Grid,
     findPlacementPoint,
     findPlacementPointInRadius,
+    canPlaceBuilding,
     gridBfs,
     addMark,
     printGrid,

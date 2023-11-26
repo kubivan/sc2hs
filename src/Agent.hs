@@ -27,8 +27,6 @@ module Agent
     debugText,
     debugTexts,
     command,
-    toEnum',
-    fromEnum',
   )
 where
 
@@ -60,12 +58,6 @@ type Observation = A.Observation
 type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
 
 type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
-
-toEnum' :: Enum e => GHC.Word.Word32 -> e
-toEnum' = toEnum . fromIntegral
-
-fromEnum' :: Enum e => e -> GHC.Word.Word32
-fromEnum' = fromIntegral . fromEnum
 
 data StepPlan = StepPlan
   {

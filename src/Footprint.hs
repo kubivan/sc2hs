@@ -3,7 +3,6 @@ module Footprint (getFootprint, Footprint(..), createFootprint) where
 import UnitTypeId
 import Data.List (elemIndices)
 import Control.Monad (join)
-import qualified Utils
 
 newtype Footprint = Footprint { pixels :: [(Int, Int, Char)] } deriving(Show, Eq)
 
