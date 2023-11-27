@@ -6,6 +6,7 @@ import Grid
 import qualified Data.Vector as V
 import Footprint
 import UnitTypeId
+import Debug.Trace
 
 import Control.Arrow ((|||))
 
@@ -21,7 +22,7 @@ import Units
       dbscan,
       isMineral,
       isGeyser,
-      (.|), 
+      (.|),
       fromEnum',
       toEnum' )
 import Agent (Observation)
@@ -41,7 +42,7 @@ import Proto.S2clientprotocol.Common as C
 
 import Data.Char(chr)
 import Utils(TilePos, tilePos, tileX, tileY, distSquaredTile, distSquared, distManhattan)
-import Data.Foldable (minimumBy)
+import Data.Foldable (minimumBy, foldMap')
 import Data.Maybe (fromJust)
 
 import Data.Monoid
@@ -56,9 +57,6 @@ loadTestsData = do
   gi <- B.readFile "test/data/gameinfo"
 
   return (fromEither (decodeMessage obs :: Either String Observation), fromEither (decodeMessage gi :: Either String ResponseGameInfo))
-
-main :: IO ()
-main = hspec spec
 
 markClusters :: MapClusters -> Grid -> Grid
 markClusters labels grid = foldl' mark grid (Map.toList labels) where
@@ -76,38 +74,22 @@ unitsBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
 
     points = view #pos <$> cluster
 
-fprtnBoundingBox :: (TilePos, TilePos) -> (Footprint, TilePos)
-fprtnBoundingBox (origin@(tlX, tlY), (brX, brY)) = (Footprint {pixels = topH ++ bottomH ++ leftV ++ rightV}, origin)
+footprintRect :: (TilePos, TilePos) -> (Footprint, TilePos)
+footprintRect (origin@(tlX, tlY), (brX, brY)) = (Footprint {pixels = topH ++ bottomH ++ leftV ++ rightV}, origin)
   where
     topH = [(x, 0, '#') | x <- [0..(brX - tlX)]]
     bottomH = [(x, brY - tlY, '#') | x <- [0..(brX - tlX)]]
     leftV = [(0, y, '#') | y <- [1..(brY - tlY)]]
     rightV = [(brX - tlX, y, '#') | y <- [1..(brY - tlY)]]
 
-findNexusPlacementPos :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
-findNexusPlacementPos grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) canPlaceDist3 notInBb
+findExpandPlacementPos :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
+findExpandPlacementPos grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) canPlaceDist69 (const False)
   where
-    ((tlX, tlY), (brX, brY)) = unitsBoundingBox cluster
-    --notInBb (x, y) = x >= tlX && x <= brX && y >= tlY && y <= brY
-    notInBb = const False
     clusterTiles = tilePos . view #pos <$> cluster
-    canPlaceDist3 p = all (\c -> distSquaredTile p c >= 6*6 && distSquaredTile p c < 9*9) clusterTiles && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
+    canPlaceDist69 p = all (\c -> distSquaredTile p c >= 6*6 && distSquaredTile p c < 9*9) clusterTiles && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 gridPlace :: Unit -> Grid -> Grid
 gridPlace u g = addMark g (getFootprint . toEnum . fromIntegral . view #unitType $ u) (tilePos $ u ^. #pos)
-
-gridUpdate :: Observation -> Grid -> Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
-  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
-  units = obs ^. (#rawData . #units)
-  --getFootprints :: Units.Unit -> (Footprint, (Int, Int))
-  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
-
-gridFoldr :: (a -> Grid -> Grid) -> [a] -> Grid -> Grid
-gridFoldr f g xs = foldr f xs g
-
--- gridFoldr :: (a -> Endo Grid) -> [a] -> Endo Grid
--- gridFoldr f = mconcat . map f
 
 spec :: Spec
 spec =
@@ -115,7 +97,7 @@ spec =
   $ do
   describe "Observation test suite" $ do
     it "Units tests" $ \(obs, _) -> do
-      runC (obsUnitsC obs) `shouldSatisfy` (not . null) `Utils.dbg` "test !!!!!!!!!!!!!!!!!!!test "
+      runC (obsUnitsC obs) `shouldSatisfy` (not . null)
 
       let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralfield
       length mineralFields `shouldBe` 60
@@ -136,80 +118,59 @@ spec =
           nexusCluster = [u | (u, cl0) <- Map.toList marked, cl0 == closestCluster ]
           nexus = findNexus obs
 
-          bbFootPrints = fprtnBoundingBox . unitsBoundingBox <$> clusteredUnits
+          bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
 
-          expands = findNexusPlacementPos grid' heights <$> clusteredUnits
+          expands = findExpandPlacementPos grid heights <$> clusteredUnits
 
-          grid' = markClusters marked . gridPlace nexus $ grid 
-          grid'' = gridFoldr (\x g -> updatePixel g (fromJust x) 'c') expands . gridFoldr (\(fp, p) g -> addMark g fp p) bbFootPrints $ grid'
+          grid' = appEndo (Endo (markClusters marked) <> Endo (gridPlace nexus) <> foldMap (\x -> Endo (\g -> updatePixel g (fromJust x) 'c')) expands <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints) grid
 
           nexusPlacement :: Maybe TilePos
-          nexusPlacement = findNexusPlacementPos grid' heights nexusCluster
+          nexusPlacement = findExpandPlacementPos grid heights nexusCluster
 
           nexusPlacementGt :: Maybe TilePos
           nexusPlacementGt = Just . tilePos . view #pos $ nexus
 
       print $ foldl (\acc cl  -> (show . snd . head $ cl, length cl): acc ) [] clusters
       print $ bbFootPrints
-      --mapM_ (\x -> print $ sqrt $ distSquaredTile (tilePos . view #pos $ x) nexusPos) nexusCluster
-      --mapM_ (\x -> print $ distManhattan (tilePos . view #pos $ x) nexusPos) nexusCluster
-      --print $ "======================================================"
-      --mapM_ (\x -> print $ sqrt $ distSquaredTile (tilePos . view #pos $ x) (fromJust nexusPlacement)) nexusCluster
-      --mapM_ (\x -> print $ distManhattan (tilePos . view #pos $ x) (fromJust nexusPlacement)) nexusCluster
-      --print $ "======================================================"
-      --print $ sum $ [distSquaredTile (tilePos . view #pos $ x) nexusPos | x <- nexusCluster]
-      --print $ sum $ [distSquaredTile (tilePos . view #pos $ x) (fromJust nexusPlacement) | x <- nexusCluster]
-      gridToFile "outgrid.txt" grid''
+      gridToFile "outgrid.txt" grid'
 
       length marked `shouldBe` length resourceFields
       length clusters `shouldBe` 16
       nexusPlacement `shouldBe` nexusPlacementGt
-      print $ "!!!!!!!!!!!" ++ show nexusPlacement
-      return ()
 
-    --it "Clusterization tests" $ \obs -> do
-    --  --print obs
-    --  let clusters = clusterUnits obs NeutralMineralfield `Utils.dbg` "test !!!!!!!!!!!!!!!!!!!test "
-    --  length clusters `shouldBe` 16
+gridUnitTests :: Spec
+gridUnitTests = do
+  let testGrid = createGrid
+             [ "###################################################"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "#                                                 #"
+             , "###################################################"
+             ]
+  describe "Grid palacement unit tests" $ do
+    it "basic" $ do
+      let buildingStr = unlines
+              [ " bb"
+              , "bcb"
+              , "bbb"
+              ]
+      let buildingFootprint = getFootprint ProtossNexus
+      print buildingFootprint
+ 
+      let maybePlacementPoint = findPlacementPoint testGrid testGrid buildingFootprint (3,3) (const True)
+      maybePlacementPoint `shouldNotBe` Nothing
 
--- main :: IO ()
--- main = do
---     let mapRows =
---             [ "###################################################"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "#                                                 #"
---             , "###################################################"
---             ]
---     let buildingStr = unlines
---             [ " bb"
---             , "bcb"
---             , "bbb"
---             ]
---     let buildingFootprint = getFootprint ProtossNexus
---     print buildingFootprint
--- 
---     let myMap = createGrid mapRows
---     let maybePlacementPoint = findPlacementPoint myMap buildingFootprint  (3,3)
---     case maybePlacementPoint of
---         Just placementPoint -> do
---             putStrLn "\nPlacement Point:"
---             putStrLn $ "Found placement point: " ++ show placementPoint
--- 
---             let placedMap = return (addMark myMap buildingFootprint placementPoint) >>= \x -> updatePixel x placementPoint 'c'
---             putStrLn "\nPlaced Map:"
---             printGrid placedMap
--- 
---         Nothing -> putStrLn "No suitable placement point found"
+main :: IO ()
+main = hspec $ spec >> gridUnitTests
