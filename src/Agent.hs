@@ -83,7 +83,13 @@ instance Semigroup StepPlan where
 instance Monoid StepPlan where
     mempty = StepPlan [] []
 
-data StaticInfo = StaticInfo { gameInfo :: A.ResponseGameInfo, playerInfo :: A.PlayerInfo, unitTraits :: UnitTraits, heightMap :: Grid}
+data StaticInfo = StaticInfo
+  { gameInfo :: A.ResponseGameInfo,
+    playerInfo :: A.PlayerInfo,
+    unitTraits :: UnitTraits,
+    heightMap :: Grid,
+    expandsPos :: [TilePos]
+  }
 
 type DynamicState = (Observation, Grid)
 

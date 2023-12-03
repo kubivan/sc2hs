@@ -58,7 +58,7 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
 import Footprint(getFootprint)
-import Units (unitsSelf)
+import Units (unitsSelf, findExpands)
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -159,7 +159,7 @@ gameStepLoop conn si grid agent = do
       liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
       liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
-      liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
+      --liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
 
       _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
@@ -205,12 +205,14 @@ startClient participants = runHost host where
         liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
         gameDataResp <- Proto.sendRequestSync conn Proto.requestData
+        obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 
         let heightMap = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
         let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
-        let si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap
-        let grid = mergeGrids (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #placementGrid)) (gridFromImage $ Agent.gameInfo si ^. (#startRaw . #pathingGrid))
-        qqq <- runExceptT $ sc2Observation conn
+        let grid = mergeGrids (gridFromImage $ gi ^. (#startRaw . #placementGrid)) (gridFromImage $ gi ^. (#startRaw . #pathingGrid))
+        let expands = findExpands (obs0 ^. (#observation . #observation)) grid heightMap
+        let si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
+
         gameOver <- runExceptT $ gameStepLoop conn si grid agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e

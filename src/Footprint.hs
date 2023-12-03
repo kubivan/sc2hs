@@ -1,8 +1,9 @@
-module Footprint (getFootprint, Footprint(..), createFootprint) where
+module Footprint (getFootprint, Footprint(..), createFootprint, footprintRect) where
 
 import UnitTypeId
 import Data.List (elemIndices)
 import Control.Monad (join)
+import Utils ( TilePos )
 
 newtype Footprint = Footprint { pixels :: [(Int, Int, Char)] } deriving(Show, Eq)
 
@@ -15,6 +16,14 @@ createFootprint str = Footprint pixels where
     w = length.head $ rows
     h = length rows
     originIndex = head $ elemIndices 'c' (join rows)
+
+footprintRect :: (TilePos, TilePos) -> (Footprint, TilePos)
+footprintRect (origin@(tlX, tlY), (brX, brY)) = (Footprint {pixels = topH ++ bottomH ++ leftV ++ rightV}, origin)
+  where
+    topH = [(x, 0, '#') | x <- [0..(brX - tlX)]]
+    bottomH = [(x, brY - tlY, '#') | x <- [0..(brX - tlX)]]
+    leftV = [(0, y, '#') | y <- [1..(brY - tlY)]]
+    rightV = [(brX - tlX, y, '#') | y <- [1..(brY - tlY)]]
 
 getFootprint :: UnitTypeId -> Footprint
 getFootprint id = case id of 

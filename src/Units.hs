@@ -31,6 +31,8 @@ module Units
     MapClusters,
     toEnum',
     fromEnum',
+    unitsBoundingBox,
+    findExpands
   )
 where
 
@@ -38,12 +40,13 @@ import Lens.Micro
 
 import Data.Ord ()
 import qualified Data.Map as Map
-import Data.List (foldl', groupBy)
+import Data.List (foldl', maximumBy, minimumBy, groupBy, sortOn)
 import Data.Function (on)
 
 import GHC.Word (Word64, Word32)
 import Conduit
 import Utils
+import Lens.Micro.Extras(view)
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -56,6 +59,9 @@ import Agent ( Observation ) --TODO: HACK: move observation to a separate module
 import UnitTypeId
 import Proto.S2clientprotocol.Common (Point)
 import Conduit (Identity)
+import Grid (Grid, canPlaceBuilding, gridBfs)
+import Footprint (getFootprint)
+import Data.Maybe (isJust, catMaybes, mapMaybe)
 type Unit = PR.Unit
 
 toEnum' :: Enum e => GHC.Word.Word32 -> e
@@ -65,11 +71,11 @@ fromEnum' :: Enum e => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
 
 isMineral :: Unit -> Bool
-isMineral u = utype == NeutralMineralfield 
-  || utype == NeutralMineralfield750 
-  || utype == NeutralLabmineralfield 
+isMineral u = utype == NeutralMineralfield
+  || utype == NeutralMineralfield750
   || utype == NeutralLabmineralfield
-  || utype == NeutralLabmineralfield750 
+  || utype == NeutralLabmineralfield
+  || utype == NeutralLabmineralfield750
   || utype == NeutralRichmineralfield
   || utype == NeutralRichmineralfield750
   || utype == NeutralPurifierrichmineralfield750
@@ -139,6 +145,17 @@ enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where
   notCloseToNexus p = distSquared p (to2D (nexus ^. #pos) ) > 1
   enemyBases = gi ^. (#startRaw . #startLocations)
 
+unitsBoundingBox :: [Units.Unit] -> (TilePos, TilePos)
+unitsBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
+  where
+    minX = minimumBy (compare `on` view #x) points
+    maxX = maximumBy (compare `on` view #x) points
+
+    minY = minimumBy (compare `on` view #y) points
+    maxY = maximumBy (compare `on` view #y) points
+
+    points = view #pos <$> cluster
+
 -- TODO: move to a separate file
 data Cost = Cost {mineralCost :: Int, gasCost :: Int}
   deriving (Show, Eq, Ord)
@@ -201,3 +218,18 @@ dbscan eps minPts points = foldl' dbscan' Map.empty points --`Utils.dbg` ("point
         Just v       -> labels --`Utils.dbg` ("dsbscan: point is processed " ++ show v)
 
 countCluster clusters n = Map.foldlWithKey (\count _ label -> if label == Cluster n then count + 1 else count) 0 clusters
+
+findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
+findExpandPosInCluster grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) canPlaceDist69 (const False)
+  where
+    clusterTiles = tilePos . view #pos <$> cluster
+    canPlaceDist69 p = all (\c -> distSquaredTile p c >= 6 * 6 && distSquaredTile p c < 9 * 9) clusterTiles
+      && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
+
+findExpands :: Observation -> Grid -> Grid -> [TilePos]
+findExpands obs grid heights = mapMaybe (findExpandPosInCluster grid heights) clusteredUnits
+  where
+    resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
+    marked = dbscan 10 2 resourceFields
+    clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
+    clusteredUnits = map (map fst) clusters
