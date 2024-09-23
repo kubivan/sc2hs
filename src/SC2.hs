@@ -85,7 +85,7 @@ decodeResponseIO conn = receiveData' conn >>= decodeMessage'
 
 startStarCraft :: Int -> IO ProcessHandle
 startStarCraft port = do
-  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base91115\\SC2_x64.exe\""
+  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base92440\\SC2_x64.exe\""
       cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
       args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
       proc = (shell $ sc2 ++ " " ++ unwords args) {cwd = cwd}
@@ -135,7 +135,6 @@ splitParticipants = doSplit (Nothing, []) where
     Proto.Computer _ -> doSplit (host, players) rest
   doSplit (Just h, p) [] = (h, p)
   doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
-
 
 mergeGrids:: Grid -> Grid -> Grid
 mergeGrids placementGrid pathingGrid =
