@@ -18,7 +18,7 @@ import Units
       Unit(..),
       dbscan,
       isMineral,
-      isGeyser, findExpands )
+      isGeyser, findExpands, toEnum' )
 import Agent (Observation)
 import Data.ProtoLens (decodeMessage)
 import qualified Data.ByteString as B
@@ -36,6 +36,7 @@ import Lens.Micro.Extras(view)
 
 import Data.Monoid
 import Test.Hspec (shouldSatisfy)
+import Proto.S2clientprotocol.Debug_Fields (unitType)
 
 fromEither :: Either String a -> a
 fromEither (Left err) = error err
@@ -53,8 +54,12 @@ markClusters labels grid = foldl' mark grid (Map.toList labels) where
   mark g (p, Cluster n) = updatePixel g (tilePos $ p ^. #pos) 'x'
   mark g (p, Noise) = updatePixel g (tilePos $ p ^. #pos) 'X'
 
-gridPlace :: Unit -> Grid -> Grid
-gridPlace u g = addMark g (getFootprint . toEnum . fromIntegral . view #unitType $ u) (tilePos $ u ^. #pos)
+gridUpdate :: Observation -> Grid -> Grid
+gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
+  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
+  units = obs ^. (#rawData . #units)
+  getFootprints :: Units.Unit -> (Footprint, (Int, Int))
+  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
 spec :: Spec
 spec =
@@ -70,34 +75,31 @@ spec =
     it "dbscan tests" $ \(obs,gi) -> do
       --print obs
       let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
-          grid = gridFromImage (gi ^. (#startRaw . #placementGrid))
+          grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #placementGrid))
           heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
 
           -- calculate clusters
           marked = dbscan 10 2 resourceFields
           clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
-          clusteredUnits = map (map fst) clusters
-          closestCluster = snd $ minimumBy (compare `on` (\(u, l) -> distSquared (u ^. #pos :: C.Point) (nexus ^. #pos))) (Map.toList marked)
+          clusteredUnits = map fst <$> clusters
           expands = findExpands obs grid heights
-
-          --start location cluster
-          nexusCluster = [u | (u, cl0) <- Map.toList marked, cl0 == closestCluster ]
-          nexus = findNexus obs
 
           bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
 
-          grid' = appEndo (Endo (markClusters marked) <> Endo (gridPlace nexus) <> foldMap (\x -> Endo (\g -> updatePixel g x 'c')) expands <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints) grid
+          gridWithClusters = appEndo (
+            Endo (markClusters marked)
+            <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints)
+            grid
 
-          nexusPlacementGt :: TilePos
-          nexusPlacementGt = tilePos . view #pos $ nexus
+          grid' =
+           foldl' (flip (gridPlace UnitTypeId.ProtossNexus)) grid expands
 
       print $ foldl (\acc cl  -> (show . snd . head $ cl, length cl): acc ) [] clusters
       print $ bbFootPrints
-      --gridToFile "outgrid.txt" grid'
+      gridToFile "outgrid.txt" grid'
 
       length marked `shouldBe` length resourceFields
-      length expands `shouldBe` 16
-      nexusPlacementGt `shouldSatisfy` (`elem` expands)
+      length expands `shouldBe` 15 -- 16 - already buit start nexus
 
 gridUnitTests :: Spec
 gridUnitTests = do
@@ -122,11 +124,7 @@ gridUnitTests = do
              ]
   describe "Grid palacement unit tests" $ do
     it "basic" $ do
-      let buildingStr = unlines
-              [ " bb"
-              , "bcb"
-              , "bbb"
-              ]
+
       let buildingFootprint = getFootprint ProtossNexus
       print buildingFootprint
 

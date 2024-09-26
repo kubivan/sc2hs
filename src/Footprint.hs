@@ -27,33 +27,67 @@ footprintRect (origin@(tlX, tlY), (brX, brY)) = (Footprint {pixels = topH ++ bot
 
 getFootprint :: UnitTypeId -> Footprint
 getFootprint id = case id of 
-  ProtossNexus -> createFootprint $ unlines [ "nnnnn"
-                                            , "nnnnn"
-                                            , "nncnn"
-                                            , "nnnnn"
-                                            , "nnnnn"]
-  ProtossForge -> createFootprint $ unlines [ "###"
-                                            , "#c#"
-                                            , "###"]
-  ProtossAssimilator -> createFootprint $ unlines [ "###"
-                                                  , "#c#"
-                                                  , "###"]
-  NeutralRichvespenegeyser -> createFootprint $ unlines [ "###"
-                                                        , "#c#"
-                                                        , "###"]
-  ProtossPylon -> createFootprint $ unlines ["##"
-                                            ,"#c"]
-  ProtossPhotoncannon -> createFootprint $ unlines [ "...."
-                                                   , ".##."
-                                                   , ".#c."
-                                                   , "...."
-                                                   ]
-  NeutralMineralfield -> createFootprint "#c"
-  NeutralMineralfield750 -> createFootprint "#c"
-  --ProtossProbe -> createFootprint "#c"
+  ProtossNexus -> createFootprint
+    $ unlines [ "nnnnn"
+              , "nnnnn"
+              , "nncnn"
+              , "nnnnn"
+              , "nnnnn"]
+  ProtossForge -> createFootprint
+    $ unlines [ "###"
+              , "#c#"
+              , "###"]
+  ProtossAssimilator -> createFootprint
+    $ unlines [ "###"
+              , "#c#"
+              , "###"]
+  NeutralVespenegeyser -> createFootprint
+    $ unlines [ " ....... "
+              , "........."
+              , "........."
+              , "...###..."
+              , "...#c#..."
+              , "...###..."
+              , "........."
+              , "........."
+              , " ....... "
+              ]
+  NeutralRichvespenegeyser -> createFootprint
+    $ unlines [ " ....... "
+              , "........."
+              , "........."
+              , "...###..."
+              , "...#c#..."
+              , "...###..."
+              , "........."
+              , "........."
+              , " ....... "
+              ]
 
-  _ -> createFootprint $ unlines [ "###"
-                                 , "#c#"
-                                 , "###"]
+  ProtossPylon -> createFootprint
+    $ unlines ["##"
+              ,"#c"]
+
+  ProtossPhotoncannon -> createFootprint
+    $ unlines [ "...."
+              , ".##."
+              , ".#c."
+              , "...."
+              ]
+  NeutralMineralfield -> createFootprint
+    $ unlines [ " ...... "
+              , "........"
+              , "........"
+              , "...#c..."
+              , "........"
+              , "........"
+              , " ...... "
+              ]
+  NeutralMineralfield750 -> createFootprint "#c"
+
+  _ -> createFootprint
+    $ unlines [ "###"
+              , "#c#"
+              , "###"]
 
   

@@ -102,7 +102,7 @@ canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
     all pixelOk pixels && sameHeight pixels where
       pixelOk (x, y, _) = case gridPixelSafe grid (cx + x, cy + y) of
         Nothing -> False
-        Just p -> p /= '#'
+        Just p -> p == ' ' --TODO: now . has multiple meanings, rework
       sameHeight pixels = all (== head pixelHeights) (tail pixelHeights) where
         pixelHeights = [gridPixel heightMap pos | (x, y, _) <- pixels, let pos = (cx + x, cy + y) ]
 
