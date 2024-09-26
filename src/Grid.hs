@@ -9,6 +9,7 @@ module Grid
     findPlacementPointInRadius,
     canPlaceBuilding,
     gridBfs,
+    gridPlace,
     addMark,
     printGrid,
     gridToFile,
@@ -37,6 +38,7 @@ import Data.Maybe (isJust, fromJust)
 import Data.Foldable (toList)
 
 import qualified Data.Sequence as Seq -- (Seq (..), empty, (|>))
+import UnitTypeId (UnitTypeId)
 
 type Grid = V.Vector (V.Vector Char)
 
@@ -142,6 +144,11 @@ gridBfs grid start acceptanceCriteria terminationCriteria =
 addMark :: Grid -> Footprint -> TilePos -> Grid
 addMark grid (Footprint pixels) (cx, cy) =
     foldl (\accGrid (x, y, mark) -> updatePixel accGrid (cx + x, cy + y) mark) grid pixels
+
+gridPlace :: UnitTypeId -> TilePos -> Grid -> Grid
+gridPlace u (cx, cy) g = foldl (\accGrid (x, y, mark) -> updatePixel accGrid (cx + x, cy + y) mark) g ptrn
+  where
+    ptrn = pixels (getFootprint u)
 
 -- Update a cell in the Grid
 updatePixel :: Grid -> TilePos -> Char -> Grid
