@@ -26,7 +26,7 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, mapAccumL, sortBy, isPrefixOf, isSuffixOf, maximumBy, minimumBy)
 import Data.Function (on)
-import Data.Maybe qualified as Data
+import Data.Maybe
 import Data.Sequence (Seq (..), empty, (|>))
 import Data.String
 import qualified Data.Set as Set
@@ -36,7 +36,7 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel, canPlaceBuilding, gridPlace)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Lens.Micro.Extras(view)
 import Proto.S2clientprotocol.Common as C
@@ -130,18 +130,22 @@ findBuilder obs =
         .| unitTypeC ProtossProbe
         .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
 
-
 pylonRadius :: Float
 pylonRadius = 6.5
 
-findPlacementPos :: Observation -> Grid -> Grid -> UnitTypeId -> Maybe (Int, Int)
-findPlacementPos obs grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
+findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
+findPlacementPos obs expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
+  where
+    nexusesSet = Set.fromList $ runC $
+      obsUnitsC obs .| filterC (\x -> toEnum' (x ^. #unitType) `notElem` [ProtossNexus, TerranCommandcenter, ZergHatchery]) .| mapTilePosC
+
+findPlacementPos obs expands grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
   where
     nexusPos = tilePos $ findNexus obs ^. #pos
 
-findPlacementPos obs grid heightMap id = go pylons
+findPlacementPos obs expands grid heightMap id = go pylons
   where
-    go :: [(Int, Int)] -> Maybe (Int, Int)
+    go :: [TilePos] -> Maybe TilePos
     go (p : ps) = case findPlacementPointInRadius grid heightMap (getFootprint id) p pylonRadius of
       Just res -> Just res
       Nothing -> go ps
@@ -179,7 +183,7 @@ buildAction order grid reservedRes = do
   let footprint = getFootprint order
   guard (isBuildAbility ability)
   builder <- MaybeT . return $ findBuilder obs
-  pos <- MaybeT . return $ findPlacementPos obs grid (heightMap si) order
+  pos <- MaybeT . return $ findPlacementPos obs (expandsPos si) grid (heightMap si) order
   let grid' = addMark grid footprint pos
   let obs' = addOrder (builder ^. #tag) ability . addUnit order $ obs
   lift . agentPut $ (obs', grid) `Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
@@ -279,34 +283,9 @@ clusterizeGrid obs grid heightMap start =
 
   in catMaybes $ (\p -> findPlacementPointInRadius grid heightMap (getFootprint ProtossNexus) (tilePos (p ^. #pos)) (pylonRadius * 20)) <$> uniqueGeysers `Utils.dbg` ("uniqueGeysers: " ++ show (length uniqueGeysers))
 
-clusterBoundingBox :: [Units.Unit] -> (TilePos, TilePos)
-clusterBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
-  where
-    minX = minimumBy (compare `on` view #x) points
-    maxX = maximumBy (compare `on` view #x) points
-
-    minY = minimumBy (compare `on` view #y) points
-    maxY = maximumBy (compare `on` view #y) points
-
-    points = view #pos <$> cluster
-
-clusterizeGridSM :: StepMonad ()
-clusterizeGridSM = do
-  (obs, grid) <- agentGet
-  si <- agentStatic
-  let clusters = clusterUnits obs NeutralMineralfield
-      unitT = toEnum' . view #unitType :: Units.Unit -> UnitTypeId
-      bbs = clusterBoundingBox <$> clusters
-      bbCenters = (\((x1, y1), (x2, y2)) -> (x2 - x1, y2 - y1)) <$> bbs
-      getPoint :: TilePos -> Point
-      --getPoint (x,y) = defMessage & #x .~ fromIntegral x & #y .~ fromIntegral y & #z .~ 5.0 + fromIntegral (ord (gridPixel (heightMap si) (x,y))) `Utils.dbg` (show (x,y, fromIntegral (ord (gridPixel (heightMap si) (x,y)))))
-      getPoint (x,y) = defMessage & #x .~ fromIntegral x & #y .~ fromIntegral y & #z .~ 10.0
-  debugTexts [("Expand: XXX", head x ^. #pos) | x <- clusters] -- `Utils.dbg` ("clusterize res: " ++ (show bbs))
-
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
-  si <- agentStatic
-  (obs, grid) <- agentGet
+  obs <- agentObs
   case findAssignee obs a of
     Nothing -> processQueue as (q', interrupted ++ [a])
     Just u ->
@@ -335,6 +314,10 @@ splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.emp
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- runC $ unitsSelf obs]
+  
+agentUpdateGrid f = do
+  (obs, grid) <- agentGet
+  agentPut (obs, f grid)
 
 instance Agent TestBot where
   agentDebug _ = return ()
@@ -349,22 +332,20 @@ instance Agent TestBot where
     let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor (ProtossForge:replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
+    return $ BuildOrderExecutor (ProtossForge:replicate 50 ProtossNexus) [] obs (HashMap.fromList [])
 
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
     reassignIdleProbes
     trainProbes
     si <- agentStatic
-    (obs, grid0) <- agentGet
-    let nexus = findNexus obs ^. #pos
-    clusterizeGridSM
-    let gameLoop = obs ^. #gameLoop
+    (obs, _) <- agentGet
     abilities <- agentAbilities
     if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do
       --command [Chat "unitsChanged !!!: "]
       agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
       (queue', interruptedAbilities) <- processQueue queue ([], [])
+      agentUpdateGrid (\g -> foldl (\ga (u, p) -> gridPlace u p ga) g [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue'])
       let reservedResources = actionsCost si queue'
       let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
       unless (null interruptedOrders) $
@@ -378,7 +359,8 @@ instance Agent TestBot where
       debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 10) | a <- affordableActions]
       command affordableActions
       if null orders' then -- restart build order
-        return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
+        --return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
+        return $ BuildOrderExecutor (replicate 50 ProtossNexus) [] obs (HashMap.fromList [])
       else
         return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     else do
