@@ -8,18 +8,7 @@ import UnitTypeId
 
 import Test.Hspec
 import Units
-    ( obsUnitsC,
-      runC,
-      unitTypeC,
-      unitsBoundingBox,
-      findNexus,
-      PointLabel(..),
-      MapClusters,
-      Unit(..),
-      dbscan,
-      isMineral,
-      isGeyser, findExpands, toEnum' )
-import Agent (Observation)
+import Observation
 import Data.ProtoLens (decodeMessage)
 import qualified Data.ByteString as B
 import Lens.Micro ( (^.) )
@@ -53,13 +42,6 @@ markClusters :: MapClusters -> Grid -> Grid
 markClusters labels grid = foldl' mark grid (Map.toList labels) where
   mark g (p, Cluster n) = updatePixel g (tilePos $ p ^. #pos) 'x'
   mark g (p, Noise) = updatePixel g (tilePos $ p ^. #pos) 'X'
-
-gridUpdate :: Observation -> Grid -> Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
-  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
-  units = obs ^. (#rawData . #units)
-  getFootprints :: Units.Unit -> (Footprint, (Int, Int))
-  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
 spec :: Spec
 spec =

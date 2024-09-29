@@ -9,6 +9,7 @@ module SC2 (startClient, Proto.Participant(..)) where
 
 import Actions
 import Agent
+import Observation
 
 import Control.Concurrent (threadDelay, forkIO)
 import Control.Exception
@@ -58,7 +59,7 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
 import Footprint(getFootprint)
-import Units (unitsSelf, findExpands)
+import Observation (unitsSelf, findExpands)
 
 hostName :: String
 hostName = "127.0.0.1"

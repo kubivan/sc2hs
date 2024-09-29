@@ -4,25 +4,16 @@
 {-# LANGUAGE FlexibleInstances #-}
 --{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Units
-  ( unitsSelf,
-    unitsNew,
-    getUnit,
-    unitsChanged,
-    findNexus,
-    enemyBaseLocation,
-    obsResources,
-    Cost (..),
-    Unit,
-    obsUnitsC,
+  ( Unit,
     runC,
     unitTypeC,
     equalsC,
     allianceC,
     mapTilePosC,
     closestC,
-    clusterUnits,
     isMineral,
     isGeyser,
     (.|),
@@ -32,7 +23,6 @@ module Units
     toEnum',
     fromEnum',
     unitsBoundingBox,
-    findExpands
   )
 where
 
@@ -55,7 +45,6 @@ import qualified Proto.S2clientprotocol.Sc2api_Fields as A
 import qualified Proto.S2clientprotocol.Raw as PR
 import qualified Proto.S2clientprotocol.Raw_Fields as PR
 
-import Agent ( Observation ) --TODO: HACK: move observation to a separate module, resolve labels conflict
 import UnitTypeId
 import Proto.S2clientprotocol.Common (Point)
 import Conduit (Identity)
@@ -70,7 +59,7 @@ toEnum' = toEnum . fromIntegral
 fromEnum' :: Enum e => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
 
-isMineral :: Unit -> Bool
+isMineral :: PR.Unit -> Bool
 isMineral u = utype == NeutralMineralfield
   || utype == NeutralMineralfield750
   || utype == NeutralLabmineralfield
@@ -83,9 +72,9 @@ isMineral u = utype == NeutralMineralfield
   || utype == NeutralBattlestationmineralfield
   || utype == NeutralBattlestationmineralfield750
     where
-      utype = toEnum' $ u ^. #unitType
+      utype = toEnum' $ u ^. PR.unitType
 
-isGeyser :: Unit -> Bool
+isGeyser :: PR.Unit -> Bool
 isGeyser u = utype == NeutralVespenegeyser
   || utype == NeutralRichvespenegeyser
   || utype == NeutralProtossvespenegeyser
@@ -93,22 +82,7 @@ isGeyser u = utype == NeutralVespenegeyser
   || utype == NeutralPurifiervespenegeyser
   || utype == NeutralShakurasvespenegeyser
   where
-    utype = toEnum' $ u ^. #unitType
-
-
-unitsChanged :: Observation -> Observation -> Bool
-unitsChanged obs obsPrev = ulen obs /= ulen obsPrev || firstStep where --`Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
-    ulen obs = length $ runC (unitsSelf obs)
-    firstStep = (obs ^. #gameLoop) == 1 &&  (obsPrev ^. #gameLoop) == 0
-
-unitsNew :: Observation -> Observation -> [Unit]
-unitsNew obs obsPrev = filter notInPrev (runC $ unitsSelf obs) where
-    notInPrev u = (u ^. #tag) `notElem` map (^. #tag) unitsPrev
-    unitsPrev = runC $ unitsSelf obsPrev
-
-getUnit :: Observation -> Word64 -> Unit
-getUnit obs utag =
-  head $ runC $ unitsSelf obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
+    utype = toEnum' $ u ^. PR.unitType
 
 equalsC :: (Monad m, Eq a) => Getting a s a -> a -> ConduitT s s m ()
 equalsC label value = filterC (\u -> u ^. label == value)
@@ -117,71 +91,32 @@ allianceC a = #alliance `equalsC` a
 
 unitTypeC t = #unitType `equalsC` fromEnum' t
 
---unitsSelf :: Observation -> [Unit]
-unitsSelf :: Observation -> ConduitT a Unit Identity ()
-unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
-
 mapTilePosC :: Conduit Unit Identity TilePos
-mapTilePosC = mapC (^. #pos) .| mapC tilePos
+mapTilePosC = mapC (^. PR.pos) .| mapC tilePos
 
 --runC :: a -> [Unit]
 runC x = runConduitPure (x .| sinkList)
 
-obsUnitsC :: Observation -> ConduitT i Unit Identity ()
-obsUnitsC obs = yieldMany (obs ^. (#rawData . #units))
-
 closestC :: (Monad m) => Unit -> ConduitT Unit Void m (Maybe Unit)
 closestC to = await >>= foldlC (\mu u -> closest <$> mu <*> pure u)
   where
-    toPos = to ^. #pos
-    closest a b = if distSquared (a ^. #pos) toPos < distSquared (b ^. #pos) toPos then a else b
+    toPos = to ^. PR.pos
+    closest a b = if distSquared (a ^. PR.pos) toPos < distSquared (b ^. PR.pos) toPos then a else b
 
-findNexus :: Observation -> PR.Unit
-findNexus obs = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
-
-enemyBaseLocation :: A.ResponseGameInfo -> Observation -> Point2D
-enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where
-  nexus = findNexus obs
-  notCloseToNexus p = distSquared p (to2D (nexus ^. #pos) ) > 1
-  enemyBases = gi ^. (#startRaw . #startLocations)
-
-unitsBoundingBox :: [Units.Unit] -> (TilePos, TilePos)
+unitsBoundingBox :: [Unit] -> (TilePos, TilePos)
 unitsBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
   where
-    minX = minimumBy (compare `on` view #x) points
-    maxX = maximumBy (compare `on` view #x) points
+    minX = minimumBy (compare `on` view C.x) points
+    maxX = maximumBy (compare `on` view C.x) points
 
-    minY = minimumBy (compare `on` view #y) points
-    maxY = maximumBy (compare `on` view #y) points
+    minY = minimumBy (compare `on` view C.y) points
+    maxY = maximumBy (compare `on` view C.y) points
 
-    points = view #pos <$> cluster
+    points = view PR.pos <$> cluster
 
--- TODO: move to a separate file
-data Cost = Cost {mineralCost :: Int, gasCost :: Int}
-  deriving (Show, Eq, Ord)
-
-instance Num Cost where
-  a + b = Cost (mineralCost a + mineralCost b) (gasCost a + gasCost b)
-  a - b = Cost (mineralCost a - mineralCost b) (gasCost a - gasCost b)
-  a * b = Cost (mineralCost a * mineralCost b) (gasCost a * gasCost b)
-  negate (Cost mc gc) = Cost (-mc) (-gc)
-  abs (Cost mc gc) = Cost (abs mc) (abs gc)
-  signum (Cost mc gc) = Cost (signum mc) (signum gc)
-  fromInteger n = Cost (fromInteger n) (fromInteger n)
-
-obsResources :: Observation -> Cost
-obsResources obs  = Cost minerals vespene where
-    minerals = fromIntegral $ obs ^. (#playerCommon . #minerals) -- `Utils.debug` ("minerals: " ++ show minerals)
-    vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-
---dbscanUnits :: Enum p => Observation -> p -> [[(Unit, PointLabel)]]
-clusterUnits :: Observation -> UnitTypeId -> [[Unit]]
-clusterUnits obs uid = map fst <$> groupBy ((==) `on` snd) (Map.toList $ dbscan 10.0 1 units)
-  where
-    units = runC $ obsUnitsC obs .| unitTypeC uid
 
 distSquaredU :: Unit -> Unit -> Float
-distSquaredU a b = distSquared (a ^. #pos) (b ^. #pos)
+distSquaredU a b = distSquared (a ^. PR.pos) (b ^. PR.pos)
 
 type ClusterId = Int
 data PointLabel = Noise | Cluster ClusterId
@@ -218,18 +153,3 @@ dbscan eps minPts points = foldl' dbscan' Map.empty points --`Utils.dbg` ("point
         Just v       -> labels --`Utils.dbg` ("dsbscan: point is processed " ++ show v)
 
 countCluster clusters n = Map.foldlWithKey (\count _ label -> if label == Cluster n then count + 1 else count) 0 clusters
-
-findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
-findExpandPosInCluster grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) canPlaceDist69 (const False)
-  where
-    clusterTiles = tilePos . view #pos <$> cluster
-    canPlaceDist69 p = all (\c -> distSquaredTile p c >= 6 * 6 && distSquaredTile p c < 9 * 9) clusterTiles
-      && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
-
-findExpands :: Observation -> Grid -> Grid -> [TilePos]
-findExpands obs grid heights = mapMaybe (findExpandPosInCluster grid heights) clusteredUnits
-  where
-    resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
-    marked = dbscan 10 2 resourceFields
-    clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
-    clusteredUnits = map (map fst) clusters

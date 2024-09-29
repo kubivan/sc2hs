@@ -10,6 +10,7 @@ import AbilityId
 
 import Actions
 import Agent
+import Observation
 import Conduit
 import Control.Applicative (Alternative (..))
 import Control.Monad
@@ -71,7 +72,7 @@ type BuildOrder = [UnitTypeId]
 
 data TestBot
   = Opening
-  | BuildOrderExecutor BuildOrder [Action] A.Observation UnitAbilities
+  | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
 findAssignee obs a = find (\u -> u ^. #tag == getExecutor a) (obs ^. (#rawData . #units))
@@ -96,13 +97,6 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
-
-gridUpdate :: Observation -> Grid -> Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
-  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
-  units = obs ^. (#rawData . #units)
-  getFootprints :: Units.Unit -> (Footprint, (Int, Int))
-  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
 canAfford :: UnitTypeId -> Cost -> StepMonad (Bool, Cost)
 canAfford id r = do
@@ -156,19 +150,6 @@ findPlacementPos obs expands grid heightMap id = go pylons
           .| unitTypeC ProtossPylon
           .| filterC (\u -> u ^. #buildProgress == 1)
           .| mapC (\x -> tilePos $ x ^. #pos)
-
-addOrder :: UnitTag -> AbilityId -> Observation -> Observation
-addOrder unitTag ability obs=
-  obs & #rawData . A.units . traverse . filtered (\unit -> unit ^. #tag == unitTag) . #orders %~ (order :) --TODO: append order to the end?
-  where
-    order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
-
-addUnit :: UnitTypeId -> Observation -> Observation
-addUnit unitType obs =
-  obs & #rawData . A.units %~ (unit unitType :)
-  where
-    unit :: UnitTypeId -> Units.Unit
-    unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
 
 buildAction :: UnitTypeId -> Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 buildAction order grid reservedRes = do

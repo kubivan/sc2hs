@@ -22,7 +22,6 @@ module Agent
     agentPut,
     UnitAbilities,
     UnitTraits,
-    Observation,
     debug,
     debugText,
     debugTexts,
@@ -53,7 +52,8 @@ import UnitTypeId
 --import Utils (Pointable, dbg)
 import Utils
 
-type Observation = A.Observation
+import Observation
+--type Observation = A.Observation
 
 type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
 
