@@ -90,9 +90,9 @@ unitsNew obs obsPrev = filter notInPrev (runC $ unitsSelf obs) where
     notInPrev u = (u ^. #tag) `notElem` map (^. #tag) unitsPrev
     unitsPrev = runC $ unitsSelf obsPrev
 
-getUnit :: Observation -> Word64 -> Unit
+getUnit :: Observation -> UnitTag -> Unit
 getUnit obs utag =
-  head $ runC $ unitsSelf obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
+  head $ runC $ obsUnitsC obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
 
 unitsSelf :: Observation -> ConduitT a Unit Identity ()
 unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
