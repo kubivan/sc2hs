@@ -71,7 +71,7 @@ testPrint responseMessage = case responseMessage of
   Right message -> print ("Received message: " ++ show message)
 
 mapIOError :: IO a -> ExceptT String IO a
-mapIOError = ExceptT . fmap (first (const "TODO: map errors")) . tryIOError
+mapIOError = ExceptT . fmap (first show) . tryIOError
 
 -- TODO: sequence? 
 decodeMessage' :: B.ByteString -> ExceptT String IO S.Response
