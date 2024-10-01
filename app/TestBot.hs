@@ -241,7 +241,7 @@ trainProbes = do
       nexuses = runC $ units .| unitTypeC ProtossNexus
       nexusCount = length nexuses
       optimalCount = assimCount * 3 + nexusCount * 16
-  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses]
+  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses] `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
 
 reassignIdleProbes :: StepMonad ()
 reassignIdleProbes = do
@@ -260,33 +260,6 @@ reassignIdleProbes = do
         .| filterC (\u -> null$ u ^. #orders)
 
   command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
-
-clusterizeGrid:: Observation -> Grid -> Grid -> Point -> [TilePos]
-clusterizeGrid obs grid heightMap start =
-  let units = obsUnitsC obs
-      geysers = runC $ units .| filterC (\u -> toEnum' (u ^. #unitType)  `elem` [NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser])
-      --groupedByHeight = geysers .| CL.groupBy ((==) `on` view (#pos . #z)) 
-      sortedGeysers = sortBy (compare `on` distSquared start . to2D . view #pos) geysers
-
-      farEnough :: Units.Unit -> Set.Set UnitTag -> Bool
-      farEnough x visited = case closestAnother of
-        Just p -> distSquared (x ^. #pos) (p ^. #pos) > 15*15 `Utils.dbg` (show $ distSquared (x ^. #pos) (p ^. #pos))
-        Nothing -> True
-        where
-          closestAnother = runConduitPure $ sourceList geysers .| filterC (\g -> (g ^. #tag) `Set.notMember` visited) .| filterC (\g -> g ^. #tag /= x ^. #tag) .| closestC x
-
-      dropSecondGeysers :: [Units.Unit] -> [Units.Unit]
-      dropSecondGeysers = go [] Set.empty
-        where
-          go :: [Units.Unit] -> Set.Set UnitTag -> [Units.Unit] -> [Units.Unit]
-          go acc visited (x:xs)
-            | farEnough x visited = go (x:acc) ((x ^. #tag) `Set.insert` visited) xs
-            | otherwise = go acc ((x ^. #tag) `Set.insert` visited) xs
-          go acc _ [] = acc
-
-      uniqueGeysers = dropSecondGeysers sortedGeysers
-
-  in catMaybes $ (\p -> findPlacementPointInRadius grid heightMap (getFootprint ProtossNexus) (tilePos (p ^. #pos)) (pylonRadius * 20)) <$> uniqueGeysers `Utils.dbg` ("uniqueGeysers: " ++ show (length uniqueGeysers))
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
