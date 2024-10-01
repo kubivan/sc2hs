@@ -6,7 +6,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Actions (Action(..), toAction, UnitTag, toDebug, DebugCommand(..), getCmd, getTarget, getExecutor) where
+module Actions (Action(..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand(..), getCmd, getTarget, getExecutor) where
 
 import Data.Text
 import Lens.Micro ( (&), (.~), (&), (.~), (^.) )
@@ -29,11 +29,11 @@ import qualified Proto.S2clientprotocol.Debug as D
 import Proto.S2clientprotocol.Raw_Fields (targetUnitTag)
 
 type UnitTag = Word64
+type ChatMsg = Text
 
 data Action =
-   Chat Text 
   -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
-  | PointCommand AbilityId Unit Point2D
+    PointCommand AbilityId Unit Point2D
   | UnitCommand AbilityId Unit Unit
   | SelfCommand AbilityId Unit
   deriving (Show)
@@ -43,13 +43,11 @@ getExecutor :: Action -> Unit
 getExecutor (UnitCommand _ u _) = u
 getExecutor (SelfCommand _ u) = u
 getExecutor (PointCommand _ u _) = u
-getExecutor (Chat _) = Prelude.error "chat doesn't have executor"
 
 getCmd :: Action -> AbilityId
 getCmd (UnitCommand a _ _) = a
 getCmd (SelfCommand a _) = a
 getCmd (PointCommand a _ _) = a
-getCmd (Chat _) = Prelude.error "chat doesn't have cmd"
 
 getTarget :: Action -> Point2D
 getTarget (PointCommand _ _ t) = t
@@ -57,7 +55,6 @@ getTarget (UnitCommand _ _ t) = to2D (tPos)
   where
     tPos :: Point
     tPos = t ^. #pos
-getTarget (Chat _) = Prelude.error "chat doesn't have cmd"
 
 -- // Display debug text on screen.
 -- message DebugText {
@@ -76,12 +73,13 @@ toDebug (DebugText t p) = defMessage & #draw .~ drawMsg where
   textMsg :: D.DebugText
   textMsg = defMessage & #text .~ t & #worldPos .~ p
 
-toAction :: Action -> A.Action
-toAction (Chat msg) = defMessage & #actionChat .~ chat
+toChatAction :: ChatMsg -> A.Action
+toChatAction msg = defMessage & #actionChat .~ chat
   where
     chat = defMessage & #message -- cut the message because there is a limit
       .~ Data.Text.take 128 msg --TODO: investigate exact limit
 
+toAction :: Action -> A.Action
 toAction (PointCommand ability u target) = defMessage
   & #actionRaw .~ attackRaw
   where

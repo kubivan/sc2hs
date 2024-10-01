@@ -117,8 +117,8 @@ requestObservation = defMessage & #observation .~ defMessage
 requestStep :: A.Request
 requestStep = defMessage & #step .~ (defMessage & #count .~ 1)
 
-requestAction :: [Actions.Action] -> A.Request
-requestAction acts = defMessage & #action .~ ((defMessage & #actions .~ (toAction <$> acts))::A.RequestAction)
+requestAction :: [Actions.Action] -> [Actions.ChatMsg] -> A.Request
+requestAction acts chats = defMessage & #action .~ ((defMessage & #actions .~ ((toAction <$> acts) ++ (toChatAction <$> chats)))::A.RequestAction)
 
 requestDebug :: [Actions.DebugCommand] -> A.Request
 requestDebug acts = defMessage & #debug .~ ((defMessage & #debug .~ (toDebug <$> acts))::A.RequestDebug)

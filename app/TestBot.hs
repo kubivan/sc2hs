@@ -354,14 +354,14 @@ instance Agent TestBot where
       let reservedResources = actionsCost si queue'
       let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
       unless (null interruptedOrders) $
-        command [Chat $ pack ("interrupted: " ++ show interruptedOrders)]
+        agentChat ("interrupted: " ++ show interruptedOrders)
 
-      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources 
+      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
 
       unless (null affordableActions) $ do
-       command [Chat $ pack ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))]
+       agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
 
-      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 10) | a <- affordableActions]
+      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10) | a <- affordableActions]
       command affordableActions
       if null orders' then -- restart build order
         --return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])

@@ -14,6 +14,7 @@ module Agent
     StepMonad,
     MaybeStepMonad,
     runStep,
+    agentChat,
     agentAsk,
     agentStatic,
     agentGet,
@@ -30,7 +31,7 @@ module Agent
 where
 
 import AbilityId qualified
-import Actions (Action, DebugCommand(..))
+import Actions (Action, DebugCommand(..), getCmd, getExecutor)
 import Control.Monad.Identity (Identity (..))
 import Control.Monad.Reader
 import Control.Monad.State
@@ -62,14 +63,16 @@ type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
 data StepPlan = StepPlan
   {
     botCommands :: [Action]
+  , botChat  :: [Text]
   , botDebug :: [DebugCommand]
   }
 
 command :: [Action] -> StepMonad ()
-command acts = tell (StepPlan acts [])
+command acts = do
+   tell (StepPlan acts [] [])
 
 debug :: [DebugCommand] -> StepMonad ()
-debug acts = tell (StepPlan [] acts)
+debug acts = tell (StepPlan [] [] acts)
 
 debugText :: String -> C.Point -> StepMonad ()
 debugText text p = debug [DebugText (pack text) p]
@@ -77,11 +80,14 @@ debugText text p = debug [DebugText (pack text) p]
 debugTexts :: [(String, C.Point)] -> StepMonad ()
 debugTexts = mapM_ (uncurry debugText)
 
+agentChat :: String -> StepMonad ()
+agentChat msg = tell (StepPlan [] [pack msg] [])
+
 instance Semigroup StepPlan where
-  (<>) (StepPlan as1 ds1) (StepPlan as2 ds2) = StepPlan (as1 <> as2) (ds1 <> ds2)
+  (<>) (StepPlan as1 cs1 ds1) (StepPlan as2 cs2 ds2) = StepPlan (as1 <> as2) (cs1 <> cs2) (ds1 <> ds2)
 
 instance Monoid StepPlan where
-    mempty = StepPlan [] []
+    mempty = StepPlan [] [] []
 
 data StaticInfo = StaticInfo
   { gameInfo :: A.ResponseGameInfo,

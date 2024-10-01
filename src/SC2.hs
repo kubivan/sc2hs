@@ -153,15 +153,14 @@ gameStepLoop conn si grid agent = do
   if not (null gameOver)
     then return gameOver
     else do
-      let (agent', StepPlan cmds dbgs, grid') = runStep si abilities (obs, grid) (Agent.agentStep agent)
+      let (agent', StepPlan cmds chats dbgs, grid') = runStep si abilities (obs, grid) (Agent.agentStep agent)
       --liftIO . print $ cmds
       liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
       liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
       --liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
-
-      _ <- liftIO . Proto.sendRequestSync conn . Proto.requestAction $ cmds
+      _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestAction cmds chats
       _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
       _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
       gameStepLoop conn si grid' agent'
