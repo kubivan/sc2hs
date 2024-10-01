@@ -30,7 +30,6 @@ import Proto.S2clientprotocol.Raw_Fields (targetUnitTag)
 
 type UnitTag = Word64
 
---data Action = Chat Text | Attack GHC.Word.Word64 Pointable
 data Action =
    Chat Text 
   -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
@@ -72,7 +71,8 @@ toDebug (DebugText t p) = defMessage & #draw .~ drawMsg where
 toAction :: Action -> A.Action
 toAction (Chat msg) = defMessage & #actionChat .~ chat
   where
-    chat = defMessage & #message .~ msg
+    chat = defMessage & #message -- cut the message because there is a limit
+      .~ Data.Text.take 128 msg --TODO: investigate exact limit
 
 toAction (PointCommand ability u target) = defMessage
   & #actionRaw .~ attackRaw
