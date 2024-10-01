@@ -63,10 +63,10 @@ import Safe (headMay)
 import Debug.Trace
 import Units
 import Units(mapTilePosC, closestC)
-import Utils (distSquared)
+import Utils (distSquared, tilePos, distSquaredTile)
 import Proto.S2clientprotocol.Common (Point)
-import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser))
-import Data.Conduit.List (sourceList)
+import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator))
+import Data.Conduit.List (sourceList, consume)
 
 type BuildOrder = [UnitTypeId]
 
@@ -75,7 +75,7 @@ data TestBot
   | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
-findAssignee obs a = find (\u -> u ^. #tag == getExecutor a) (obs ^. (#rawData . #units))
+findAssignee obs a = find (\u -> u ^. #tag == (getExecutor a) ^. #tag) (obs ^. (#rawData . #units))
 
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
 abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
@@ -151,7 +151,30 @@ findPlacementPos obs expands grid heightMap id = go pylons
           .| filterC (\u -> u ^. #buildProgress == 1)
           .| mapC (\x -> tilePos $ x ^. #pos)
 
+findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
+  where
+    assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
+    nexusPos = tilePos $ findNexus obs ^. #pos
+    geysers = runC $ obsUnitsC obs .| filterC isGeyser
+    geysersSorted = sortBy (compare `on` (\x -> tilePos (x ^. #pos) `distSquaredTile` nexusPos)) geysers
+
 buildAction :: UnitTypeId -> Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
+buildAction ProtossAssimilator grid reservedRes = do
+  (isAffordable, cost) <- lift $ canAfford ProtossAssimilator reservedRes
+  guard isAffordable
+  (obs, _) <- lift agentGet
+  builder <- MaybeT . return $ findBuilder obs
+  geyser <- MaybeT . return $ findFreeGeyser obs
+  --TODO: now we don't need to place to built geysers
+  --let footprint = getFootprint order
+  --let grid' = addMark grid footprint pos
+  --let obs' = addOrder (builder ^. #tag) ability . addUnit order $ obs
+  --lift . agentPut $ (obs', grid)
+
+  let res = UnitCommand BuildAssimilator builder geyser
+
+  return (res, cost, grid)  `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")--`Utils.dbg` ("builder orders "  ++ show (builder ^. #orders) )
+
 buildAction order grid reservedRes = do
   enabled <- lift . inBuildThechTree $ order
   guard enabled --`Utils.dbg` (show order ++ " enabled " ++ show enabled)
@@ -169,7 +192,7 @@ buildAction order grid reservedRes = do
   let obs' = addOrder (builder ^. #tag) ability . addUnit order $ obs
   lift . agentPut $ (obs', grid) `Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 
-  let res = PointCommand ability (builder ^. #tag) (fromTuple pos)
+  let res = PointCommand ability builder (fromTuple pos)
 
   return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (builder ^. #orders) )
 
@@ -199,7 +222,7 @@ pylonBuildAction grid reservedRes = do
       let grid' = addMark grid footprint pylonPos
       let obs' = addOrder (builder ^. #tag) AbilityId.BuildPylon obs
       lift . agentPut $ (obs', grid')
-      return (PointCommand BuildPylon (builder ^. #tag) (fromTuple pylonPos), cost, grid')
+      return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid')
 
 createAction :: Grid -> Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost, Grid)
 createAction grid reserved order = do
@@ -218,7 +241,7 @@ trainProbes = do
       nexuses = runC $ units .| unitTypeC ProtossNexus
       nexusCount = length nexuses
       optimalCount = assimCount * 3 + nexusCount * 16
-  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe (n ^. #tag) | n <- nexuses]
+  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses]
 
 reassignIdleProbes :: StepMonad ()
 reassignIdleProbes = do
@@ -229,13 +252,14 @@ reassignIdleProbes = do
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
+        .| mapC (getUnit obs)
 
-      closestMineral to = view #tag <$> runConduitPure (obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to)
+      closestMineral to = runConduitPure (obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to)
 
       idleWorkers = runC $ probes
         .| filterC (\u -> null$ u ^. #orders)
 
-  command [UnitCommand HarvestGatherProbe utag (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers, let utag = idle ^. #tag ]
+  command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
 
 clusterizeGrid:: Observation -> Grid -> Grid -> Point -> [TilePos]
 clusterizeGrid obs grid heightMap start =
@@ -309,11 +333,11 @@ instance Agent TestBot where
     (obs, grid) <- agentGet
     let gi = gameInfo si
     agentPut (obs, gridUpdate obs grid)
-    let nexus = findNexus obs ^. #tag
-    let fourGate = [ProtossPylon, ProtossGateway, ProtossCyberneticscore, ProtossGateway]
+    let nexus = findNexus obs
+    let fourGate = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor (ProtossForge:replicate 50 ProtossNexus) [] obs (HashMap.fromList [])
+    return $ BuildOrderExecutor fourGate [] obs (HashMap.fromList [])
 
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
@@ -332,16 +356,16 @@ instance Agent TestBot where
       unless (null interruptedOrders) $
         command [Chat $ pack ("interrupted: " ++ show interruptedOrders)]
 
-      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources -- `Utils.dbg` (show gameLoop ++ " resources " ++ show (minerals, vespene) ++  " buildOrder " ++ show (buildOrder))
+      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources 
 
       unless (null affordableActions) $ do
-        command [Chat $ pack ("scheduling: " ++ show affordableActions ++ " buildOrder: " ++ show (take 5 orders'))]
+       command [Chat $ pack ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))]
 
       debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ (getTarget a) ^. #x & #y .~ (getTarget a) ^. #y & #z .~ 10) | a <- affordableActions]
       command affordableActions
       if null orders' then -- restart build order
         --return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
-        return $ BuildOrderExecutor (replicate 50 ProtossNexus) [] obs (HashMap.fromList [])
+        return $ BuildOrderExecutor [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway] [] obs (HashMap.fromList [])
       else
         return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     else do

@@ -33,23 +33,31 @@ type UnitTag = Word64
 data Action =
    Chat Text 
   -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
-  | PointCommand AbilityId UnitTag Point2D
-  | UnitCommand AbilityId UnitTag UnitTag
-  | SelfCommand AbilityId UnitTag
+  | PointCommand AbilityId Unit Point2D
+  | UnitCommand AbilityId Unit Unit
+  | SelfCommand AbilityId Unit
   deriving (Show)
 
-getExecutor :: Action -> GHC.Word.Word64
+--TODO: getters could return actual targets not only tags
+getExecutor :: Action -> Unit
 getExecutor (UnitCommand _ u _) = u
 getExecutor (SelfCommand _ u) = u
 getExecutor (PointCommand _ u _) = u
+getExecutor (Chat _) = Prelude.error "chat doesn't have executor"
 
 getCmd :: Action -> AbilityId
 getCmd (UnitCommand a _ _) = a
 getCmd (SelfCommand a _) = a
 getCmd (PointCommand a _ _) = a
+getCmd (Chat _) = Prelude.error "chat doesn't have cmd"
 
 getTarget :: Action -> Point2D
 getTarget (PointCommand _ _ t) = t
+getTarget (UnitCommand _ _ t) = to2D (tPos)
+  where
+    tPos :: Point
+    tPos = t ^. #pos
+getTarget (Chat _) = Prelude.error "chat doesn't have cmd"
 
 -- // Display debug text on screen.
 -- message DebugText {
@@ -82,7 +90,7 @@ toAction (PointCommand ability u target) = defMessage
     attactCommand = defMessage
       & #abilityId .~ fromIntegral (fromEnum ability)
       & #targetWorldSpacePos .~ to2D target
-      & #unitTags .~ [u]
+      & #unitTags .~ [u ^. #tag]
 
 toAction (UnitCommand ability u target) = defMessage
   & #actionRaw .~ attackRaw
@@ -91,8 +99,8 @@ toAction (UnitCommand ability u target) = defMessage
       & #unitCommand .~ attactCommand
     attactCommand = defMessage
       & #abilityId .~ fromIntegral (fromEnum ability)
-      & #targetUnitTag .~ target
-      & #unitTags .~ [u]
+      & #targetUnitTag .~ (target ^. #tag)
+      & #unitTags .~ [u ^. #tag]
 
 toAction (SelfCommand ability u) = defMessage
   & #actionRaw .~ attackRaw
@@ -101,4 +109,4 @@ toAction (SelfCommand ability u) = defMessage
       & #unitCommand .~ attactCommand
     attactCommand = defMessage
       & #abilityId .~ fromIntegral (fromEnum ability)
-      & #unitTags .~ [u]
+      & #unitTags .~ [u ^. #tag]

@@ -59,7 +59,6 @@ import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
 import Footprint(getFootprint)
-import Observation (unitsSelf, findExpands)
 
 hostName :: String
 hostName = "127.0.0.1"
