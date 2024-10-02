@@ -39,6 +39,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict qualified as HashMap
+import Data.List (foldl')
 import Data.ProtoLens (defMessage)
 import Data.Text (Text, pack)
 import GHC.Word qualified
@@ -67,8 +68,19 @@ data StepPlan = StepPlan
   , botDebug :: [DebugCommand]
   }
 
+obsApplyAction :: Action -> Observation -> Observation
+obsApplyAction a = addOrder (unit ^. #tag) ability
+  where
+    unit = getExecutor a
+    ability = getCmd a
+
 command :: [Action] -> StepMonad ()
 command acts = do
+   (obs, grid) <- get
+
+   let obs' = foldl' (flip obsApplyAction) obs acts
+   put (obs', grid)
+
    tell (StepPlan acts [] [])
 
 debug :: [DebugCommand] -> StepMonad ()
