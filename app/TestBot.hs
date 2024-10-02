@@ -62,17 +62,19 @@ import Utils
 import Safe (headMay)
 import Debug.Trace
 import Units
-import Units(mapTilePosC, closestC, unitIdleC)
+import Units(mapTilePosC, closestC, unitTypeC, unitIdleC)
 import Utils (distSquared, tilePos, distSquaredTile)
 import Proto.S2clientprotocol.Common (Point)
-import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator))
+import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator, ProtossRoboticsbay))
 import Data.Conduit.List (sourceList, consume)
+import Conduit (filterC)
 
 type BuildOrder = [UnitTypeId]
 
 data TestBot
   = Opening
   | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
+  | BuildArmyAndWin Observation
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
 findAssignee obs a = find (\u -> u ^. #tag == (getExecutor a) ^. #tag) (obs ^. (#rawData . #units))
@@ -307,10 +309,11 @@ instance Agent TestBot where
     let gi = gameInfo si
     agentPut (obs, gridUpdate obs grid)
     let nexus = findNexus obs
-    let fourGate = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
+        fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
+        expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
 
     command [SelfCommand AbilityId.TrainProbe nexus]
-    return $ BuildOrderExecutor fourGate [] obs (HashMap.fromList [])
+    return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
 
   agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
     debugUnitPos
@@ -336,11 +339,25 @@ instance Agent TestBot where
 
       debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10) | a <- affordableActions]
       command affordableActions
-      if null orders' then -- restart build order
-        --return $ BuildOrderExecutor (replicate 50 ProtossPhotoncannon) [] obs (HashMap.fromList [])
-        return $ BuildOrderExecutor [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway] [] obs (HashMap.fromList [])
+      if null orders' then -- transit
+        return $ BuildArmyAndWin obs
       else
         return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     else do
       return $ BuildOrderExecutor buildOrder queue obs abilities
 
+  agentStep (BuildArmyAndWin obsPrev) = do
+    --debugUnitPos
+    reassignIdleProbes
+    si <- agentStatic
+    (obs, _) <- agentGet
+
+    let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
+        idleRoboBays = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsbay .| unitIdleC
+    command [SelfCommand TrainImmortal robo | robo <- idleRoboBays]
+    command [SelfCommand TrainZealot gate | gate <- idleGates]
+    command [SelfCommand TrainStalker gate | gate <- idleGates]
+
+    trainProbes
+
+    return $ BuildArmyAndWin obs
