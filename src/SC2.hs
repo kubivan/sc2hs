@@ -44,6 +44,7 @@ import System.IO.Error (tryIOError)
 import Data.Bifunctor (first)
 
 import Lens.Micro((&), (.~), (^.))
+import Lens.Micro.Extras(view)
 import Data.ProtoLens.Labels ()
 
 import Data.Either (either)
@@ -53,12 +54,14 @@ import UnitTypeId
 import Proto.S2clientprotocol.Raw_Fields (placementGrid, terrainHeight)
 
 import qualified Data.Vector as V
-import Utils (tilePos)
+import Utils (tilePos, distSquaredTile)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
 import Proto (Participant)
 import Footprint(getFootprint)
+import Data.List (sortOn)
+import Units (unitTypeC, runC)
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -206,10 +209,12 @@ startClient participants = runHost host where
         obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 
         let heightMap = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
-        let unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
-        let grid = mergeGrids (gridFromImage $ gi ^. (#startRaw . #placementGrid)) (gridFromImage $ gi ^. (#startRaw . #pathingGrid))
-        let expands = findExpands (obs0 ^. (#observation . #observation)) grid heightMap
-        let si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
+            obsRaw = obs0 ^. (#observation . #observation)
+            unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
+            grid = mergeGrids (gridFromImage $ gi ^. (#startRaw . #placementGrid)) (gridFromImage $ gi ^. (#startRaw . #pathingGrid))
+            nexusPos = tilePos . view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
+            expands = sortOn (distSquaredTile nexusPos ) $ findExpands obsRaw grid heightMap
+            si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
 
         gameOver <- runExceptT $ gameStepLoop conn si grid agent
         case gameOver of
