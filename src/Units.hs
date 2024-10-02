@@ -10,6 +10,7 @@ module Units
   ( Unit,
     runC,
     unitTypeC,
+    unitIdleC,
     equalsC,
     allianceC,
     mapTilePosC,
@@ -88,6 +89,9 @@ equalsC :: (Monad m, Eq a) => Getting a s a -> a -> ConduitT s s m ()
 equalsC label value = filterC (\u -> u ^. label == value)
 
 allianceC a = #alliance `equalsC` a
+
+unitIdleC :: (Monad m) => ConduitT Unit Unit m ()
+unitIdleC = filterC (Prelude.null . view PR.orders)
 
 unitTypeC t = #unitType `equalsC` fromEnum' t
 

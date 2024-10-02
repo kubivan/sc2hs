@@ -62,7 +62,7 @@ import Utils
 import Safe (headMay)
 import Debug.Trace
 import Units
-import Units(mapTilePosC, closestC)
+import Units(mapTilePosC, closestC, unitIdleC)
 import Utils (distSquared, tilePos, distSquaredTile)
 import Proto.S2clientprotocol.Common (Point)
 import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator))
@@ -238,7 +238,7 @@ trainProbes = do
       probeCount = runConduitPure $ units .| unitTypeC ProtossProbe .| lengthC
       assimCount = runConduitPure $ units .| unitTypeC ProtossAssimilator .| lengthC
       nexuses :: [Units.Unit]
-      nexuses = runC $ units .| unitTypeC ProtossNexus
+      nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1) .| unitIdleC
       nexusCount = length nexuses
       optimalCount = assimCount * 3 + nexusCount * 16
   when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses] `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
@@ -252,12 +252,12 @@ reassignIdleProbes = do
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
-        .| mapC (getUnit obs)
+        .| mapC (getUnit obs) --TODO: should getUnit return maybe
 
-      closestMineral to = runConduitPure (obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to)
+      closestMineral to = runConduitPure $ obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to
 
       idleWorkers = runC $ probes
-        .| filterC (\u -> null$ u ^. #orders)
+        .| unitIdleC
 
   command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
 
