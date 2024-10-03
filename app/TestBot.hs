@@ -25,7 +25,7 @@ import Data.ByteString.Char8 (putStrLn)
 import qualified Data.Conduit.List as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, mapAccumL, sortBy, isPrefixOf, isSuffixOf, maximumBy, minimumBy)
+import Data.List (find, partition, mapAccumL, sortBy, isPrefixOf, isSuffixOf, maximumBy, minimumBy)
 import Data.Function (on)
 import Data.Maybe
 import Data.Sequence (Seq (..), empty, (|>))
@@ -52,10 +52,10 @@ import Proto.S2clientprotocol.Raw_Fields as R
     pos,
     startLocations,
     unitType,
-    units,
+    units, targetUnitTag, maybe'targetUnitTag, idealHarvesters, assignedHarvesters, vespeneContents,
   )
 import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop)
+import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop, foodCap, foodUsed)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import UnitTypeId
 import Utils
@@ -63,10 +63,10 @@ import Safe (headMay)
 import Debug.Trace
 import Units
 import Units(mapTilePosC, closestC, unitTypeC, unitIdleC)
-import Utils (distSquared, tilePos, distSquaredTile)
+import Utils (distSquared, tilePos, distSquaredTile, triPartition)
 import Proto.S2clientprotocol.Common (Point)
 import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator, ProtossRoboticsbay))
-import Data.Conduit.List (sourceList, consume)
+import Data.Conduit.List (sourceList, consume, catMaybes)
 import Conduit (filterC)
 
 type BuildOrder = [UnitTypeId]
@@ -124,16 +124,15 @@ findBuilder obs =
     runC $
       unitsSelf obs
         .| unitTypeC ProtossProbe
-        .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper orders check
+        -- .| unitIdleC
+        -- .| filterC unitIsHarvesting
+        .| filterC (\x -> Prelude.null (x ^. #orders) || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders))) -- TODO: fix, add proper o
 
 pylonRadius :: Float
 pylonRadius = 6.5
 
 findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
 findPlacementPos obs expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
-  where
-    nexusesSet = Set.fromList $ runC $
-      obsUnitsC obs .| filterC (\x -> toEnum' (x ^. #unitType) `notElem` [ProtossNexus, TerranCommandcenter, ZergHatchery]) .| mapTilePosC
 
 findPlacementPos obs expands grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
   where
@@ -167,15 +166,10 @@ buildAction ProtossAssimilator grid reservedRes = do
   (obs, _) <- lift agentGet
   builder <- MaybeT . return $ findBuilder obs
   geyser <- MaybeT . return $ findFreeGeyser obs
-  --TODO: now we don't need to place to built geysers
-  --let footprint = getFootprint order
-  --let grid' = addMark grid footprint pos
-  --let obs' = addOrder (builder ^. #tag) ability . addUnit order $ obs
-  --lift . agentPut $ (obs', grid)
 
   let res = UnitCommand BuildAssimilator builder geyser
 
-  return (res, cost, grid)  `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")--`Utils.dbg` ("builder orders "  ++ show (builder ^. #orders) )
+  return (res, cost, grid)  -- `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 
 buildAction order grid reservedRes = do
   enabled <- lift . inBuildThechTree $ order
@@ -208,23 +202,22 @@ pylonBuildAction grid reservedRes = do
   si <- lift agentStatic
   (obs, _) <- lift agentGet
   let hasPylonsInProgress = not $ Prelude.null $ runC $ unitsSelf obs .| unitTypeC ProtossPylon .| filterC (\u -> u ^. #buildProgress < 1)
-  if hasPylonsInProgress
-    then MaybeT $ return Nothing
-    else do
-      builder <- MaybeT . return $ findBuilder obs
-      let nexus = findNexus obs
-          footprint = getFootprint ProtossPylon
-          findPylonPlacementPoint = findPlacementPoint grid (heightMap si) footprint (tilePos (builder ^. #pos))
-          units = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
-          pylonCriteria = distantEnough units
-      pylonPos <- MaybeT . return $ findPylonPlacementPoint (pylonCriteria pylonRadius)
-        -- <|> findPylonPlacementPoint (pylonCriteria (pylonRadius / 2))
-        -- <|> findPylonPlacementPoint (const True)
+  guard (not hasPylonsInProgress) -- `Utils.dbg` ("hasPylonsInProgress: " ++ show hasPylonsInProgress)
 
-      let grid' = addMark grid footprint pylonPos
-      let obs' = addOrder (builder ^. #tag) AbilityId.BuildPylon obs
-      lift . agentPut $ (obs', grid')
-      return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid')
+  builder <- MaybeT . return $ findBuilder obs
+  let nexus = findNexus obs `Utils.dbg` ("builder: " ++ show builder)
+      footprint = getFootprint ProtossPylon
+      findPylonPlacementPoint = findPlacementPoint grid (heightMap si) footprint (tilePos (builder ^. #pos))
+      pylonsPos = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
+      pylonCriteria = distantEnough pylonsPos
+  pylonPos <- MaybeT . return $ findPylonPlacementPoint (pylonCriteria pylonRadius)
+    -- <|> findPylonPlacementPoint (pylonCriteria (pylonRadius / 2))
+    -- <|> findPylonPlacementPoint (const True)
+
+  let grid' = addMark grid footprint pylonPos
+  let obs' = addOrder (builder ^. #tag) AbilityId.BuildPylon obs
+  lift . agentPut $ (obs', grid')
+  return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
 
 createAction :: Grid -> Cost -> UnitTypeId -> MaybeStepMonad (Action, Cost, Grid)
 createAction grid reserved order = do
@@ -243,25 +236,134 @@ trainProbes = do
       nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1) .| unitIdleC
       nexusCount = length nexuses
       optimalCount = assimCount * 3 + nexusCount * 16
-  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses] `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
+  when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses]
+    --`Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
+
+--TODO: merge unitHasOrder && unitIsHarvesting
+unitHasOrder :: AbilityId -> Units.Unit -> Bool
+unitHasOrder order u = order `elem` orders
+  where
+    orders = toEnum'. view #abilityId <$> u ^. #orders
+
+--TODO: now we check length 1 to filter out the
+--new assigned builder.
+unitIsHarvesting :: Units.Unit -> Bool
+unitIsHarvesting u = length orders == 1 && (HarvestGatherProbe `elem` orders || HarvestReturnProbe `elem` orders) --`Utils.dbg` (show orders)
+  where
+    orders = toEnum'. view #abilityId <$> u ^. #orders
+
+getTargetUnitTag :: Units.UnitOrder -> Maybe UnitTag
+getTargetUnitTag unitOrder = case unitOrder ^. #maybe'target of
+  Just (UnitOrder'TargetUnitTag tag) -> Just tag
+  _ -> Nothing
+
+unitIsAssignedTo :: Units.Unit -> Units.Unit -> Bool
+unitIsAssignedTo building unit
+  | isAssimilator building || isMineral building = building ^. #tag `elem` targets
+  | toEnum' (building ^. #unitType) == ProtossNexus = unitIsHarvesting unit && closeEnough && withoutVespene
+  | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
+     where
+       targets = mapMaybe getTargetUnitTag (unit ^. #orders)
+       closeEnough = distManhattan (tilePos $ building ^. #pos) (tilePos $ unit ^. #pos) <= 12
+       withoutVespene = unit ^. #vespeneContents == 0
+
+unitIsAssignedToAny :: [Units.Unit] -> Units.Unit  -> Bool
+unitIsAssignedToAny buildings unit = any (`unitIsAssignedTo` unit) buildings
+
+--TODO: maybe the vespen & return check is enough
+--(probably units inside assimilators is not presented in the obs)
+--TODO: check if so: probes count between loops
+unitIsVespeneHarvester :: [Units.Unit] -> Units.Unit -> Bool
+unitIsVespeneHarvester assimilators u = unitIsAssignedToAny assimilators u || isReturnsVespene
+  where
+    orders = toEnum'. view #abilityId <$> u ^. #orders
+    isReturnsVespene = length orders == 1 && head orders == HarvestReturnProbe && u ^. #vespeneContents > 0
+
+getOverWorkersFrom :: [Units.Unit] -> [Units.Unit] -> [Units.Unit]
+getOverWorkersFrom buildings workers = concatMap getFrom buildings where
+  getFrom b
+    | unitsToDrop > 0 = take (fromIntegral unitsToDrop) assignedWorkers
+    | otherwise = []
+    where
+      unitsToDrop = b ^. #assignedHarvesters - b ^. #idealHarvesters
+      assignedWorkers = filter (unitIsAssignedTo b) workers
 
 reassignIdleProbes :: StepMonad ()
 reassignIdleProbes = do
   obs <- agentObs
   let units = unitsSelf obs
       probes = units .| unitTypeC ProtossProbe
+
       mineralField = headMay $ runC $ probes
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
         .| mapC (getUnit obs) --TODO: should getUnit return maybe
 
-      closestMineral to = runConduitPure $ obsUnitsC obs .| unitTypeC NeutralMineralfield .| closestC to
+      harvesters = probes
+        .| filterC unitIsHarvesting
 
-      idleWorkers = runC $ probes
-        .| unitIdleC
+      nexuses = runC $ unitsSelf obs
+        .| unitTypeC ProtossNexus
+        .| filterC ( (== 1) . view #buildProgress)
 
-  command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
+      assimilators = runC $ unitsSelf obs
+        .| unitTypeC ProtossAssimilator --TODO: assimilator rich
+        .| filterC ( (== 1) . view #buildProgress)
+
+      (vespeneHarversters, mineralHarvesters) = partition (unitIsVespeneHarvester assimilators) (runC harvesters)
+
+      (nexusesUnder, nexusesIdeal, nexusesOver) = triPartition (\n -> (n ^. #assignedHarvesters) `compare` (n ^. #idealHarvesters)) nexuses
+      (assimUnder, assimIdeal, assimOver) = triPartition (\n -> (n ^. #assignedHarvesters) `compare` (n ^. #idealHarvesters)) assimilators
+
+      idleWorkers = runC $ probes .| unitIdleC
+
+  trace ("nexuses: " ++ show (length nexusesUnder, length nexusesIdeal, length nexusesOver)) (return ())
+  if not . null $ assimUnder then do
+    trace ("staffing assimilators: taking idle + nexuses") (return ())
+    let probePool = idleWorkers ++ workersFromOverAssims ++ workersAroundIdealAndOverStaffedNexuses
+        workersFromOverAssims = getOverWorkersFrom assimOver vespeneHarversters
+        workersAroundIdealAndOverStaffedNexuses = runC $ CL.sourceList mineralHarvesters
+          .| filterC (unitIsAssignedToAny (nexusesOver ++ nexusesIdeal)) --TODO: use manhattan
+
+    command [UnitCommand HarvestGatherProbe harvester assimilator
+            | (assimilator, harvester) <- zip assimUnder probePool]
+  else if not . null $ nexusesUnder then  do -- assimilators are staffed, deal with nexuses
+    trace ("staffing nexusesUnder") (return ())
+    let probePool = idleWorkers ++ workersFromOverAssims ++ workersAroundOverNexuses
+        workersFromOverAssims = getOverWorkersFrom assimOver vespeneHarversters
+        workersAroundOverNexuses = getOverWorkersFrom nexusesOver mineralHarvesters
+        closestMineralTo :: Units.Unit -> Units.Unit
+        closestMineralTo nexus = fromJust $ runConduitPure $ obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (tilePos $ m ^. #pos) (tilePos $ nexus ^. #pos) <= 12)
+    command [UnitCommand HarvestGatherProbe harvester (closestMineralTo nexus)
+            | (nexus, harvester) <- zip nexusesUnder probePool]
+  else do
+    trace ("staffing: just idle probes") (return ())
+    let closestMineral to = runConduitPure $ obsUnitsC obs .| filterC isMineral .| closestC to
+    --TODO: obsolete, rewrite
+    command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
+
+buildPylons :: MaybeStepMonad ()
+buildPylons = do
+  si <- lift agentStatic
+  (obs, grid) <- lift agentGet
+
+  let foodCap = fromIntegral $ obs ^. (#playerCommon . #foodCap) -- `Utils.debug` ("minerals: " ++ show minerals)
+      foodUsed = fromIntegral $ obs ^. (#playerCommon . #foodUsed)
+
+      incompletePylonsCount = length $ runC $ unitsSelf obs
+        .| unitTypeC ProtossPylon
+        .| filterC (\x -> x ^. #buildProgress < 1)
+      orderedPylonsCount = length $ runC $ unitsSelf obs
+        .| unitTypeC ProtossProbe
+        .| filterC (unitHasOrder BuildPylon)
+
+      expectedFoodCap = 8*incompletePylonsCount + 8*orderedPylonsCount
+
+  --TODO:
+  guard (foodCap + expectedFoodCap - foodUsed < 2)
+  (act, _, _) <- pylonBuildAction grid (Cost 0 0)
+  lift $ command [act]
 
 processQueue :: [Action] -> ([Action], [Action]) -> StepMonad ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
@@ -294,7 +396,7 @@ splitAffordable bo reserved = agentGet >>=(\(_, grid) -> go bo Data.Sequence.emp
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- runC $ unitsSelf obs]
-  
+
 agentUpdateGrid f = do
   (obs, grid) <- agentGet
   agentPut (obs, f grid)
@@ -350,13 +452,17 @@ instance Agent TestBot where
     --debugUnitPos
     reassignIdleProbes
     si <- agentStatic
-    (obs, _) <- agentGet
+    obs <- agentObs
+    --when (unitsChanged obs obsPrev) $ do
+    --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
+
+    res <-runMaybeT buildPylons
 
     let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
-        idleRoboBays = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsbay .| unitIdleC
-    command [SelfCommand TrainImmortal robo | robo <- idleRoboBays]
-    command [SelfCommand TrainZealot gate | gate <- idleGates]
-    command [SelfCommand TrainStalker gate | gate <- idleGates]
+        idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsfacility .| unitIdleC
+        gameLoop = obs ^. #gameLoop
+    command [SelfCommand TrainImmortal robo | robo <- idleRobos]
+    command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) gate | gate <- idleGates]
 
     trainProbes
 

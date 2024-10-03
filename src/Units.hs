@@ -8,6 +8,7 @@
 
 module Units
   ( Unit,
+    UnitOrder,
     runC,
     unitTypeC,
     unitIdleC,
@@ -17,6 +18,7 @@ module Units
     closestC,
     isMineral,
     isGeyser,
+    isAssimilator,
     (.|),
     dbscan,
     PointLabel (..),
@@ -53,6 +55,7 @@ import Grid (Grid, canPlaceBuilding, gridBfs)
 import Footprint (getFootprint)
 import Data.Maybe (isJust, catMaybes, mapMaybe)
 type Unit = PR.Unit
+type UnitOrder = PR.UnitOrder
 
 toEnum' :: Enum e => GHC.Word.Word32 -> e
 toEnum' = toEnum . fromIntegral
@@ -82,6 +85,12 @@ isGeyser u = utype == NeutralVespenegeyser
   || utype == NeutralSpaceplatformgeyser
   || utype == NeutralPurifiervespenegeyser
   || utype == NeutralShakurasvespenegeyser
+  where
+    utype = toEnum' $ u ^. PR.unitType
+
+isAssimilator :: PR.Unit -> Bool
+isAssimilator u = utype == ProtossAssimilator
+  || utype == ProtossAssimilatorrich
   where
     utype = toEnum' $ u ^. PR.unitType
 
