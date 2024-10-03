@@ -5,7 +5,21 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Utils ((-), distSquared, distSquaredTile, distManhattan, dot, Pointable(..), tileX, tileY, tilePos, fromTuple, to2D, dbg, TilePos) where
+module Utils (
+  (-)
+  , distSquared
+  , distSquaredTile
+  , distManhattan
+  , dot
+  , Pointable(..)
+  , tileX
+  , tileY
+  , tilePos
+  , fromTuple
+  , to2D
+  , dbg
+  , triPartition
+  , TilePos) where
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
@@ -27,19 +41,19 @@ import Debug.Trace
 -- Custom operator for addition
 --infixl 6 -.
 -- (-) :: C.Point2D -> C.Point2D -> C.Point2D
--- a - b = defMessage & C.x .~ rx & C.y .~ ry :: C.Point2D where 
+-- a - b = defMessage & C.x .~ rx & C.y .~ ry :: C.Point2D where
 --     rx = (a ^. x) Prelude.- (b ^. x)
 --     ry = (a ^. y) Prelude.- (b ^. y)
--- 
+--
 
---distSquared a b = 
+--distSquared a b =
 --instance (Num a,Num b) => Num (C.Point2D) where
 --   a - b = defMessage & C.x .~ ((a ^. x) Prelude.- (b ^. x)) & C.y .~ ((a ^. y) Prelude.- (b ^. y)) where
 
 --   Pair (a,b) + Pair (c,d) = Pair (a+c,b+d)
 --   Pair (a,b) * Pair (c,d) = Pair (a*c,b*d)
---   abs    (Pair (a,b)) = Pair (abs a,    abs b) 
---   signum (Pair (a,b)) = Pair (signum a, signum b) 
+--   abs    (Pair (a,b)) = Pair (abs a,    abs b)
+--   signum (Pair (a,b)) = Pair (signum a, signum b)
 --   fromInteger i = Pair (fromInteger i, fromInteger i)
 
 class Pointable a where
@@ -48,7 +62,7 @@ class Pointable a where
   y :: a -> Float
 
 instance Num C.Point2D where
-  a - b = make2D (x1 `subtract` x2) (y1 `subtract` y2) where 
+  a - b = make2D (x1 `subtract` x2) (y1 `subtract` y2) where
     x1 = (Utils.x a) :: Float
     x2 = (Utils.x b) :: Float
     y1 = (Utils.y a) :: Float
@@ -71,7 +85,7 @@ distSquared a b = dot diff diff where
 distManhattan :: TilePos -> TilePos -> Int
 distManhattan (x1, y1) (x2, y2) = abs (x1 - x2) + abs (y1 - y2)
 
---TODO: there shoud be the way to clean this mess with Pointables 
+--TODO: there shoud be the way to clean this mess with Pointables
 --to have one distSquared and so on
 distSquaredTile :: TilePos -> TilePos -> Float
 distSquaredTile (ax, ay) (bx, by) = dot diff diff where
@@ -94,7 +108,7 @@ type TilePos = (Int, Int)
 tilePos :: Pointable a => a -> TilePos
 tilePos p = (tileX p, tileY p)
 
---tileY :: Pointable a => a -> Int 
+--tileY :: Pointable a => a -> Int
 
 instance Pointable C.Point2D where
   x p = p ^. C.x
@@ -120,7 +134,7 @@ to2D p = make2D (Utils.x p) (Utils.y p)
 --     static Point2D res = [&obs]() {
 --         using namespace std::views;
 --         const auto nexus = to_vector<Unit>(obs.unitsSelf() | filter(type(UNIT_TYPEID::PROTOSS_NEXUS))).front();
--- 
+--
 --         for (auto enemy_pos : obs.gameInfo().start_locations)
 --         {
 --             if (dist_squared(enemy_pos, nexus.pos) > 1.)
@@ -132,8 +146,17 @@ to2D p = make2D (Utils.x p) (Utils.y p)
 --         assert(false);
 --         return Point2D{ -1, -1 };
 --     }();
--- 
+--
 --     return res;
 -- }
 
 dbg = flip trace
+
+triPartition :: (a -> Ordering) -> [a] -> ([a], [a], [a])
+triPartition cmp = foldr partition ([], [], [])
+  where
+    partition x (less, eq, greater) =
+      case cmp x of
+        LT -> (x : less, eq, greater)
+        EQ -> (less, x : eq, greater)
+        GT -> (less, eq, x : greater)
