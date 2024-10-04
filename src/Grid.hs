@@ -33,7 +33,7 @@ import qualified Proto.S2clientprotocol.Common as P
 import qualified Proto.S2clientprotocol.Common_Fields as P
 
 import Footprint
-import Utils (distSquared, tilePos, fromTuple, dbg, TilePos)
+import Utils (distSquared, fromTuple, dbg, TilePos)
 import Data.Maybe (isJust, fromJust)
 import Data.Foldable (toList)
 

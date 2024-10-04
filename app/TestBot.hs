@@ -63,7 +63,7 @@ import Safe (headMay)
 import Debug.Trace
 import Units
 import Units(mapTilePosC, closestC, unitTypeC, unitIdleC)
-import Utils (distSquared, tilePos, distSquaredTile, triPartition)
+import Utils (distSquared, tilePos, distSquared, triPartition)
 import Proto.S2clientprotocol.Common (Point)
 import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator, ProtossRoboticsbay))
 import Data.Conduit.List (sourceList, consume, catMaybes)
@@ -152,12 +152,13 @@ findPlacementPos obs expands grid heightMap id = go pylons
           .| filterC (\u -> u ^. #buildProgress == 1)
           .| mapC (\x -> tilePos $ x ^. #pos)
 
+findFreeGeyser :: Observation -> Maybe Units.Unit
 findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
   where
     assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
     nexusPos = tilePos $ findNexus obs ^. #pos
     geysers = runC $ obsUnitsC obs .| filterC isGeyser
-    geysersSorted = sortBy (compare `on` (\x -> tilePos (x ^. #pos) `distSquaredTile` nexusPos)) geysers
+    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
 
 buildAction :: UnitTypeId -> Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 buildAction ProtossAssimilator grid reservedRes = do
@@ -192,7 +193,8 @@ buildAction order grid reservedRes = do
 
   return (res, cost, grid') `Utils.dbg` ("builder orders "  ++ show (builder ^. #orders) )
 
-distantEnough units radius pos = all (\p -> distSquaredTile pos p >= radius*radius) units
+distantEnough :: (Foldable t, Pointable p1, Pointable p2) => t p2 -> Float -> p1 -> Bool
+distantEnough units radius pos = all (\p -> distSquared pos p >= radius*radius) units
 
 pylonBuildAction :: Grid -> Cost -> MaybeStepMonad (Action, Cost, Grid)
 pylonBuildAction grid reservedRes = do
@@ -264,7 +266,7 @@ unitIsAssignedTo building unit
   | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
      where
        targets = mapMaybe getTargetUnitTag (unit ^. #orders)
-       closeEnough = distManhattan (tilePos $ building ^. #pos) (tilePos $ unit ^. #pos) <= 12
+       closeEnough = distManhattan (building ^. #pos) (unit ^. #pos) <= 12
        withoutVespene = unit ^. #vespeneContents == 0
 
 unitIsAssignedToAny :: [Units.Unit] -> Units.Unit  -> Bool
@@ -334,7 +336,7 @@ reassignIdleProbes = do
         workersFromOverAssims = getOverWorkersFrom assimOver vespeneHarversters
         workersAroundOverNexuses = getOverWorkersFrom nexusesOver mineralHarvesters
         closestMineralTo :: Units.Unit -> Units.Unit
-        closestMineralTo nexus = fromJust $ runConduitPure $ obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (tilePos $ m ^. #pos) (tilePos $ nexus ^. #pos) <= 12)
+        closestMineralTo nexus = fromJust $ runConduitPure $ obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
     command [UnitCommand HarvestGatherProbe harvester (closestMineralTo nexus)
             | (nexus, harvester) <- zip nexusesUnder probePool]
   else do

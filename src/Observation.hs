@@ -97,11 +97,12 @@ getUnit obs utag =
 unitsSelf :: Observation -> ConduitT a Unit Identity ()
 unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
 
+--TODO: it's redundant it's fixed on the grid level by adding '.' around resources
 findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
 findExpandPosInCluster grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) canPlaceDist69 (const False)
   where
     clusterTiles = tilePos . view #pos <$> cluster
-    canPlaceDist69 p = all (\c -> distSquaredTile p c >= 6 * 6 && distSquaredTile p c < 9 * 9) clusterTiles
+    canPlaceDist69 p = all (\c -> distSquared p c >= 6 * 6 && distSquared p c < 9 * 9) clusterTiles
       && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 findExpands :: Observation -> Grid -> Grid -> [TilePos]
@@ -121,7 +122,7 @@ findNexus obs = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
 enemyBaseLocation :: A.ResponseGameInfo -> Observation -> Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases where
   nexus = findNexus obs
-  notCloseToNexus p = distSquared p (to2D (nexus ^. #pos) ) > 1
+  notCloseToNexus p = distSquared p (nexus ^. #pos)  > 1
   enemyBases = gi ^. (#startRaw . #startLocations)
 
 -- TODO: move to a separate file

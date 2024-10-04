@@ -54,7 +54,7 @@ import UnitTypeId
 import Proto.S2clientprotocol.Raw_Fields (placementGrid, terrainHeight)
 
 import qualified Data.Vector as V
-import Utils (tilePos, distSquaredTile)
+import Utils (tilePos, distSquared)
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (isNothing)
@@ -76,7 +76,6 @@ testPrint responseMessage = case responseMessage of
 mapIOError :: IO a -> ExceptT String IO a
 mapIOError = ExceptT . fmap (first show) . tryIOError
 
--- TODO: sequence? 
 decodeMessage' :: B.ByteString -> ExceptT String IO S.Response
 decodeMessage' msg = either throwError return (decodeMessage msg)
 
@@ -199,9 +198,9 @@ startClient participants = runHost host where
         putStrLn "getting game info..."
         resp <- Proto.sendRequestSync conn Proto.requestGameInfo
         let gi :: S.ResponseGameInfo = resp ^. #gameInfo
-        let playerInfos = gi ^. #playerInfo
-        let playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
-        let pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+            playerInfos = gi ^. #playerInfo
+            playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
+            pathingGrid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
         printGrid pathingGrid
         liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
@@ -212,8 +211,8 @@ startClient participants = runHost host where
             obsRaw = obs0 ^. (#observation . #observation)
             unitTraits = unitsData $ gameDataResp ^. (#data' . #units)
             grid = mergeGrids (gridFromImage $ gi ^. (#startRaw . #placementGrid)) (gridFromImage $ gi ^. (#startRaw . #pathingGrid))
-            nexusPos = tilePos . view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
-            expands = sortOn (distSquaredTile nexusPos ) $ findExpands obsRaw grid heightMap
+            nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
+            expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
             si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
 
         gameOver <- runExceptT $ gameStepLoop conn si grid agent

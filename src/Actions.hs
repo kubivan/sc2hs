@@ -51,7 +51,7 @@ getCmd (PointCommand a _ _) = a
 
 getTarget :: Action -> Point2D
 getTarget (PointCommand _ _ t) = t
-getTarget (UnitCommand _ _ t) = to2D (tPos)
+getTarget (UnitCommand _ _ t) = toPoint2D (tPos)
   where
     tPos :: Point
     tPos = t ^. #pos
@@ -87,7 +87,7 @@ toAction (PointCommand ability u target) = defMessage
       & #unitCommand .~ attactCommand
     attactCommand = defMessage
       & #abilityId .~ fromIntegral (fromEnum ability)
-      & #targetWorldSpacePos .~ to2D target
+      & #targetWorldSpacePos .~ toPoint2D target
       & #unitTags .~ [u ^. #tag]
 
 toAction (UnitCommand ability u target) = defMessage
