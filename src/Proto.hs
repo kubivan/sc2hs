@@ -77,7 +77,7 @@ data Map = LocalMap Text (Maybe BS.ByteString)
 
 data Participant where
     Computer :: C.Race -> Participant
-    Player :: Agent a => a -> Participant
+    Player :: Agent a d => a -> Participant
 
 requestCreateGame:: Map -> [Participant] -> A.Request
 requestCreateGame lm@(LocalMap m d) participants = defMessage& #createGame .~ mods defMessage

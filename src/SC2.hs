@@ -123,11 +123,11 @@ unitsData raw = HashMap.fromList . runConduitPure $ yieldMany raw
     .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
     .| sinkList
 
-data AnyAgent = forall a. Agent a => AnyAgent a
-
-getAgents :: [Proto.Participant] -> [AnyAgent]
-getAgents participants = [AnyAgent a | Proto.Player a <- participants]
-
+--data AnyAgent = forall a. Agent a => AnyAgent a
+--data AnyAgent = forall a dyn. (Agent a dyn) => AnyAgent a dyn
+--getAgents :: [Proto.Participant] -> [AnyAgent]
+--getAgents participants = [AnyAgent a | Proto.Player a <- participants]
+--
 -- host/players
 splitParticipants :: [Proto.Participant] -> (Proto.Participant, [Proto.Participant])
 splitParticipants = doSplit (Nothing, []) where
@@ -145,8 +145,8 @@ mergeGrids placementGrid pathingGrid =
       | pathing == ' ' && placement == '#' = '/'
       | otherwise = placement
 
-gameStepLoop :: Agent agent => Connection -> Agent.StaticInfo -> Grid -> agent -> ExceptT String IO [S.PlayerResult]
-gameStepLoop conn si grid agent = do
+gameStepLoop :: Agent agent d => Connection -> Agent.StaticInfo -> d -> agent -> ExceptT String IO [S.PlayerResult]
+gameStepLoop conn si ds agent = do
   --liftIO $ putStrLn "step"
   (obs, gameOver) <- sc2Observation conn
 
@@ -155,17 +155,17 @@ gameStepLoop conn si grid agent = do
   if not (null gameOver)
     then return gameOver
     else do
-      let (agent', StepPlan cmds chats dbgs, grid') = runStep si abilities (obs, grid) (Agent.agentStep agent)
+      let (agent', StepPlan cmds chats dbgs, ds') = runStep si abilities (setObs obs ds) (Agent.agentStep agent)
       --liftIO . print $ cmds
-      liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
-      --liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+          grid' = getGrid ds'
+      liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
       --liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
       _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestAction cmds chats
       _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
       _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
-      gameStepLoop conn si grid' agent'
+      gameStepLoop conn si ds' agent'
 
 startClient :: [Proto.Participant] -> IO ()
 startClient participants = runHost host where
@@ -214,8 +214,9 @@ startClient participants = runHost host where
             nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
             expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
             si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
+            dynamicState = makeDynamicState agent obsRaw grid
 
-        gameOver <- runExceptT $ gameStepLoop conn si grid agent
+        gameOver <- runExceptT $ gameStepLoop conn si dynamicState agent
         case gameOver of
           Left e -> putStrLn $ "game failed: " ++ e
           Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults

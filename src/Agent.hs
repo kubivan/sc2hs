@@ -4,13 +4,16 @@
 {-# LANGUAGE OverloadedLabels #-}
 
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Agent
   ( Agent (..),
     StepPlan (..),
     StaticInfo (..),
-    DynamicState,
+    AgentDynamicState(..),
     StepMonad,
     MaybeStepMonad,
     runStep,
@@ -42,6 +45,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.List (foldl')
 import Data.ProtoLens (defMessage)
 import Data.Text (Text, pack)
+import Debug.Trace
 import GHC.Word qualified
 import Grid
 import Lens.Micro ((^.), (.~), (&))
@@ -55,6 +59,7 @@ import UnitTypeId
 import Utils
 
 import Observation
+import Data.Kind (Type)
 --type Observation = A.Observation
 
 type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
@@ -74,25 +79,26 @@ obsApplyAction a = addOrder (unit ^. #tag) ability
     unit = getExecutor a
     ability = getCmd a
 
-command :: [Action] -> StepMonad ()
+command :: AgentDynamicState d => [Action] -> StepMonad d ()
 command acts = do
-   (obs, grid) <- get
+   when (not. null $ acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+   dyn <- agentGet
 
-   let obs' = foldl' (flip obsApplyAction) obs acts
-   put (obs', grid)
+   let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
+   put $ setObs obs' dyn
 
    tell (StepPlan acts [] [])
 
-debug :: [DebugCommand] -> StepMonad ()
+debug :: [DebugCommand] -> StepMonad dyn ()
 debug acts = tell (StepPlan [] [] acts)
 
-debugText :: String -> C.Point -> StepMonad ()
+debugText :: String -> C.Point -> StepMonad dyn ()
 debugText text p = debug [DebugText (pack text) p]
 
-debugTexts :: [(String, C.Point)] -> StepMonad ()
+debugTexts :: [(String, C.Point)] -> StepMonad dyn ()
 debugTexts = mapM_ (uncurry debugText)
 
-agentChat :: String -> StepMonad ()
+agentChat :: String -> StepMonad dyn ()
 agentChat msg = tell (StepPlan [] [pack msg] [])
 
 instance Semigroup StepPlan where
@@ -109,38 +115,49 @@ data StaticInfo = StaticInfo
     expandsPos :: [TilePos]
   }
 
-type DynamicState = (Observation, Grid)
+class AgentDynamicState dyn where
+  getObs :: dyn -> Observation
+  getGrid :: dyn -> Grid
 
-type StepMonad a = WriterT StepPlan (StateT DynamicState (Reader (StaticInfo, UnitAbilities))) a
-type MaybeStepMonad a = MaybeT (WriterT StepPlan (StateT DynamicState (Reader (StaticInfo, UnitAbilities)))) a
+  setObs :: Observation -> dyn -> dyn
+  setGrid :: Grid -> dyn -> dyn
 
-agentAsk :: StepMonad (StaticInfo, UnitAbilities)
+  dsUpdate :: Observation -> Grid -> dyn -> dyn
+
+agentAsk :: StepMonad dyn (StaticInfo, UnitAbilities)
 agentAsk = lift $ lift ask
 
-agentAbilities :: StepMonad UnitAbilities
+agentAbilities :: StepMonad dyn UnitAbilities
 agentAbilities = agentAsk <&> snd
 
-agentObs :: StepMonad Observation
-agentObs = agentGet <&> fst
+agentObs :: AgentDynamicState dyn => StepMonad dyn Observation
+agentObs = agentGet <&> getObs
 
-agentStatic :: StepMonad StaticInfo
+agentStatic :: StepMonad dyn StaticInfo
 agentStatic = agentAsk <&> fst
 
-agentGet :: StepMonad DynamicState
+agentGet :: StepMonad dyn dyn
 agentGet = lift get
 
-agentPut :: DynamicState -> StepMonad ()
-agentPut x@(_, grid) = lift $ put x
+agentPut :: dyn -> StepMonad dyn ()
+agentPut = lift . put
 
-runStep :: StaticInfo -> UnitAbilities -> DynamicState -> StepMonad a -> (a, StepPlan, Grid)
+--agentDsUpdate :: Observation -> Grid -> StepMonad dyn
+
+runStep :: (Agent a d, AgentDynamicState d) => StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
 --runStep staticInfo dynamicState stepMonad = runReaderT (runStateT (runWriterT stepMonad) dynamicState) staticInfo
 runStep staticInfo abilities dynamicState stepMonad =
-  let writerRes = runWriterT stepMonad
-      stateRes = runStateT writerRes dynamicState
-      ((a, stepPlan), (obs', grid')) = runReader stateRes (staticInfo, abilities)
-  in (a, stepPlan, grid')
+ let writerRes = runWriterT stepMonad
+     stateRes = runStateT writerRes dynamicState
+     ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
+ in (a, stepPlan, dyn')
+class (AgentDynamicState d) => Agent a d | a -> d where
+    type DynamicState a :: Type
 
-class Agent a where
     agentRace :: a -> C.Race
-    agentStep :: a -> StepMonad a
-    agentDebug :: a -> IO ()
+    agentStep :: a -> StepMonad d a
+
+    makeDynamicState :: a -> Observation -> Grid -> d
+
+type StepMonad d r = WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities))) r
+type MaybeStepMonad d a = MaybeT (WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))) a
