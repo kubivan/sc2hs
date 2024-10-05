@@ -320,9 +320,9 @@ reassignIdleProbes = do
 
       idleWorkers = runC $ probes .| unitIdleC
 
-  trace ("nexuses: " ++ show (length nexusesUnder, length nexusesIdeal, length nexusesOver)) (return ())
+  --trace ("nexuses: " ++ show (length nexusesUnder, length nexusesIdeal, length nexusesOver)) (return ())
   if not . null $ assimUnder then do
-    trace ("staffing assimilators: taking idle + nexuses") (return ())
+    trace "staffing assimilators: taking idle + nexuses" (return ())
     let probePool = idleWorkers ++ workersFromOverAssims ++ workersAroundIdealAndOverStaffedNexuses
         workersFromOverAssims = getOverWorkersFrom assimOver vespeneHarversters
         workersAroundIdealAndOverStaffedNexuses = runC $ CL.sourceList mineralHarvesters
@@ -331,7 +331,7 @@ reassignIdleProbes = do
     command [UnitCommand HarvestGatherProbe harvester assimilator
             | (assimilator, harvester) <- zip assimUnder probePool]
   else if not . null $ nexusesUnder then  do -- assimilators are staffed, deal with nexuses
-    trace ("staffing nexusesUnder") (return ())
+    trace "staffing nexusesUnder" (return ())
     let probePool = idleWorkers ++ workersFromOverAssims ++ workersAroundOverNexuses
         workersFromOverAssims = getOverWorkersFrom assimOver vespeneHarversters
         workersAroundOverNexuses = getOverWorkersFrom nexusesOver mineralHarvesters
@@ -340,14 +340,13 @@ reassignIdleProbes = do
     command [UnitCommand HarvestGatherProbe harvester (closestMineralTo nexus)
             | (nexus, harvester) <- zip nexusesUnder probePool]
   else do
-    trace ("staffing: just idle probes") (return ())
+    trace "staffing: just idle probes" (return ())
     let closestMineral to = runConduitPure $ obsUnitsC obs .| filterC isMineral .| closestC to
     --TODO: obsolete, rewrite
     command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle ) | idle <- idleWorkers]
 
 buildPylons :: MaybeStepMonad ()
 buildPylons = do
-  si <- lift agentStatic
   (obs, grid) <- lift agentGet
 
   let foodCap = fromIntegral $ obs ^. (#playerCommon . #foodCap) -- `Utils.debug` ("minerals: " ++ show minerals)

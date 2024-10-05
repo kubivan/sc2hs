@@ -159,7 +159,7 @@ gameStepLoop conn si grid agent = do
       --liftIO . print $ cmds
       liftIO . agentDebug $ agent'
       let gameLoop = obs ^. #gameLoop
-      liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+      --liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
       --liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
       _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestAction cmds chats
@@ -174,7 +174,7 @@ startClient participants = runHost host where
   runHost (Proto.Player agent) = do
     ph <- startStarCraft port
     -- tryConnect 60
-    threadDelay 30000000
+    threadDelay 25000000
     WS.runClient hostName port "/sc2api" clientApp
     where
       clientApp conn = do
