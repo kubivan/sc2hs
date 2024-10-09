@@ -36,6 +36,7 @@ where
 import AbilityId qualified
 import Actions (Action, DebugCommand(..), getCmd, getExecutor)
 import Control.Monad.Identity (Identity (..))
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
@@ -81,7 +82,7 @@ obsApplyAction a = addOrder (unit ^. #tag) ability
 
 command :: AgentDynamicState d => [Action] -> StepMonad d ()
 command acts = do
-   when (not. null $ acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+   unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
    dyn <- agentGet
 
    let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
