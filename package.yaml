@@ -37,6 +37,8 @@ dependencies:
 - unordered-containers
 - hashable
 - transformers
+- async
+- loop
 
 ghc-options:
 - -Wall

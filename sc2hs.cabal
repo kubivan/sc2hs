@@ -44,13 +44,15 @@ library
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XOverloadedStrings
   build-depends:
-      base >=4.12
+      async
+    , base >=4.12
     , bytestring
     , conduit
     , containers
     , directory
     , filepath
     , hashable
+    , loop
     , microlens
     , mtl
     , process
@@ -72,13 +74,15 @@ executable sc2hs-exe
       app
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XOverloadedStrings -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.12
+      async
+    , base >=4.12
     , bytestring
     , conduit
     , containers
     , directory
     , filepath
     , hashable
+    , loop
     , microlens
     , mtl
     , process
@@ -102,7 +106,8 @@ test-suite sc2hs-test
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XOverloadedStrings -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.12
+      async
+    , base >=4.12
     , bytestring
     , conduit
     , containers
@@ -110,6 +115,7 @@ test-suite sc2hs-test
     , filepath
     , hashable
     , hspec
+    , loop
     , microlens
     , mtl
     , process

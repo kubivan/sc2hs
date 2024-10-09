@@ -1,9 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE GADTs #-}
 
@@ -11,7 +9,9 @@ module Proto ( requestPing
              , requestAvailableMaps
              , requestCreateGame
              , Map(LocalMap)
-             , requestJoinGame
+             --TODO: remove code duplication
+             , requestJoinGame1vs1
+             , requestJoinGameVsAi
              , requestObservation
              , requestStep
              , requestAction
@@ -49,10 +49,9 @@ import qualified Proto.S2clientprotocol.Query as A
 
 import GHC.Word (Word64)
 import Data.ByteString (ByteString)
-
---        WS.sendBinaryData conn $ encodeMessage Proto.requestAvailableMaps
---        responseMaps <- WS.receiveData conn
---        testPrint $ decodeMessage responseMaps
+import GHC.Int (Int32)
+import Utils
+import Debug.Trace (trace)
 
 newtype ProtoException = ProtoException String deriving Show
 instance Exception ProtoException
@@ -64,7 +63,7 @@ decodeMessageThrowing :: BS.ByteString -> IO A.Response
 decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
 
 sendRequestSync :: WS.Connection -> A.Request -> IO A.Response
-sendRequestSync conn request = WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing
+sendRequestSync conn request = WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing --`Utils.dbg` show request
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123
@@ -100,8 +99,25 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage& #createGame .~ mo
     toPlayerSetup (Proto.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.Hard --TODO: computer
     toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ Participant
 
-requestJoinGame :: C.Race -> A.Request
-requestJoinGame race = defMessage & #joinGame .~ mods defMessage
+requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> C.Race -> A.Request
+requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage
+  where
+    mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
+
+    setParticipation :: C.Race -> A.RequestJoinGame -> A.RequestJoinGame
+    setParticipation r = #race .~ r
+
+    setOptions :: A.RequestJoinGame -> A.RequestJoinGame
+    setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)
+
+    setPortsServer :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
+    setPortsServer (gamePort, basePort) = #serverPorts .~ (defMessage & #gamePort .~ gamePort & #basePort .~ basePort)
+
+    setPortsClient :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
+    setPortsClient (gamePort, basePort)= #clientPorts .~ [defMessage & #gamePort .~ gamePort & #basePort .~ basePort]
+
+requestJoinGameVsAi :: C.Race -> A.Request
+requestJoinGameVsAi race = defMessage & #joinGame .~ mods defMessage
   where
     mods = setParticipation race . setOptions
 
@@ -109,7 +125,7 @@ requestJoinGame race = defMessage & #joinGame .~ mods defMessage
     setParticipation r = #race .~ r
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
-    setOptions =  #options .~ (defMessage & #raw .~ True & #score .~ True)
+    setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)
 
 requestObservation :: A.Request
 requestObservation = defMessage & #observation .~ defMessage
