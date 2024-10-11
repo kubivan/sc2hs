@@ -80,20 +80,10 @@ portHost = 8167
 portClient :: GHC.Int.Int32
 portClient = portHost + 1 --8168
 
+serverPortSet :: (Int32, Int32)
 serverPortSet = (portHost + 2, portHost + 3)
+clientPortSet :: (Int32, Int32)
 clientPortSet = (portHost + 4, portHost + 5)
-
-mapIOError :: IO a -> ExceptT String IO a
-mapIOError = ExceptT . fmap (first show) . tryIOError
-
-decodeMessage' :: B.ByteString -> ExceptT String IO S.Response
-decodeMessage' msg = either throwError return (decodeMessage msg)
-
-receiveData' :: WS.Connection -> ExceptT String IO B.ByteString
-receiveData' conn = mapIOError $ WS.receiveData conn
-
-decodeResponseIO :: WS.Connection -> ExceptT String IO S.Response
-decodeResponseIO conn = receiveData' conn >>= decodeMessage'
 
 startStarCraft :: Int32 -> IO ProcessHandle
 startStarCraft port = do
@@ -106,16 +96,9 @@ startStarCraft port = do
 
   return sc2Handle
 
-sc2Observation :: WS.Connection -> ExceptT String IO (Observation, [S.PlayerResult])
-sc2Observation conn = do
-  liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestObservation
-  responseObs <- decodeResponseIO conn
-  return (responseObs ^. #observation . #observation, responseObs ^. #observation . #playerResult)
-
-unitAbilitiesRaw :: WS.Connection -> Observation -> ExceptT String IO [S.ResponseQueryAvailableAbilities]
+unitAbilitiesRaw :: WS.Connection -> Observation -> IO [S.ResponseQueryAvailableAbilities]
 unitAbilitiesRaw conn obs = do
-  liftIO . WS.sendBinaryData conn . encodeMessage $ Proto.requestUnitAbilities obs
-  resp <- decodeResponseIO conn
+  resp <- Proto.sendRequestSync conn $ Proto.requestUnitAbilities obs
   return $ resp ^. #query . #abilities
 
 unitAbilities :: [S.ResponseQueryAvailableAbilities] -> UnitAbilities
@@ -141,21 +124,20 @@ mergeGrids placementGrid pathingGrid =
       | pathing == ' ' && placement == '#' = '/'
       | otherwise = placement
 
-gameStepLoop :: Agent agent d => Connection -> Agent.StaticInfo -> d -> agent -> ExceptT String IO [S.PlayerResult]
+gameStepLoop :: Agent agent d => Connection -> Agent.StaticInfo -> d -> agent -> IO [S.PlayerResult]
 gameStepLoop conn si ds agent = do
-  --liftIO $ putStrLn "step"
-  (obs, gameOver) <- sc2Observation conn
-
-  abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
+  responseObs <- Proto.sendRequestSync conn Proto.requestObservation
+  let gameOver = responseObs ^. #observation . #playerResult
 
   if not (null gameOver)
     then return gameOver
     else do
-      let (agent', StepPlan cmds chats dbgs, ds') = runStep si abilities (setObs obs ds) (Agent.agentStep agent)
-      --liftIO . print $ cmds
-      let gameLoop = obs ^. #gameLoop
-          grid' = getGrid ds'
-      --liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") grid'
+      let obs = responseObs ^. #observation . #observation
+          gameLoop = obs ^. #gameLoop
+
+      abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
+      (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
+      --liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") (getGrid ds')
       --liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
       --Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
       _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestAction cmds chats
@@ -205,11 +187,11 @@ waitForGameCreation signals = do_wait
       created <- readMVar (gameCreated signals)
       unless created (threadDelay 500 >> do_wait)
 
-runHost :: Proto.Participant -> [Proto.Participant] -> GameSignals -> (A.Race -> S.Request) -> IO (Either String [PlayerResult])
+runHost :: Proto.Participant -> [Proto.Participant] -> GameSignals -> (A.Race -> S.Request) -> IO [PlayerResult]
 runHost (Proto.Computer _) _ _ _ = Prelude.error "computer cannot be the host"
 runHost (Proto.Player agent) participants signals joinFunc = do
   trace "starting sc2 host" return ()
-  ph <- startStarCraft portHost
+  _ <- startStarCraft portHost
   -- tryConnect 60
   threadDelay 25000000
 
@@ -236,7 +218,7 @@ runHost (Proto.Player agent) participants signals joinFunc = do
 
       runGameLoop conn signals agent playerId
 
-runGameLoop :: Agent a d => Connection -> GameSignals -> a -> Word32 -> IO (Either String [PlayerResult])
+runGameLoop :: Agent a d => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
 runGameLoop conn signals agent playerId = do
 
   putStrLn $ "Player" ++ show playerId ++ "waiting for host to create the game..."
@@ -263,16 +245,16 @@ runGameLoop conn signals agent playerId = do
       si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
       dynamicState = makeDynamicState agent obsRaw grid
 
-  runExceptT $ gameStepLoop conn si dynamicState agent
+  gameStepLoop conn si dynamicState agent
 
-clientRunGame :: Proto.Participant -> GameSignals -> (A.Race -> Request) -> IO (Either String [PlayerResult])
-clientRunGame (Proto.Computer _) signals _ = return $ Left "!!! this should never happend: computer has not been split out."
+clientRunGame :: Proto.Participant -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
+clientRunGame (Proto.Computer _) signals _ = Prelude.error "!!! this should never happend: computer has not been split out."
 clientRunGame (Proto.Player agent) signals joinFunc = do
   trace "starting sc2 for second player" return ()
   threadId <- myThreadId
   putStrLn $ "Current thread ID: " ++ show threadId
 
-  ph <- startStarCraft portClient
+  _ <- startStarCraft portClient
   threadDelay 25000000
   trace "second sc2 started" return ()
 
@@ -303,9 +285,7 @@ runGame participants = do
 
   gameOver <- wait asyncHostTask
   mapM_ wait asyncClientTasks
-  case gameOver of
-    Left e -> putStrLn $ "game failed: " ++ e
-    Right gameResults -> putStrLn $ "Game Ended :" ++ show gameResults
+  putStrLn $ "Game Ended :" ++ show gameOver
 
 --data AnyAgent = forall a. Agent a => AnyAgent a
 --data AnyAgent = forall a dyn. (Agent a dyn) => AnyAgent a dyn
