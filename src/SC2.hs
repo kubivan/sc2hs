@@ -93,8 +93,33 @@ startStarCraft port = do
       proc = (shell $ sc2 ++ " " ++ unwords args) {cwd = cwd}
 
   (_, _, _, sc2Handle) <- createProcess proc
-
+  waitForSC2WebSocket hostName port
   return sc2Handle
+  where
+    pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
+
+    -- Function to check if the WebSocket connection is open
+    isWebSocketOpen :: String -> Int -> IO Bool
+    isWebSocketOpen host port = do
+      result <- try (WS.runClient host port "/sc2api" (`Proto.sendRequestSync` Proto.requestPing)) :: IO (Either SomeException Response)
+      case result of
+        Left err -> do
+            putStrLn $ "Connection failed: " ++ show err
+            return False
+        Right r -> trace (show r)return True
+
+      --return $ either (const False) (const True) result
+
+    -- Function to wait until the SC2 WebSocket connection is available
+    waitForSC2WebSocket :: String -> Int32 -> IO ()
+    waitForSC2WebSocket host port = loop where
+      loop = do
+        isOpen <- isWebSocketOpen host (fromIntegral port)
+        if isOpen
+          then putStrLn "SC2 WebSocket connection is open and ready."
+          else do
+            threadDelay pollInterval
+            loop
 
 unitAbilitiesRaw :: WS.Connection -> Observation -> IO [S.ResponseQueryAvailableAbilities]
 unitAbilitiesRaw conn obs = do
@@ -255,7 +280,6 @@ clientRunGame (Proto.Player agent) signals joinFunc = do
   putStrLn $ "Current thread ID: " ++ show threadId
 
   _ <- startStarCraft portClient
-  threadDelay 25000000
   trace "second sc2 started" return ()
 
   waitForGameCreation signals
