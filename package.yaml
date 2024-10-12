@@ -67,6 +67,7 @@ executables:
     - sc2hs
     - transformers
     - safe
+    - random
 
 tests:
   sc2hs-test:

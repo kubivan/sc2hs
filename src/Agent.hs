@@ -158,7 +158,7 @@ class (AgentDynamicState d) => Agent a d | a -> d where
     agentRace :: a -> C.Race
     agentStep :: a -> StepMonad d a
 
-    makeDynamicState :: a -> Observation -> Grid -> d
+    makeDynamicState :: a -> Observation -> Grid -> IO d
 
 type StepMonad d r = WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities))) r
 type MaybeStepMonad d a = MaybeT (WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))) a

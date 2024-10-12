@@ -40,14 +40,14 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel, canPlaceBuilding, gridPlace)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel, canPlaceBuilding, gridPlace, gridPixelSafe)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Lens.Micro.Extras(view)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Debug_Fields (pos, unitTag, unitType)
 import Proto.S2clientprotocol.Query_Fields (abilities)
-import Proto.S2clientprotocol.Raw as R
+import qualified Proto.S2clientprotocol.Raw as R
 import Proto.S2clientprotocol.Raw_Fields as R
   ( abilityId,
     alliance,
@@ -74,18 +74,36 @@ import Conduit (filterC)
 import Agent
 import Agent (AgentDynamicState(getObs, dsUpdate))
 
+import System.Random (Random, StdGen, randomR, mkStdGen, newStdGen, next)
+import qualified Data.Sequence as Seq
+
 type BuildOrder = [UnitTypeId]
 
-data TestDynamicState = TestDynamicState Observation Grid
+data TestDynamicState = TestDynamicState
+  { observation :: Observation
+  , grid        :: Grid
+  , randGen     :: StdGen
+  }
 
+-- Update the AgentDynamicState instance for TestDynamicState
 instance AgentDynamicState TestDynamicState where
-  getObs (TestDynamicState obs grid) = obs
-  getGrid (TestDynamicState obs grid) = grid
+  getObs (TestDynamicState obs _ _) = obs
+  getGrid (TestDynamicState _ grid _) = grid
 
-  setObs obs (TestDynamicState _ grid) = TestDynamicState obs grid
-  setGrid grid (TestDynamicState obs _) = TestDynamicState obs grid
+  setObs obs (TestDynamicState _ grid gen) = TestDynamicState obs grid gen
+  setGrid grid (TestDynamicState obs _ gen) = TestDynamicState obs grid gen
 
-  dsUpdate obs grid _ = TestDynamicState obs grid
+  dsUpdate obs grid (TestDynamicState _ _ gen) = TestDynamicState obs grid gen
+
+
+setRandGen gen (TestDynamicState obs grid _) = TestDynamicState obs grid gen
+
+
+-- Adding a function to retrieve random values from the dynamic state
+getRandValue :: (Random a) => (a, a) -> TestDynamicState -> (a, TestDynamicState)
+getRandValue range (TestDynamicState obs grid gen) =
+  let (value, newGen) = randomR range gen
+  in (value, TestDynamicState obs grid newGen)
 
 data TestBot
   = Opening
@@ -275,7 +293,7 @@ unitIsHarvesting u = length orders == 1 && (HarvestGatherProbe `elem` orders || 
 
 getTargetUnitTag :: Units.UnitOrder -> Maybe UnitTag
 getTargetUnitTag unitOrder = case unitOrder ^. #maybe'target of
-  Just (UnitOrder'TargetUnitTag tag) -> Just tag
+  Just (R.UnitOrder'TargetUnitTag tag) -> Just tag
   _ -> Nothing
 
 unitIsAssignedTo :: Units.Unit -> Units.Unit -> Bool
@@ -423,8 +441,72 @@ agentUpdateGrid f = do
   ds <- agentGet
   agentPut $ setGrid (f (getGrid ds)) ds
 
+randomArmyFiddling :: StepMonad TestDynamicState ()
+randomArmyFiddling = do
+  obs <- agentObs
+  ds <- agentGet
+  let rnd = randGen ds
+
+  -- Retrieve army units and enemies
+  let army = runC $ unitsSelf obs .| filterC isArmyUnit
+      enemies = runC $ obsUnitsC obs .| filterC isEnemy
+      grid = getGrid ds  -- Retrieve the grid from the dynamic state
+
+  -- Execute a random command for each unit in the army
+  mapM_ (randCmd grid enemies) army
+
+  -- Update the random generator in the dynamic state
+  agentPut $ TestDynamicState { observation = obs, grid = grid, randGen = snd $ next rnd }  -- Update the random generator after use
+
+-- Generate a random command for a unit
+randCmd :: Grid -> [Unit] -> Unit -> StepMonad TestDynamicState ()
+randCmd grid enemies u = do
+  -- Check if there's an enemy in range
+  case enemyInRange u enemies of
+    Just e -> command [Actions.UnitCommand Attack u e]  -- Attack the enemy
+    Nothing -> do
+      -- Move to a random neighboring position if no enemy is in range
+      ds <- agentGet
+      rnd <- randGen <$> agentGet   -- Retrieve the current random generator
+      let (randPos, newGen) = randomNeighborPos u grid rnd
+      agentPut $ setRandGen newGen ds  -- Update the random generator in the dynamic state
+      command [PointCommand Move u randPos]  -- Move to the random position
+
+-- Get a random neighboring position for a unit
+randomNeighborPos :: Unit -> Grid -> StdGen -> (Point2D, StdGen)
+randomNeighborPos u grid rnd =
+  let ns = neighbors (tilePos (u ^. #pos)) grid  -- Get valid neighbors
+      (randIndex, newGen) = randomR (0, Seq.length ns - 1) rnd
+  in (toPoint2D $ Seq.index ns randIndex, newGen)  -- Return a random neighbor and updated generator
+
+-- Get neighboring tiles
+neighbors :: TilePos -> Grid -> Seq.Seq TilePos
+neighbors (x, y) grid =
+  Seq.fromList
+    [ (x + dx, y + dy)
+    | dx <- [-1, 0, 1]
+    , dy <- [-1, 0, 1]
+    , dx /= 0 || dy /= 0  -- Exclude points on the same vertical line
+    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , pixel /= Just '#'
+    ]
+
+-- Check if an enemy is in range
+enemyInRange :: Unit -> [Unit] -> Maybe Unit
+enemyInRange u enemies =
+  headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies  -- Stalker attack range of 6
+
+-- Define if a unit is considered an army unit
+isArmyUnit :: Unit -> Bool
+isArmyUnit u = ProtossStalker == toEnum' (u ^. #unitType)
+
+-- Define an enemy unit filter
+isEnemy :: Unit -> Bool
+isEnemy u = (u ^. #alliance) == R.Enemy  -- Enemy alliance code
+
 instance Agent TestBot TestDynamicState where
-  makeDynamicState _ obs grid = TestDynamicState obs grid
+  --makeDynamicState :: TestBot -> Observation -> Grid -> IO TestDynamicState
+  makeDynamicState _ obs grid = TestDynamicState obs grid <$> newStdGen
 
   agentRace _ = C.Protoss
   agentStep Opening = do
@@ -493,6 +575,7 @@ instance Agent TestBot TestDynamicState where
     command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) gate | gate <- idleGates]
 
     trainProbes
+    randomArmyFiddling
 
     return $ BuildArmyAndWin obs
   --type DynamicState TestBot = TestDynamicState

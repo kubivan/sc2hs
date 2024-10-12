@@ -87,6 +87,7 @@ executable sc2hs-exe
     , mtl
     , process
     , proto-lens
+    , random
     , safe
     , sc2-proto
     , sc2hs

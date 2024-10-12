@@ -268,7 +268,8 @@ runGameLoop conn signals agent playerId = do
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
-      dynamicState = makeDynamicState agent obsRaw grid
+
+  dynamicState <- makeDynamicState agent obsRaw grid
 
   gameStepLoop conn si dynamicState agent
 
