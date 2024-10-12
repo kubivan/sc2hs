@@ -267,7 +267,8 @@ runGameLoop conn signals agent playerId = do
       grid = mergeGrids (gridFromImage $ gi ^. #startRaw . #placementGrid) (gridFromImage $ gi ^. #startRaw . #pathingGrid)
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
-      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands
+      enemyStart = tilePos $ enemyBaseLocation gi obsRaw
+      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart
 
   dynamicState <- makeDynamicState agent obsRaw grid
 

@@ -113,7 +113,8 @@ data StaticInfo = StaticInfo
     playerInfo :: A.PlayerInfo,
     unitTraits :: UnitTraits,
     heightMap :: Grid,
-    expandsPos :: [TilePos]
+    expandsPos :: [TilePos],
+    enemyStartLocation :: TilePos
   }
 
 class AgentDynamicState dyn where
