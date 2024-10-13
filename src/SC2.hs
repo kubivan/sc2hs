@@ -70,6 +70,7 @@ import qualified Proto.S2clientprotocol.Common as A
 import qualified Network.WebSockets as A
 import qualified GHC.Int
 import Data.Int (Int32)
+import Grid (gridMerge, pixelIsRamp)
 
 hostName :: String
 hostName = "127.0.0.1"
@@ -140,14 +141,6 @@ unitsData :: [S.UnitTypeData] -> UnitTraits
 unitsData raw = HashMap.fromList . runConduitPure $ yieldMany raw
     .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
     .| sinkList
-
-
-mergeGrids:: Grid -> Grid -> Grid
-mergeGrids placementGrid pathingGrid =
-  V.fromList [ V.fromList [ pixelFunc (gridPixel placementGrid (x,y)) (gridPixel pathingGrid (x,y)) | x <- [0..(gridW placementGrid - 1)]] | y <- [0..(gridH placementGrid - 1)]] where
-    pixelFunc placement pathing
-      | pathing == ' ' && placement == '#' = '/'
-      | otherwise = placement
 
 gameStepLoop :: Agent agent d => Connection -> Agent.StaticInfo -> d -> agent -> IO [S.PlayerResult]
 gameStepLoop conn si ds agent = do
@@ -264,7 +257,7 @@ runGameLoop conn signals agent playerId = do
   let heightMap = gridFromImage $ gi ^. #startRaw . #terrainHeight
       obsRaw = obs0 ^. #observation . #observation
       unitTraits = unitsData $ gameDataResp ^. #data' . #units
-      grid = mergeGrids (gridFromImage $ gi ^. #startRaw . #placementGrid) (gridFromImage $ gi ^. #startRaw . #pathingGrid)
+      grid = gridMerge pixelIsRamp (gridFromImage $ gi ^. #startRaw . #placementGrid) (gridFromImage $ gi ^. #startRaw . #pathingGrid)
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw

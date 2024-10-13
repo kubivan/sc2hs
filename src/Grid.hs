@@ -16,6 +16,8 @@ module Grid
     updatePixel,
     gridPixel,
     gridPixelSafe,
+    gridMerge,
+    pixelIsRamp,
     gridW,
     gridH
   )
@@ -67,6 +69,15 @@ gridFromImage image = decodeImageData width height bpp bs
     height = fromIntegral $ image ^. (P.size . P.y)
     bpp = fromIntegral $ image ^. P.bitsPerPixel
     bs = image ^. P.data' :: BS.ByteString
+
+pixelIsRamp :: Char -> Char -> Char
+pixelIsRamp placement pathing
+  | pathing == ' ' && placement == '#' = '/'
+  | otherwise = placement
+
+gridMerge :: (Char -> Char -> Char) -> Grid -> Grid -> Grid
+gridMerge pixelFunc placementGrid pathingGrid =
+  V.fromList [ V.fromList [ pixelFunc (gridPixel placementGrid (x,y)) (gridPixel pathingGrid (x,y)) | x <- [0..(gridW placementGrid - 1)]] | y <- [0..(gridH placementGrid - 1)]]
 
 gridToFile :: FilePath -> Grid -> IO ()
 gridToFile filePath grid =
