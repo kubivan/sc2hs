@@ -41,6 +41,7 @@ import Data.Foldable (toList)
 
 import qualified Data.Sequence as Seq -- (Seq (..), empty, (|>))
 import UnitTypeId (UnitTypeId)
+import Debug.Trace (trace)
 
 type Grid = V.Vector (V.Vector Char)
 
@@ -163,4 +164,5 @@ gridPlace u (cx, cy) g = foldl (\accGrid (x, y, mark) -> updatePixel accGrid (cx
 
 -- Update a cell in the Grid
 updatePixel :: Grid -> TilePos -> Char -> Grid
-updatePixel grid (i, j) value = grid V.// [(j, (grid V.! j) V.// [(i, value)])]
+updatePixel grid p@(i, j) value = if currentPixel == '#' then grid else grid V.// [(j, (grid V.! j) V.// [(i, value)])] where
+  currentPixel = gridPixel grid p
