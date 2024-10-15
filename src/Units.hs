@@ -19,6 +19,8 @@ module Units
     isMineral,
     isGeyser,
     isAssimilator,
+    isBuildingType,
+    isBuilding,
     (.|),
     dbscan,
     PointLabel (..),
@@ -54,6 +56,9 @@ import Conduit (Identity)
 import Grid (Grid, canPlaceBuilding, gridBfs)
 import Footprint (getFootprint)
 import Data.Maybe (isJust, catMaybes, mapMaybe)
+import AbilityId (AbilityId)
+import Data.List (stripPrefix)
+import Text.Read (readMaybe)
 type Unit = PR.Unit
 type UnitOrder = PR.UnitOrder
 
@@ -62,6 +67,14 @@ toEnum' = toEnum . fromIntegral
 
 fromEnum' :: Enum e => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
+
+isBuildingType :: UnitTypeId -> Bool
+isBuildingType utype = isJust (readMaybe =<< buildCmdStr :: Maybe AbilityId)
+  where
+    buildCmdStr = ("Build" ++) <$> stripPrefix "Protoss" (show utype)
+
+isBuilding :: Unit -> Bool
+isBuilding = isBuildingType . toEnum' . view PR.unitType
 
 isMineral :: PR.Unit -> Bool
 isMineral u = utype == NeutralMineralfield

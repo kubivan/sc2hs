@@ -19,13 +19,14 @@ import qualified Data.Map as Map
 import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 import Proto.S2clientprotocol.Common as C
 
-import Utils(TilePos, tilePos, distSquaredTile, distSquared)
+import Utils(TilePos, tilePos, distSquared)
 import Data.Maybe (fromJust)
 import Lens.Micro.Extras(view)
 
 import Data.Monoid
 import Test.Hspec (shouldSatisfy)
 import Proto.S2clientprotocol.Debug_Fields (unitType)
+import Units (isBuildingType)
 
 fromEither :: Either String a -> a
 fromEither (Left err) = error err
@@ -53,6 +54,13 @@ spec =
 
       let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralfield
       length mineralFields `shouldBe` 60
+
+      isBuildingType ProtossNexus `shouldBe` True
+      isBuildingType ProtossAssimilator `shouldBe` True
+
+      isBuildingType ProtossCyberneticscore `shouldBe` True
+
+      isBuildingType ProtossStalker `shouldBe` False
 
     it "dbscan tests" $ \(obs,gi) -> do
       --print obs

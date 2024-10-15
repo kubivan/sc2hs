@@ -473,7 +473,7 @@ data AbilityId =
  | UnloadunitNydasnetwork  -- 1440,   Target: None.
  | UnloadunitOverlord  -- 1409,   Target: None.
  | UnloadunitWarpprism  -- 914,    Target: None.
- deriving (Show, Eq)
+ deriving (Show, Eq, Read)
 
 instance Enum AbilityId where
 
