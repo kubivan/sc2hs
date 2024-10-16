@@ -82,7 +82,7 @@ obsApplyAction a = addOrder (unit ^. #tag) ability
 
 command :: AgentDynamicState d => [Action] -> StepMonad d ()
 command acts = do
-   unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+   --unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
    dyn <- agentGet
 
    let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
