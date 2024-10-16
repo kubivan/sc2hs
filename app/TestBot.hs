@@ -40,7 +40,7 @@ import Data.Vector qualified as V
 import Footprint
 import GHC.Real (fromIntegral)
 import GHC.Word qualified
-import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel, canPlaceBuilding, gridPlace, gridPixelSafe)
+import Grid (Grid(..), addMark, findPlacementPoint, findPlacementPointInRadius, printGrid, gridToFile, gridToStr, gridFromImage, gridPixel, canPlaceBuilding, gridPlace, gridPixelSafe, gridMerge, pixelIsRamp)
 import Lens.Micro (to, (&), (.~), (^.), (^..), filtered, (%~))
 import Lens.Micro.Extras(view)
 import Proto.S2clientprotocol.Common as C
@@ -76,6 +76,9 @@ import Agent (AgentDynamicState(getObs, dsUpdate))
 
 import System.Random (Random, StdGen, randomR, mkStdGen, newStdGen, next)
 import qualified Data.Sequence as Seq
+import Text.Read (readMaybe)
+import Data.List (stripPrefix)
+import Observation (buildingsSelfChanged)
 
 type BuildOrder = [UnitTypeId]
 
@@ -435,7 +438,20 @@ splitAffordable bo reserved = agentGet >>=(\ds -> go bo Data.Sequence.empty (get
     tryCreate :: AgentDynamicState d => Grid -> Cost -> UnitTypeId -> StepMonad d (Maybe (Action, Cost, Grid))
     tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
-debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (c ^. #pos), c ^. #pos) | c <- runC $ unitsSelf obs]
+debugUnitPos :: WriterT   StepPlan   (StateT TestDynamicState (Reader (StaticInfo, UnitAbilities)))   ()
+debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
+
+agentResetGrid :: AgentDynamicState d => StepMonad d ()
+agentResetGrid = do
+  obs <- agentObs
+  ds <- agentGet
+  gridPlacementStart <- gridFromImage . view (#startRaw . #placementGrid). gameInfo <$> agentStatic
+  gridPathingStart <- gridFromImage .view (#startRaw . #pathingGrid). gameInfo <$> agentStatic
+
+  let gridMerged = gridMerge pixelIsRamp gridPlacementStart gridPathingStart
+      grid' = gridUpdate obs gridMerged
+
+  agentPut $ setGrid grid' ds
 
 agentUpdateGrid f = do
   ds <- agentGet
@@ -505,6 +521,7 @@ isEnemy :: Unit -> Bool
 isEnemy u = (u ^. #alliance) == R.Enemy  -- Enemy alliance code
 
 instance Agent TestBot TestDynamicState where
+  type DynamicState TestBot = TestDynamicState
   --makeDynamicState :: TestBot -> Observation -> Grid -> IO TestDynamicState
   makeDynamicState _ obs grid = TestDynamicState obs grid <$> newStdGen
 
@@ -532,34 +549,37 @@ instance Agent TestBot TestDynamicState where
     ds <- agentGet
     let obs = getObs ds
     abilities <- agentAbilities
-    if unitsChanged obs obsPrev || abilities /= abilitiesPrev then do
-      agentChat "unitsChanged !!!: "
-      agentPut $ setGrid (gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) ds -- >> command [Chat $ pack "grid updated"]
-      (queue', interruptedAbilities) <- processQueue queue ([], [])
-      trace ("queue' : " ++ (show . length $ queue') ++ " interrupted: " ++ (show . length $ interruptedAbilities)) (return ())
-      agentUpdateGrid (\g -> foldl (\ga (u, p) -> gridPlace u p ga) g [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue'])
-      let reservedResources = actionsCost si queue'
-      let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
-      unless (null interruptedOrders) $
-        agentChat ("interrupted: " ++ show interruptedOrders)
+    when (buildingsSelfChanged obs obsPrev) $ do --abilities /= abilitiesPrev then do
+      agentChat "buildingsSelfChanged !!!: "
+      agentResetGrid
+    (queue', interruptedAbilities) <- processQueue queue ([], [])
 
-      (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
-      trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
+    -- add phantom building from the planner queue
+    agentUpdateGrid (\g -> foldl (\ga (u, p) -> gridPlace u p ga) g [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue'])
+    let reservedResources = actionsCost si queue'
+        interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
+    unless (null interruptedOrders) $
+      agentChat ("interrupted: " ++ show interruptedOrders)
 
-      unless (null affordableActions) $ do
-       agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
+    (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
+    -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
 
-      debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10) | a <- affordableActions]
-      command affordableActions
-      if null orders' then -- transit
-        return $ BuildArmyAndWin obs
-      else
-        return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
-    else do
-      return $ BuildOrderExecutor buildOrder queue obs abilities
+    unless (null affordableActions) $ do
+      agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
+
+    debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10) | a <- affordableActions]
+    command affordableActions
+    if null orders' then do -- transit
+      --agentResetGrid
+      return $ BuildArmyAndWin obs
+    else
+      return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
+    -- else do
+    --   return $ BuildOrderExecutor buildOrder queue obs abilities
 
   agentStep (BuildArmyAndWin obsPrev) = do
     --debugUnitPos
+    agentResetGrid
     reassignIdleProbes
     si <- agentStatic
     obs <- agentObs
@@ -578,5 +598,4 @@ instance Agent TestBot TestDynamicState where
     randomArmyFiddling
 
     return $ BuildArmyAndWin obs
-  --type DynamicState TestBot = TestDynamicState
 

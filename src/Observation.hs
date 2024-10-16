@@ -19,7 +19,7 @@ module Observation
     unitsSelf,
     unitsNew,
     getUnit,
-    unitsChanged,
+    buildingsSelfChanged,
     findNexus,
     enemyBaseLocation,
     obsResources,
@@ -57,6 +57,7 @@ import Proto.S2clientprotocol.Common (Point, Point2D)
 import Lens.Micro
 import Lens.Micro.Extras(view)
 import Conduit
+import Proto.S2clientprotocol.Raw_Fields (buildProgress)
 
 type Observation = A.Observation
 
@@ -74,16 +75,16 @@ addUnit unitType obs =
     unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
 
 gridUpdate :: Observation -> Grid.Grid -> Grid.Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> Grid.addMark acc fp pos) grid (getFootprints <$> units) where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
-  --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
-  units = obs ^. (#rawData . #units)
-  getFootprints :: Units.Unit -> (Footprint, TilePos)
-  getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
+gridUpdate obs grid = foldl (\acc (fp, pos) -> Grid.addMark acc fp pos) grid (getFootprints <$> units)
+  where -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
+    --units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
+    units = runConduitPure $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u) .| sinkList
+    getFootprints :: Units.Unit -> (Footprint, TilePos)
+    getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
 
-unitsChanged :: Observation -> Observation -> Bool
-unitsChanged obs obsPrev = ulen obs /= ulen obsPrev || firstStep where --`Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
-    ulen obs = length $ runC (unitsSelf obs)
-    firstStep = (obs ^. #gameLoop) == 1 &&  (obsPrev ^. #gameLoop) == 0
+buildingsSelfChanged :: Observation -> Observation -> Bool
+buildingsSelfChanged obs obsPrev = blen obs /= blen obsPrev || blen obs == 1 where --`Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
+    blen obs = length . runC $ unitsSelf obs .| filterC isBuilding .| filterC (\u -> u ^. #buildProgress > 0)
 
 unitsNew :: Observation -> Observation -> [Unit]
 unitsNew obs obsPrev = filter notInPrev (runC $ unitsSelf obs) where
