@@ -263,7 +263,9 @@ runGameLoop conn signals agent playerId = do
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw
       si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart
 
+  trace "create ds" return ()
   dynamicState <- makeDynamicState agent obsRaw grid
+  trace "created ds" return ()
 
   gameStepLoop conn si dynamicState agent
 

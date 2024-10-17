@@ -73,6 +73,7 @@ dot :: Pointable p => p -> p -> Float
 dot a b = getX a * getX b + getY a * getY b
 
 distSquared :: (Pointable p1, Pointable p2) => p1 -> p2 -> Float
+--distSquared :: (Pointable p) => p -> p -> Float
 distSquared a b = dot diff diff where
   diff = toPoint2D a - toPoint2D b
 

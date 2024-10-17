@@ -22,8 +22,9 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import Data.ByteString (putStr)
-import Data.ProtoLens (defMessage, Tag (Tag))
+import Data.ProtoLens (defMessage)
 import Data.Maybe ( isJust, catMaybes, fromJust, isNothing )
+import Data.Ord (comparing)
 import Data.ByteString.Char8 (putStrLn)
 import qualified Data.Conduit.List as CL
 import Data.Foldable (toList)
@@ -55,14 +56,14 @@ import Proto.S2clientprotocol.Raw_Fields as R
     pos,
     startLocations,
     unitType,
-    units, targetUnitTag, maybe'targetUnitTag, idealHarvesters, assignedHarvesters, vespeneContents,
+    units, targetUnitTag, maybe'targetUnitTag, idealHarvesters, assignedHarvesters, vespeneContents, pathingGrid, placementGrid,
   )
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields (minerals, step, vespene, gameLoop, foodCap, foodUsed)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import UnitTypeId
 import Utils
-import Safe (headMay)
+import Safe (headMay, minimumByMay)
 import Debug.Trace
 import Units
 import Units(mapTilePosC, closestC, unitTypeC, unitIdleC)
@@ -72,13 +73,15 @@ import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, Ne
 import Data.Conduit.List (sourceList, consume, catMaybes)
 import Conduit (filterC)
 import Agent
-import Agent (AgentDynamicState(getObs, dsUpdate))
+import Agent (AgentDynamicState(getObs, dsUpdate), StaticInfo (enemyStartLocation))
 
 import System.Random (Random, StdGen, randomR, mkStdGen, newStdGen, next)
 import qualified Data.Sequence as Seq
+import qualified Data.Foldable as Seq
 import Text.Read (readMaybe)
 import Data.List (stripPrefix)
 import Observation (buildingsSelfChanged)
+import qualified Control.Applicative as HashMap.HashMap
 
 type BuildOrder = [UnitTypeId]
 
@@ -86,27 +89,56 @@ data TestDynamicState = TestDynamicState
   { observation :: Observation
   , grid        :: Grid
   , randGen     :: StdGen
+  , armyUnits :: HashMap.HashMap UnitTag ArmyUnitData
   }
 
 -- Update the AgentDynamicState instance for TestDynamicState
 instance AgentDynamicState TestDynamicState where
-  getObs (TestDynamicState obs _ _) = obs
-  getGrid (TestDynamicState _ grid _) = grid
+  getObs (TestDynamicState obs _ _ _) = obs
+  getGrid (TestDynamicState _ grid _ _) = grid
 
-  setObs obs (TestDynamicState _ grid gen) = TestDynamicState obs grid gen
-  setGrid grid (TestDynamicState obs _ gen) = TestDynamicState obs grid gen
+  setObs obs (TestDynamicState _ grid gen army) = TestDynamicState obs grid gen army
+  setGrid grid (TestDynamicState obs _ gen army) = TestDynamicState obs grid gen army
 
-  dsUpdate obs grid (TestDynamicState _ _ gen) = TestDynamicState obs grid gen
+  dsUpdate obs grid (TestDynamicState _ _ gen army) = TestDynamicState obs grid gen army
 
-
-setRandGen gen (TestDynamicState obs grid _) = TestDynamicState obs grid gen
-
+setRandGen gen (TestDynamicState obs grid _ army) = TestDynamicState obs grid gen army
 
 -- Adding a function to retrieve random values from the dynamic state
 getRandValue :: (Random a) => (a, a) -> TestDynamicState -> (a, TestDynamicState)
-getRandValue range (TestDynamicState obs grid gen) =
+getRandValue range (TestDynamicState obs grid gen army) =
   let (value, newGen) = randomR range gen
-  in (value, TestDynamicState obs grid newGen)
+  in (value, TestDynamicState obs grid newGen army)
+
+data ArmyUnitData = ArmyUnitData
+  {
+    auVisitedTiles :: Set.Set TilePos
+  , auUnvisitedEdge :: Set.Set TilePos
+  }
+
+-- Update the visited tiles for a unit in the army
+updateVisitedTile :: UnitTag -> TilePos -> StepMonad TestDynamicState ()
+updateVisitedTile tag tile = do
+  ds <- agentGet
+  let grid = getGrid ds
+  let army = armyUnits ds
+      unitData = HashMap.lookupDefault (ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)) tag army
+      newVisited = Set.insert tile (auVisitedTiles unitData)
+      newUnvisitedEdge = Set.foldl' (\accEdge vt ->
+            let unvisitedNs = Set.fromList [n | n <- Seq.toList (neighbors vt grid), n `Set.notMember` newVisited]
+            in accEdge `Set.union` unvisitedNs
+          ) Set.empty (auUnvisitedEdge unitData)
+
+      newUnitData = unitData { auVisitedTiles = newVisited, auUnvisitedEdge = newUnvisitedEdge }
+
+  agentPut ds { armyUnits = HashMap.insert tag newUnitData army }
+
+-- Check if a tile has been visited
+-- hasVisitedTile :: UnitTag -> TilePos -> TestArmy -> Bool
+-- hasVisitedTile tag tile army =
+--   case HashMap.lookup tag (armyUnits army) of
+--     Just unitData -> Set.member tile (visitedTiles unitData)
+--     Nothing       -> False
 
 data TestBot
   = Opening
@@ -114,7 +146,7 @@ data TestBot
   | BuildArmyAndWin Observation
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
-findAssignee obs a = find (\u -> u ^. #tag == (getExecutor a) ^. #tag) (obs ^. (#rawData . #units))
+findAssignee obs a = find (\u -> u ^. #tag == getExecutor a ^. #tag) (obs ^. (#rawData . #units))
 
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
 abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
@@ -340,7 +372,7 @@ reassignIdleProbes = do
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
-        .| mapC (getUnit obs) --TODO: should getUnit return maybe
+        .| mapC (getUnit obs) --TODO: should getUnit return maybe BUG: we're crashing here
 
       harvesters = probes
         .| filterC unitIsHarvesting
@@ -461,44 +493,137 @@ randomArmyFiddling :: StepMonad TestDynamicState ()
 randomArmyFiddling = do
   obs <- agentObs
   ds <- agentGet
-  let rnd = randGen ds
-
   -- Retrieve army units and enemies
-  let army = runC $ unitsSelf obs .| filterC isArmyUnit
-      enemies = runC $ obsUnitsC obs .| filterC isEnemy
+  let armyUs= runC $ unitsSelf obs .| filterC isArmyUnit
       grid = getGrid ds  -- Retrieve the grid from the dynamic state
 
   -- Execute a random command for each unit in the army
-  mapM_ (randCmd grid enemies) army
-
-  -- Update the random generator in the dynamic state
-  agentPut $ TestDynamicState { observation = obs, grid = grid, randGen = snd $ next rnd }  -- Update the random generator after use
+  mapM_ (\u ->
+          let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnits ds)
+          in randCmd2 grid unitData u
+        ) armyUs
 
 -- Generate a random command for a unit
-randCmd :: Grid -> [Unit] -> Unit -> StepMonad TestDynamicState ()
-randCmd grid enemies u = do
+randCmd :: Grid -> ArmyUnitData -> Unit -> StepMonad TestDynamicState ()
+randCmd grid udata u = do
+  obs <- agentObs
+  let enemies = runC $ obsUnitsC obs .| filterC isEnemy
   -- Check if there's an enemy in range
   case enemyInRange u enemies of
     Just e -> command [Actions.UnitCommand Attack u e]  -- Attack the enemy
-    Nothing -> do
+    Nothing -> if not . null . view #orders $ u then return () else do
       -- Move to a random neighboring position if no enemy is in range
+      si <- agentStatic
+      let --priorityTargets :: [Point2D]
+          --priorityTargets = toPoint2D (enemyStartLocation si) : (toPoint2D . view #pos <$> enemies)
+          upos = tilePos (u ^. #pos)
+          canditates = Seq.toList $ neighbors upos grid
+
+          scored = scoreMoveCandidates upos udata canditates
+
+      ds <- agentGet
+      rnd <- randGen <$> agentGet
+      let (wrandPos, rnd') = weightedRandomChoice scored rnd --`Utils.dbg` ("scored: " ++ show scored)
+      agentPut $ setRandGen rnd' ds
+      updateVisitedTile (u ^. #tag) wrandPos
+      command [PointCommand Move u (toPoint2D wrandPos)]  -- Move to the random position
+
+randCmd2 :: Grid -> ArmyUnitData -> Unit -> StepMonad TestDynamicState ()
+randCmd2 grid udata u = do
+  obs <- agentObs
+  let enemies = runC $ obsUnitsC obs .| filterC isEnemy
+  -- Check if there's an enemy in range
+  case enemyInRange u enemies of
+    Just e -> command [Actions.UnitCommand Attack u e]  -- Attack the enemy
+    Nothing -> if not . null . view #orders $ u then return () else do
+      -- Move to a random neighboring position if no enemy is in range
+      si <- agentStatic
+      let candidates = filter (\p -> p `Set.notMember` auVisitedTiles udata ) (neighbors upos grid)
+
+      pos <- calcMovePos candidates
+
+      command [PointCommand Move u (toPoint2D pos)]  -- Move to the random position
+  where
+    upos = tilePos (u ^. #pos)
+    nearest :: (Pointable p) => p -> [p] -> p
+    nearest p = minimumBy (compare `on` distSquared p)
+
+    calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
+    calcMovePos candidates = do
       ds <- agentGet
       rnd <- randGen <$> agentGet   -- Retrieve the current random generator
-      let (randPos, newGen) = randomNeighborPos u grid rnd
-      agentPut $ setRandGen newGen ds  -- Update the random generator in the dynamic state
-      command [PointCommand Move u randPos]  -- Move to the random position
+      let scored = scoreMoveCandidates upos udata candidates
+          (wrandPos, rnd') = weightedRandomChoice scored rnd --`Utils.dbg` ("scored: " ++ show scored)
+      agentPut $ setRandGen rnd' ds  -- Update the random generator in the dynamic state
+      updateVisitedTile (u ^. #tag) wrandPos
+      return wrandPos
 
--- Get a random neighboring position for a unit
-randomNeighborPos :: Unit -> Grid -> StdGen -> (Point2D, StdGen)
-randomNeighborPos u grid rnd =
-  let ns = neighbors (tilePos (u ^. #pos)) grid  -- Get valid neighbors
-      (randIndex, newGen) = randomR (0, Seq.length ns - 1) rnd
-  in (toPoint2D $ Seq.index ns randIndex, newGen)  -- Return a random neighbor and updated generator
+scoreMoveCandidates :: TilePos -> ArmyUnitData -> [TilePos] -> [(TilePos, Double)]
+scoreMoveCandidates upos udata = map (\tile -> (tile, calcScore tile) )
+  where
+    calcScore tile = baseScore + unvisitedScore tile -- + closeToUnvisitedEdgeScore tile -- + enemyScore tile
+
+    baseScore = 0.0
+    unvisitedScore tile
+      | tile `Set.member` auVisitedTiles udata = 1.0
+      | otherwise = 10.0
+
+    closeToUnvisitedEdgeScore tile = Set.foldl' (\score edgeTile ->
+      let
+        distToEdge :: TilePos -> Float
+        distToEdge = distSquared (edgeTile :: TilePos)
+        isCloserToEdgeThen:: TilePos -> TilePos -> Bool
+        a `isCloserToEdgeThen` b = distToEdge a < distToEdge b
+      in if tile `isCloserToEdgeThen` upos then score + 5.0 else score
+      ) 0 (auUnvisitedEdge udata)
+
+weightedRandomChoice :: [(a, Double)] -> StdGen -> (a, StdGen)
+weightedRandomChoice weightedItems gen = (selectItem weightedItems r, newGen)
+  where
+    totalWeight = sum (map snd weightedItems)  -- Sum of all weights
+    (r, newGen) = randomR (0, totalWeight) gen  -- Generate a random number between 0 and the total weight
+
+selectItem :: [(a, Double)] -> Double -> a
+selectItem ((item, weight):xs) r
+  | r <= weight = item  -- If random value is within current item's weight, return it
+  | otherwise = selectItem xs (r - weight)  -- Otherwise, subtract the weight and move to the next item
+selectItem [] _ = error "weightedRandomChoice: empty list"
+
+biasWeights :: Seq.Seq TilePos -> TilePos -> Int -> [Double]
+biasWeights ns target pivotDistance = Seq.toList $ fmap (\n -> if becameCloser n then 2.0 else 1.0) ns --`Utils.dbg` ("target: "  ++ show target)
+  where
+    becameCloser neighborPos = distManhattan target neighborPos < pivotDistance
+
+-- Get the direction vector from one position to another
+directionTo :: Point2D -> Point2D -> (Int, Int)
+directionTo p1 p2 = (round $ signum (p2 ^. #x - p1 ^. #x), round $ signum (p2 ^. #y - p1 ^. #y))
+
+-- Get the nearest enemy unit
+nearestEnemy :: Unit -> [Unit] -> Maybe Unit
+nearestEnemy u = minimumByMay (comparing (distSquared (u ^. #pos) . (^. #pos)))
+
+nearestTarget :: Unit -> [Point2D] -> Maybe Point2D
+nearestTarget u = minimumByMay (comparing (distSquared (toPoint2D $ u ^. #pos)))
+
+-- Function to select a random element from a list of weights
+weightedRandom :: [Double] -> StdGen -> (Int, StdGen)
+weightedRandom weights gen =
+  let totalWeight = sum weights
+      (randValue, newGen) = randomR (0, totalWeight) gen  -- Random value between 0 and the total weight
+  in (selectIndex weights randValue, newGen)
+
+-- Function to select the index based on the random value and the cumulative sum of weights
+selectIndex :: [Double] -> Double -> Int
+selectIndex weights randValue = go weights randValue 0
+  where
+    go (w:ws) rv idx
+      | rv <= w = idx  -- If random value is less than or equal to current weight, return the index
+      | otherwise = go ws (rv - w) (idx + 1)  -- Subtract the weight and continue
+    go [] _ idx = idx  -- Default case, in case something goes wrong (should not happen with proper weights)
 
 -- Get neighboring tiles
-neighbors :: TilePos -> Grid -> Seq.Seq TilePos
-neighbors (x, y) grid =
-  Seq.fromList
+neighbors :: TilePos -> Grid -> [TilePos]
+neighbors p@(x, y) grid =
     [ (x + dx, y + dy)
     | dx <- [-1, 0, 1]
     , dy <- [-1, 0, 1]
@@ -520,10 +645,15 @@ isArmyUnit u = ProtossStalker == toEnum' (u ^. #unitType)
 isEnemy :: Unit -> Bool
 isEnemy u = (u ^. #alliance) == R.Enemy  -- Enemy alliance code
 
+agentUpdateArmy :: Observation -> StepMonad TestDynamicState ()
+agentUpdateArmy obsPrev = return () --TODO: no update for now
+
 instance Agent TestBot TestDynamicState where
   type DynamicState TestBot = TestDynamicState
-  --makeDynamicState :: TestBot -> Observation -> Grid -> IO TestDynamicState
-  makeDynamicState _ obs grid = TestDynamicState obs grid <$> newStdGen
+  makeDynamicState _ obs grid = do
+    gen <- newStdGen  -- Initialize a new random generator
+    let armyMap = HashMap.empty  -- Initialize an empty HashMap
+    return $ TestDynamicState obs grid gen armyMap
 
   agentRace _ = C.Protoss
   agentStep Opening = do
@@ -570,15 +700,13 @@ instance Agent TestBot TestDynamicState where
     debugTexts [("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10) | a <- affordableActions]
     command affordableActions
     if null orders' then do -- transit
-      --agentResetGrid
       return $ BuildArmyAndWin obs
     else
       return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
-    -- else do
-    --   return $ BuildOrderExecutor buildOrder queue obs abilities
 
   agentStep (BuildArmyAndWin obsPrev) = do
     --debugUnitPos
+    agentUpdateArmy obsPrev
     agentResetGrid
     reassignIdleProbes
     si <- agentStatic
