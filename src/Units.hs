@@ -5,6 +5,8 @@
 --{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Units
   ( Unit,
@@ -49,16 +51,18 @@ import qualified Proto.S2clientprotocol.Sc2api as A
 import qualified Proto.S2clientprotocol.Sc2api_Fields as A
 import qualified Proto.S2clientprotocol.Raw as PR
 import qualified Proto.S2clientprotocol.Raw_Fields as PR
-
 import UnitTypeId
+import AbilityId
 import Proto.S2clientprotocol.Common (Point)
 import Conduit (Identity)
 import Grid (Grid, canPlaceBuilding, gridBfs)
 import Footprint (getFootprint)
 import Data.Maybe (isJust, catMaybes, mapMaybe)
-import AbilityId (AbilityId)
 import Data.List (stripPrefix)
 import Text.Read (readMaybe)
+import UnitsTh
+
+
 type Unit = PR.Unit
 type UnitOrder = PR.UnitOrder
 
@@ -68,10 +72,11 @@ toEnum' = toEnum . fromIntegral
 fromEnum' :: Enum e => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
 
+$(genBuildingMapping ''UnitTypeId ''AbilityId)
+
 isBuildingType :: UnitTypeId -> Bool
-isBuildingType utype = isJust (readMaybe =<< buildCmdStr :: Maybe AbilityId)
-  where
-    buildCmdStr = ("Build" ++) <$> stripPrefix "Protoss" (show utype)
+isBuildingType utype = isJust (lookup utype buildingMapping)
+
 
 isBuilding :: Unit -> Bool
 isBuilding = isBuildingType . toEnum' . view PR.unitType

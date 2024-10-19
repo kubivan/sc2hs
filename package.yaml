@@ -39,6 +39,7 @@ dependencies:
 - transformers
 - async
 - loop
+- template-haskell
 
 ghc-options:
 - -Wall

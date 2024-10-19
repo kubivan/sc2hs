@@ -35,6 +35,7 @@ library
       Proto
       SC2
       Units
+      UnitsTh
       UnitTypeId
       UpgradeId
       Utils
@@ -58,6 +59,7 @@ library
     , process
     , proto-lens
     , sc2-proto
+    , template-haskell
     , text
     , transformers
     , unordered-containers
@@ -91,6 +93,7 @@ executable sc2hs-exe
     , safe
     , sc2-proto
     , sc2hs
+    , template-haskell
     , text
     , transformers
     , unordered-containers
@@ -123,6 +126,7 @@ test-suite sc2hs-test
     , proto-lens
     , sc2-proto
     , sc2hs
+    , template-haskell
     , text
     , transformers
     , unordered-containers

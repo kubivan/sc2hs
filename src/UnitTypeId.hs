@@ -1,3 +1,4 @@
+
 module UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
 import Data.Hashable
