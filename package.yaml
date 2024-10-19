@@ -40,6 +40,7 @@ dependencies:
 - async
 - loop
 - template-haskell
+- safe
 
 ghc-options:
 - -Wall

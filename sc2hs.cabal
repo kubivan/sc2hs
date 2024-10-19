@@ -58,6 +58,7 @@ library
     , mtl
     , process
     , proto-lens
+    , safe
     , sc2-proto
     , template-haskell
     , text
@@ -124,6 +125,7 @@ test-suite sc2hs-test
     , mtl
     , process
     , proto-lens
+    , safe
     , sc2-proto
     , sc2hs
     , template-haskell

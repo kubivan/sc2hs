@@ -78,6 +78,11 @@ isBuildingType :: UnitTypeId -> Bool
 isBuildingType utype = isJust (lookup utype buildingMapping)
 
 
+--isBuildingType :: UnitTypeId -> Bool
+--isBuildingType utype = isJust (readMaybe =<< buildCmdStr :: Maybe AbilityId)
+--  where
+--    buildCmdStr = ("Build" ++) <$> stripPrefix "Protoss" (show utype)
+
 isBuilding :: Unit -> Bool
 isBuilding = isBuildingType . toEnum' . view PR.unitType
 

@@ -15,7 +15,6 @@ module Observation
     addOrder,
     addUnit,
     gridUpdate,
-
     unitsSelf,
     unitsNew,
     getUnit,
@@ -53,11 +52,12 @@ import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import qualified Proto.S2clientprotocol.Raw as PR
 import qualified Proto.S2clientprotocol.Raw_Fields as PR
 import Proto.S2clientprotocol.Common (Point, Point2D)
-
 import Lens.Micro
 import Lens.Micro.Extras(view)
 import Conduit
 import Proto.S2clientprotocol.Raw_Fields (buildProgress)
+
+import Safe (headMay)
 
 type Observation = A.Observation
 
@@ -91,9 +91,9 @@ unitsNew obs obsPrev = filter notInPrev (runC $ unitsSelf obs) where
     notInPrev u = (u ^. #tag) `notElem` map (^. #tag) unitsPrev
     unitsPrev = runC $ unitsSelf obsPrev
 
-getUnit :: Observation -> UnitTag -> Unit
+getUnit :: Observation -> UnitTag -> Maybe Unit
 getUnit obs utag =
-  head $ runC $ obsUnitsC obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
+  headMay $ runC $ obsUnitsC obs .| filterC (\ u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
 
 unitsSelf :: Observation -> ConduitT a Unit Identity ()
 unitsSelf obs = obsUnitsC obs .| allianceC PR.Self

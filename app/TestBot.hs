@@ -368,11 +368,14 @@ reassignIdleProbes = do
   let units = unitsSelf obs
       probes = units .| unitTypeC ProtossProbe
 
-      mineralField = headMay $ runC $ probes
+      mineralField = runConduitPure $ probes
         .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
         .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
         .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
-        .| mapC (getUnit obs) --TODO: should getUnit return maybe BUG: we're crashing here
+        .| mapC (getUnit obs)
+        .| filterC isJust
+        .| mapC fromJust
+        .| headC
 
       harvesters = probes
         .| filterC unitIsHarvesting
@@ -588,11 +591,6 @@ selectItem ((item, weight):xs) r
   | r <= weight = item  -- If random value is within current item's weight, return it
   | otherwise = selectItem xs (r - weight)  -- Otherwise, subtract the weight and move to the next item
 selectItem [] _ = error "weightedRandomChoice: empty list"
-
-biasWeights :: Seq.Seq TilePos -> TilePos -> Int -> [Double]
-biasWeights ns target pivotDistance = Seq.toList $ fmap (\n -> if becameCloser n then 2.0 else 1.0) ns --`Utils.dbg` ("target: "  ++ show target)
-  where
-    becameCloser neighborPos = distManhattan target neighborPos < pivotDistance
 
 -- Get the direction vector from one position to another
 directionTo :: Point2D -> Point2D -> (Int, Int)
