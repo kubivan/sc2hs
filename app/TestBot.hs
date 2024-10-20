@@ -636,8 +636,9 @@ enemyInRange u enemies =
   headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies  -- Stalker attack range of 6
 
 -- Define if a unit is considered an army unit
-isArmyUnit :: Unit -> Bool
-isArmyUnit u = ProtossStalker == toEnum' (u ^. #unitType)
+isArmyUnit :: Unit -> Bool --TODO: remove protoss specific consts
+isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
+  where utype = toEnum' (u ^. #unitType)
 
 -- Define an enemy unit filter
 isEnemy :: Unit -> Bool
