@@ -385,7 +385,7 @@ reassignIdleProbes = do
         .| filterC ( (== 1) . view #buildProgress)
 
       assimilators = runC $ unitsSelf obs
-        .| unitTypeC ProtossAssimilator --TODO: assimilator rich
+        .| filterC isAssimilator
         .| filterC ( (== 1) . view #buildProgress)
 
       (vespeneHarversters, mineralHarvesters) = partition (unitIsVespeneHarvester assimilators) (runC harvesters)
