@@ -87,8 +87,15 @@ data TestDynamicState = TestDynamicState
   { observation :: Observation
   , grid        :: Grid
   , randGen     :: StdGen
-  , armyUnits :: HashMap.HashMap UnitTag ArmyUnitData
+  , dsArmy :: Army
   }
+
+data Army = Army
+  { armyUnits :: HashMap.HashMap UnitTag ArmyUnitData
+  , armyUnitsPos :: Set.Set TilePos
+  }
+
+emptyArmy = Army HashMap.empty Set.empty
 
 -- Update the AgentDynamicState instance for TestDynamicState
 instance AgentDynamicState TestDynamicState where
@@ -97,7 +104,6 @@ instance AgentDynamicState TestDynamicState where
 
   setObs obs (TestDynamicState _ grid gen army) = TestDynamicState obs grid gen army
   setGrid grid (TestDynamicState obs _ gen army) = TestDynamicState obs grid gen army
-
   dsUpdate obs grid (TestDynamicState _ _ gen army) = TestDynamicState obs grid gen army
 
 setRandGen gen (TestDynamicState obs grid _ army) = TestDynamicState obs grid gen army
@@ -114,12 +120,27 @@ data ArmyUnitData = ArmyUnitData
   , auUnvisitedEdge :: Set.Set TilePos
   }
 
+updateArmyData :: UnitTag -> ArmyUnitData -> TestDynamicState -> TestDynamicState
+updateArmyData tag newUnitData ds =
+  let army = dsArmy ds
+      updatedArmy = army {armyUnits = HashMap.insert tag newUnitData (armyUnits army)}
+  in ds { dsArmy = updatedArmy }
+
+agentUpdateArmyPositions :: StepMonad TestDynamicState ()
+agentUpdateArmyPositions = do
+  ds <- agentGet
+  obs <- agentObs --allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
+  let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
+      army' = (dsArmy ds) {armyUnitsPos = Set.fromList armyPoss}
+
+  agentPut $ ds {dsArmy = army'}
+
 -- Update the visited tiles for a unit in the army
 updateVisitedTile :: UnitTag -> TilePos -> StepMonad TestDynamicState ()
 updateVisitedTile tag tile = do
   ds <- agentGet
   let grid = getGrid ds
-  let army = armyUnits ds
+  let army = armyUnits . dsArmy $ ds
       unitData = HashMap.lookupDefault (ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)) tag army
       newVisited = Set.insert tile (auVisitedTiles unitData)
       newUnvisitedEdge = Set.foldl' (\accEdge vt ->
@@ -129,7 +150,7 @@ updateVisitedTile tag tile = do
 
       newUnitData = unitData { auVisitedTiles = newVisited, auUnvisitedEdge = newUnvisitedEdge }
 
-  agentPut ds { armyUnits = HashMap.insert tag newUnitData army }
+  agentPut $ updateArmyData tag newUnitData ds --ds { dsArmy = {Army (HashMap.insert tag newUnitData army)} }
 
 -- Check if a tile has been visited
 -- hasVisitedTile :: UnitTag -> TilePos -> TestArmy -> Bool
@@ -500,34 +521,9 @@ randomArmyFiddling = do
 
   -- Execute a random command for each unit in the army
   mapM_ (\u ->
-          let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnits ds)
+          let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnits . dsArmy $ ds)
           in randCmd2 grid unitData u
         ) armyUs
-
--- Generate a random command for a unit
-randCmd :: Grid -> ArmyUnitData -> Unit -> StepMonad TestDynamicState ()
-randCmd grid udata u = do
-  obs <- agentObs
-  let enemies = runC $ obsUnitsC obs .| filterC isEnemy
-  -- Check if there's an enemy in range
-  case enemyInRange u enemies of
-    Just e -> command [Actions.UnitCommand Attack u e]  -- Attack the enemy
-    Nothing -> if not . null . view #orders $ u then return () else do
-      -- Move to a random neighboring position if no enemy is in range
-      si <- agentStatic
-      let --priorityTargets :: [Point2D]
-          --priorityTargets = toPoint2D (enemyStartLocation si) : (toPoint2D . view #pos <$> enemies)
-          upos = tilePos (u ^. #pos)
-          canditates = Seq.toList $ neighbors upos grid
-
-          scored = scoreMoveCandidates upos udata canditates
-
-      ds <- agentGet
-      rnd <- randGen <$> agentGet
-      let (wrandPos, rnd') = weightedRandomChoice scored rnd --`Utils.dbg` ("scored: " ++ show scored)
-      agentPut $ setRandGen rnd' ds
-      updateVisitedTile (u ^. #tag) wrandPos
-      command [PointCommand Move u (toPoint2D wrandPos)]  -- Move to the random position
 
 randCmd2 :: Grid -> ArmyUnitData -> Unit -> StepMonad TestDynamicState ()
 randCmd2 grid udata u = do
@@ -539,9 +535,12 @@ randCmd2 grid udata u = do
     Nothing -> if not . null . view #orders $ u then return () else do
       -- Move to a random neighboring position if no enemy is in range
       si <- agentStatic
-      let candidates = filter (\p -> p `Set.notMember` auVisitedTiles udata ) (neighbors upos grid)
+      ds <- agentGet
+      let army = dsArmy ds
+          allUnitPos = armyUnitsPos army
+          unvisitedNeighbors = filter (`Set.notMember` allUnitPos) $ filter (\p -> p `Set.notMember` auVisitedTiles udata ) (neighbors upos grid)
 
-      pos <- calcMovePos candidates
+      pos <- calcMovePos unvisitedNeighbors
 
       command [PointCommand Move u (toPoint2D pos)]  -- Move to the random position
   where
@@ -643,7 +642,7 @@ isEnemy :: Unit -> Bool
 isEnemy u = (u ^. #alliance) == R.Enemy  -- Enemy alliance code
 
 agentUpdateArmy :: Observation -> StepMonad TestDynamicState ()
-agentUpdateArmy obsPrev = return () --TODO: no update for now
+agentUpdateArmy obsPrev = agentUpdateArmyPositions  --TODO: no diff with obsPrev
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length.runC $ unitsSelf obs .| filterC isBuilding
@@ -652,9 +651,7 @@ instance Agent TestBot TestDynamicState where
   type DynamicState TestBot = TestDynamicState
   makeDynamicState _ obs grid = do
     gen <- newStdGen  -- Initialize a new random generator
-    let armyMap = HashMap.empty  -- Initialize an empty HashMap
-    return $ TestDynamicState obs grid gen armyMap
-
+    return $ TestDynamicState obs grid gen emptyArmy
   agentRace _ = C.Protoss
   agentStep Opening = do
     si <- agentStatic
