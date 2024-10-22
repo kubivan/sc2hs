@@ -69,7 +69,6 @@ import Units
 import Units(mapTilePosC, closestC, unitTypeC, unitIdleC)
 import Utils (distSquared, tilePos, distSquared, triPartition)
 import Proto.S2clientprotocol.Common (Point)
-import UnitTypeId (UnitTypeId(NeutralVespenegeyser, NeutralRichvespenegeyser, NeutralProtossvespenegeyser, NeutralPurifiervespenegeyser, NeutralShakurasvespenegeyser, ProtossNexus, ProtossGateway, ProtossRoboticsfacility, ProtossAssimilator, ProtossRoboticsbay))
 import Data.Conduit.List (sourceList, consume, catMaybes)
 import Conduit (filterC)
 import Agent
@@ -81,7 +80,6 @@ import qualified Data.Foldable as Seq
 import Text.Read (readMaybe)
 import Data.List (stripPrefix)
 import Observation (buildingsSelfChanged)
-import qualified Control.Applicative as HashMap.HashMap
 
 type BuildOrder = [UnitTypeId]
 
@@ -647,6 +645,9 @@ isEnemy u = (u ^. #alliance) == R.Enemy  -- Enemy alliance code
 agentUpdateArmy :: Observation -> StepMonad TestDynamicState ()
 agentUpdateArmy obsPrev = return () --TODO: no update for now
 
+selfBuildingsCount :: Observation -> Int
+selfBuildingsCount obs = length.runC $ unitsSelf obs .| filterC isBuilding
+
 instance Agent TestBot TestDynamicState where
   type DynamicState TestBot = TestDynamicState
   makeDynamicState _ obs grid = do
@@ -705,11 +706,11 @@ instance Agent TestBot TestDynamicState where
 
   agentStep (BuildArmyAndWin obsPrev) = do
     --debugUnitPos
-    agentUpdateArmy obsPrev
-    agentResetGrid
-    reassignIdleProbes
     si <- agentStatic
     obs <- agentObs
+    agentUpdateArmy obsPrev
+    when (selfBuildingsCount obs /= selfBuildingsCount obsPrev)  $ agentResetGrid
+    reassignIdleProbes
     --when (unitsChanged obs obsPrev) $ do
     --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 
