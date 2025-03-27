@@ -71,15 +71,15 @@ abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == from
 
 -- TODO: move to UnitTraits
 unitToAbility :: Agent.UnitTraits -> UnitTypeId -> AbilityId
-unitToAbility traits id = case traits HashMap.!? id of
+unitToAbility traits uid = case traits HashMap.!? uid of
     Just t -> toEnum . fromIntegral $ t ^. #abilityId
-    Nothing -> error $ "unitToAbility: invalid id: " ++ show id
+    Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
 findAssignee obs a = find (\u -> u ^. #tag == getExecutor a ^. #tag) (obs ^. (#rawData . #units))
 
 unitCost :: Agent.UnitTraits -> UnitTypeId -> Cost
-unitCost traits id = case traits HashMap.!? id of
+unitCost traits uid = case traits HashMap.!? uid of
     Just t -> Cost (fromIntegral $ t ^. #mineralCost) (fromIntegral $ t ^. #vespeneCost)
     Nothing -> Cost 0 0
 
@@ -90,14 +90,14 @@ actionsCost :: Agent.StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
 canAfford :: (Agent.AgentDynamicState d) => UnitTypeId -> Cost -> Agent.StepMonad d (Bool, Cost)
-canAfford id r = do
+canAfford uid r = do
     si <- Agent.agentStatic
     obs <- Agent.agentObs
 
     let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals)
         vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
         resources = Cost minerals vespene
-        cost = unitCost (unitTraits si) id
+        cost = unitCost (unitTraits si) uid
     return (resources >= cost + r, cost) -- `Utils.dbg` ("minerals: " ++ show minerals)
 
 findBuilder :: Observation -> Maybe R.Unit
@@ -118,11 +118,11 @@ pylonRadius :: Float
 pylonRadius = 6.5
 
 findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos obs expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
-findPlacementPos obs expands grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
+findPlacementPos _ expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
+findPlacementPos obs _ grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
   where
     nexusPos = tilePos $ findNexus obs ^. #pos
-findPlacementPos obs expands grid heightMap id = go pylons
+findPlacementPos obs _ grid heightMap id = go pylons
   where
     go :: [TilePos] -> Maybe TilePos
     go (p : ps) = case findPlacementPointInRadius grid heightMap (getFootprint id) p pylonRadius of

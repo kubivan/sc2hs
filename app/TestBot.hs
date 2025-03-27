@@ -19,7 +19,6 @@ import Agent (
     StepMonad,
     StepPlan,
     UnitAbilities,
-    UnitTraits,
     agentAbilities,
     agentAsk,
     agentChat,
@@ -42,8 +41,8 @@ import Data.Foldable (toList)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, minimumBy, partition, sortBy)
-import Data.Maybe (fromJust, isJust, mapMaybe)
+import Data.List (minimumBy, partition)
+import Data.Maybe (fromJust, isJust)
 import Data.Ord (comparing)
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
@@ -52,9 +51,7 @@ import Footprint (getFootprint)
 import Grid (
     Grid (..),
     addMark,
-    canPlaceBuilding,
     findPlacementPoint,
-    findPlacementPointInRadius,
     gridFromImage,
     gridMerge,
     gridPixelSafe,
@@ -76,41 +73,18 @@ import Observation (
     unitsSelf,
  )
 import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Common_Fields as C
-import Proto.S2clientprotocol.Debug_Fields (pos, unitTag, unitType)
-import Proto.S2clientprotocol.Query_Fields (abilities)
 import Proto.S2clientprotocol.Raw qualified as R
-import Proto.S2clientprotocol.Raw_Fields as R (
-    abilityId,
-    alliance,
-    assignedHarvesters,
-    buildProgress,
-    idealHarvesters,
-    maybe'targetUnitTag,
-    pathingGrid,
-    placementGrid,
-    pos,
-    startLocations,
-    targetUnitTag,
-    unitType,
-    units,
-    vespeneContents,
- )
 
-import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields (foodCap, foodUsed, gameLoop, minerals, step, vespene)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import Safe (headMay, minimumByMay)
-import System.Random (Random, StdGen, mkStdGen, newStdGen, next, randomR)
+import System.Random (Random, StdGen, newStdGen, randomR)
 import UnitTypeId
 import Units (
     Unit,
-    UnitOrder,
     closestC,
     isAssimilator,
     isBuilding,
     isBuildingType,
-    isGeyser,
     isMineral,
     mapTilePosC,
     runC,
@@ -130,6 +104,8 @@ import Utils (
     triPartition,
  )
 
+import AgentBulidUtils
+
 type BuildOrder = [UnitTypeId]
 
 data TestDynamicState = TestDynamicState
@@ -139,11 +115,14 @@ data TestDynamicState = TestDynamicState
     , dsArmy :: Army
     }
 
+newtype ArmySquad = ArmySquad ([UnitTag], ArmyUnitData)
+
 data Army = Army
     { armyUnits :: HashMap.HashMap UnitTag ArmyUnitData
     , armyUnitsPos :: Set.Set TilePos
     }
 
+emptyArmy :: Army
 emptyArmy = Army HashMap.empty Set.empty
 
 -- Update the AgentDynamicState instance for TestDynamicState
@@ -155,6 +134,7 @@ instance AgentDynamicState TestDynamicState where
     setGrid grid (TestDynamicState obs _ gen army) = TestDynamicState obs grid gen army
     dsUpdate obs grid (TestDynamicState _ _ gen army) = TestDynamicState obs grid gen army
 
+setRandGen :: StdGen -> TestDynamicState -> TestDynamicState
 setRandGen gen (TestDynamicState obs grid _ army) = TestDynamicState obs grid gen army
 
 -- Adding a function to retrieve random values from the dynamic state
@@ -189,7 +169,8 @@ updateVisitedTile tag tile = do
     ds <- agentGet
     let grid = getGrid ds
         army = armyUnits . dsArmy $ ds
-        unitData = HashMap.lookupDefault (ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)) tag army
+        defaultUnitData = ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)
+        unitData = HashMap.lookupDefault defaultUnitData tag army
         newVisited = Set.insert tile (auVisitedTiles unitData)
         newUnvisitedEdge =
             Set.foldl'
@@ -216,91 +197,12 @@ data TestBot
     | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
     | BuildArmyAndWin Observation
 
-findAssignee :: Observation -> Action -> Maybe Units.Unit
-findAssignee obs a = find (\u -> u ^. #tag == getExecutor a ^. #tag) (obs ^. (#rawData . #units))
-
-abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
-abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
-    Just t -> toEnum . fromIntegral $ t ^. #unitId
-    Nothing -> error $ "abilityToUnit: invalid ability: " ++ show a
-
-unitToAbility :: UnitTraits -> UnitTypeId -> AbilityId
-unitToAbility traits id = case traits HashMap.!? id of
-    Just t -> toEnum . fromIntegral $ t ^. #abilityId
-    Nothing -> error $ "unitToAbility: invalid id: " ++ show id
-
-unitCost :: UnitTraits -> UnitTypeId -> Cost
-unitCost traits id = case traits HashMap.!? id of
-    Just t -> Cost (fromIntegral $ t ^. #mineralCost) (fromIntegral $ t ^. #vespeneCost)
-    Nothing -> Cost 0 0
-
-actionCost :: StaticInfo -> Action -> Cost
-actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCmd
-
-actionsCost :: StaticInfo -> [Action] -> Cost
-actionsCost si xs = sum $ actionCost si <$> xs
-
-canAfford :: (AgentDynamicState d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
-canAfford id r = do
-    si <- agentStatic
-    obs <- agentObs
-
-    let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals)
-        vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-        resources = Cost minerals vespene
-        cost = unitCost (unitTraits si) id
-    return (resources >= cost + r, cost) -- `Utils.dbg` ("minerals: " ++ show minerals)
-
 inBuildThechTree :: UnitTypeId -> StepMonad d Bool
 inBuildThechTree id = do
     abilities <- agentAbilities
     si <- agentStatic
     let ability = unitToAbility (unitTraits si) id -- `Utils.dbg` ("abilities: " ++ show abilities)
     return $ ability `elem` (abilities HashMap.! ProtossProbe)
-
-findBuilder :: Observation -> Maybe R.Unit
-findBuilder obs =
-    headMay $
-        runC $
-            unitsSelf obs
-                .| unitTypeC ProtossProbe
-                -- .| unitIdleC
-                -- .| filterC unitIsHarvesting
-                .| filterC
-                    ( \x ->
-                        Prelude.null (x ^. #orders)
-                            || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders)) -- TODO: fix, add proper o
-                    )
-
-pylonRadius :: Float
-pylonRadius = 6.5
-
-findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos obs expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
-findPlacementPos obs expands grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
-  where
-    nexusPos = tilePos $ findNexus obs ^. #pos
-findPlacementPos obs expands grid heightMap id = go pylons
-  where
-    go :: [TilePos] -> Maybe TilePos
-    go (p : ps) = case findPlacementPointInRadius grid heightMap (getFootprint id) p pylonRadius of
-        Just res -> Just res
-        Nothing -> go ps
-    go [] = Nothing
-    pylons =
-        runC $
-            unitsSelf obs
-                .| unitTypeC ProtossPylon
-                .| filterC (\u -> u ^. #buildProgress == 1)
-                .| mapC (\x -> tilePos $ x ^. #pos)
-
-findFreeGeyser :: Observation -> Maybe Units.Unit
-findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
-  where
-    assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-    nexusPos = tilePos $ findNexus obs ^. #pos
-    geysers = runC $ obsUnitsC obs .| filterC isGeyser
-    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
 
 buildAction :: (AgentDynamicState d) => UnitTypeId -> Grid -> Cost -> MaybeStepMonad d (Action, Cost, Grid)
 buildAction ProtossAssimilator grid reservedRes = do
@@ -391,50 +293,6 @@ unitHasOrder :: AbilityId -> Units.Unit -> Bool
 unitHasOrder order u = order `elem` orders
   where
     orders = toEnum' . view #abilityId <$> u ^. #orders
-
--- TODO: now we check length 1 to filter out the
--- new assigned builder.
-unitIsHarvesting :: Units.Unit -> Bool
-unitIsHarvesting u = length orders == 1 && (HarvestGatherProbe `elem` orders || HarvestReturnProbe `elem` orders) -- `Utils.dbg` (show orders)
-  where
-    orders = toEnum' . view #abilityId <$> u ^. #orders
-
-getTargetUnitTag :: Units.UnitOrder -> Maybe UnitTag
-getTargetUnitTag unitOrder = case unitOrder ^. #maybe'target of
-    Just (R.UnitOrder'TargetUnitTag tag) -> Just tag
-    _ -> Nothing
-
-unitIsAssignedTo :: Units.Unit -> Units.Unit -> Bool
-unitIsAssignedTo building unit
-    | isAssimilator building || isMineral building = building ^. #tag `elem` targets
-    | toEnum' (building ^. #unitType) == ProtossNexus = unitIsHarvesting unit && closeEnough && withoutVespene
-    | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
-  where
-    targets = mapMaybe getTargetUnitTag (unit ^. #orders)
-    closeEnough = distManhattan (building ^. #pos) (unit ^. #pos) <= 12
-    withoutVespene = unit ^. #vespeneContents == 0
-
-unitIsAssignedToAny :: [Units.Unit] -> Units.Unit -> Bool
-unitIsAssignedToAny buildings unit = any (`unitIsAssignedTo` unit) buildings
-
--- TODO: maybe the vespen & return check is enough
--- (probably units inside assimilators is not presented in the obs)
--- TODO: check if so: probes count between loops
-unitIsVespeneHarvester :: [Units.Unit] -> Units.Unit -> Bool
-unitIsVespeneHarvester assimilators u = unitIsAssignedToAny assimilators u || isReturnsVespene
-  where
-    orders = toEnum' . view #abilityId <$> u ^. #orders
-    isReturnsVespene = length orders == 1 && head orders == HarvestReturnProbe && u ^. #vespeneContents > 0
-
-getOverWorkersFrom :: [Units.Unit] -> [Units.Unit] -> [Units.Unit]
-getOverWorkersFrom buildings workers = concatMap getFrom buildings
-  where
-    getFrom b
-        | unitsToDrop > 0 = take (fromIntegral unitsToDrop) assignedWorkers
-        | otherwise = []
-      where
-        unitsToDrop = b ^. #assignedHarvesters - b ^. #idealHarvesters
-        assignedWorkers = filter (unitIsAssignedTo b) workers
 
 reassignIdleProbes :: (AgentDynamicState d) => StepMonad d ()
 reassignIdleProbes = do
