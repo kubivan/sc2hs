@@ -71,6 +71,7 @@ library
 executable sc2hs-exe
   main-is: Main.hs
   other-modules:
+      AgentBulidUtils
       TestBot
       Paths_sc2hs
   hs-source-dirs:
