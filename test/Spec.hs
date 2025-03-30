@@ -1,31 +1,31 @@
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedLabels #-}
 
 import Conduit
-import Grid
 import Footprint
+import Grid
 import UnitTypeId
 
+import qualified Data.ByteString as B
+import Data.ProtoLens (decodeMessage)
+import Lens.Micro ((^.))
+import Observation
 import Test.Hspec
 import Units
-import Observation
-import Data.ProtoLens (decodeMessage)
-import qualified Data.ByteString as B
-import Lens.Micro ( (^.) )
 
 import Data.Function
-import Data.List ( foldl', minimumBy, groupBy, foldl', sortOn )
+import Data.List (foldl', groupBy, minimumBy, sortOn)
 import qualified Data.Map as Map
-import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 import Proto.S2clientprotocol.Common as C
+import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 
-import Utils(TilePos, tilePos, distSquared)
 import Data.Maybe (fromJust)
-import Lens.Micro.Extras(view)
+import Lens.Micro.Extras (view)
+import Utils (TilePos, distSquared, tilePos)
 
 import Data.Monoid
-import Test.Hspec (shouldSatisfy)
 import Proto.S2clientprotocol.Debug_Fields (unitType)
+import Test.Hspec (shouldSatisfy)
 import Units (isBuildingType)
 
 fromEither :: Either String a -> a
@@ -34,92 +34,142 @@ fromEither (Right val) = val
 
 loadTestData :: IO (Observation, ResponseGameInfo)
 loadTestData = do
-  obs <- B.readFile "test/data/obs0"
-  gi <- B.readFile "test/data/gameinfo"
+    obs <- B.readFile "test/data/obs0"
+    gi <- B.readFile "test/data/gameinfo"
 
-  return (fromEither (decodeMessage obs :: Either String Observation), fromEither (decodeMessage gi :: Either String ResponseGameInfo))
+    return
+        ( fromEither (decodeMessage obs :: Either String Observation)
+        , fromEither (decodeMessage gi :: Either String ResponseGameInfo)
+        )
 
 markClusters :: MapClusters -> Grid -> Grid
-markClusters labels grid = foldl' mark grid (Map.toList labels) where
-  mark g (p, Cluster n) = updatePixel g (tilePos $ p ^. #pos) 'x'
-  mark g (p, Noise) = updatePixel g (tilePos $ p ^. #pos) 'X'
+markClusters labels grid = foldl' mark grid (Map.toList labels)
+  where
+    mark g (p, Cluster n) = updatePixel g (tilePos $ p ^. #pos) 'x'
+    mark g (p, Noise) = updatePixel g (tilePos $ p ^. #pos) 'X'
 
 spec :: Spec
 spec =
-  beforeAll loadTestData
-  $ do
-  describe "Observation test suite" $ do
-    it "Units tests" $ \(obs, _) -> do
-      runC (obsUnitsC obs) `shouldSatisfy` (not . null)
+    beforeAll loadTestData $
+        do
+            describe "Observation test suite" $ do
+                it "Units tests" $ \(obs, _) -> do
+                    runC (obsUnitsC obs) `shouldSatisfy` (not . null)
 
-      let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralfield
-      length mineralFields `shouldBe` 60
+                    let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralfield
+                    length mineralFields `shouldBe` 60
 
-      isBuildingType ProtossNexus `shouldBe` True
-      isBuildingType ProtossAssimilator `shouldBe` True
+                    isBuildingType ProtossNexus `shouldBe` True
+                    isBuildingType ProtossAssimilator `shouldBe` True
 
-      isBuildingType ProtossCyberneticscore `shouldBe` True
+                    isBuildingType ProtossCyberneticscore `shouldBe` True
 
-      isBuildingType ProtossStalker `shouldBe` False
+                    isBuildingType ProtossStalker `shouldBe` False
 
-    it "dbscan tests" $ \(obs,gi) -> do
-      --print obs
-      let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
-          grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #placementGrid))
-          heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
+                it "dbscan tests" $ \(obs, gi) -> do
+                    -- print obs
+                    let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
+                        grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #placementGrid))
+                        heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
 
-          -- calculate clusters
-          marked = dbscan 10 2 resourceFields
-          clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
-          clusteredUnits = map fst <$> clusters
-          expands = findExpands obs grid heights
+                        -- calculate clusters
+                        marked = dbscan 10 2 resourceFields
+                        clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
+                        clusteredUnits = map fst <$> clusters
+                        expands = findExpands obs grid heights
 
-          bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
+                        bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
 
-          gridWithClusters = appEndo (
-            Endo (markClusters marked)
-            <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints)
-            grid
+                        gridWithClusters =
+                            appEndo
+                                ( Endo (markClusters marked)
+                                    <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints
+                                )
+                                grid
 
-          grid' =
-           foldl' (flip (gridPlace UnitTypeId.ProtossNexus)) grid expands
+                        grid' =
+                            foldl' (flip (gridPlace UnitTypeId.ProtossNexus)) grid expands
 
-      print $ foldl (\acc cl  -> (show . snd . head $ cl, length cl): acc ) [] clusters
-      print $ bbFootPrints
-      gridToFile "outgrid.txt" grid'
+                    print $ foldl (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
+                    print $ bbFootPrints
+                    gridToFile "outgrid.txt" grid'
 
-      length marked `shouldBe` length resourceFields
-      length expands `shouldBe` 15 -- 16 - already buit start nexus
+                    length marked `shouldBe` length resourceFields
+                    length expands `shouldBe` 15 -- 16 - already buit start nexus
 
 gridUnitTests :: Spec
 gridUnitTests = do
-  let testGrid = createGrid
-             [ "###################################################"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "#                                                 #"
-             , "###################################################"
-             ]
-  describe "Grid palacement unit tests" $ do
-    it "basic" $ do
+    let testGrid =
+            createGrid
+                [ "###################################################"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "#                                                 #"
+                , "###################################################"
+                ]
+    describe "Grid palacement unit tests" $ do
+        it "basic" $ do
+            let buildingFootprint = getFootprint ProtossNexus
+            print buildingFootprint
 
-      let buildingFootprint = getFootprint ProtossNexus
-      print buildingFootprint
+            let maybePlacementPoint = findPlacementPoint testGrid testGrid buildingFootprint (3, 3) (const True)
+            maybePlacementPoint `shouldNotBe` Nothing
 
-      let maybePlacementPoint = findPlacementPoint testGrid testGrid buildingFootprint (3,3) (const True)
-      maybePlacementPoint `shouldNotBe` Nothing
+    describe "Grid raycast test" $ do
+        it "basic raycast" $ do
+            let grid =
+                    createGrid
+                        [ "#####"
+                        , "#   #"
+                        , "# c #"
+                        , "#   #"
+                        , "#####"
+                        ]
+                res = gridRaycastTile grid (2, 2) (1, 1)
+            head <$> res `shouldBe` Just (4, 4)
+        it "choke point" $ do
+            let grid =
+                    createGrid
+                        [ "#################################"
+                        , "#             ###################"
+                        , "#             ###################"
+                        , "#######   a   ###################"
+                        , "##  ###                         #"
+                        , "#    ##                         #"
+                        , "#     ##              b         #"
+                        , "#      ###                      #"
+                        , "##      ###                     #"
+                        , "###      ######                 #"
+                        , "## #   c                        #"
+                        , "#####                           #"
+                        , "######                          #"
+                        , "######                          #"
+                        , "######                          #"
+                        , "######                          #"
+                        , "######                          #"
+                        , "#################################"
+                        ]
+                resA = findChokePoint grid 8 (10, 3)
+                resB = findChokePoint grid 8 (22, 6)
+                resC = findChokePoint grid 6 (7, 10)
+            print $ "resA:" ++ show resA
+            print $ "resB:" ++ show resB
+            print $ "resC:" ++ show resC
+            (head <$> resA, last <$> resA) `shouldBe` (Just (6, 3), Just (14, 3))
+            resB `shouldBe` Nothing
+            (head <$> resC, last <$> resC) `shouldBe` (Just (5, 12), Just (9, 8))
 
 main :: IO ()
 main = hspec $ spec >> gridUnitTests
