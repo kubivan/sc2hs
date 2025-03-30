@@ -23,6 +23,8 @@ module Grid (
     gridH,
     gridRaycastTile,
     findChokePoint,
+    getAllNeigbors,
+    getAllNotSharpNeigbors,
 )
 where
 
@@ -127,18 +129,41 @@ canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
 
 findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
 findPlacementPointInRadius grid heightMap footprint start radius =
-    gridBfs grid start acceptWhen terminateWhen
+    gridBfs grid start getAllNeigbors acceptWhen terminateWhen
   where
     acceptWhen p = canPlaceBuilding grid heightMap p footprint
     terminateWhen p = distSquared (fromTuple start) (fromTuple p) > (radius * radius)
 
 findPlacementPoint :: Grid -> Grid -> Footprint -> TilePos -> (TilePos -> Bool) -> Maybe TilePos
-findPlacementPoint grid heightMap footprint start acceptanceCriteria = gridBfs grid start acceptance (const False)
+findPlacementPoint grid heightMap footprint start acceptanceCriteria = gridBfs grid start getAllNeigbors acceptance (const False)
   where
     acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
 
-gridBfs :: Grid -> TilePos -> (TilePos -> Bool) -> (TilePos -> Bool) -> Maybe TilePos
-gridBfs grid start acceptanceCriteria terminationCriteria =
+getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
+getAllNeigbors grid (x, y) =
+    Seq.fromList
+        [ (x + dx, y + dy)
+        | dx <- [-1, 0, 1]
+        , dy <- [-1, 0, 1]
+        , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+        , let pixel = gridPixelSafe grid (x + dx, y + dy)
+        , isJust pixel -- pixel /= Just '#'
+        ]
+
+getAllNotSharpNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
+getAllNotSharpNeigbors grid (x, y) =
+    Seq.fromList
+        [ (x + dx, y + dy)
+        | dx <- [-1, 0, 1]
+        , dy <- [-1, 0, 1]
+        , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+        , let pixel = gridPixelSafe grid (x + dx, y + dy)
+        , pixel /= Just '#'
+        ]
+
+gridBfs ::
+    Grid -> TilePos -> (Grid -> TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> Maybe TilePos
+gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
     bfs (Seq.singleton start) (Set.singleton start)
   where
     bfs Seq.Empty _ = Nothing
@@ -147,19 +172,8 @@ gridBfs grid start acceptanceCriteria terminationCriteria =
         | terminationCriteria top = Nothing
         | otherwise = bfs (rest Seq.>< newPoints) newVisited
       where
-        newPoints = Seq.filter (`Set.notMember` visited) (neighbors top)
+        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc grid top)
         newVisited = Set.union visited (Set.fromList . toList $ newPoints)
-
-    neighbors :: TilePos -> Seq.Seq TilePos
-    neighbors (x, y) =
-        Seq.fromList
-            [ (x + dx, y + dy)
-            | dx <- [-1, 0, 1]
-            , dy <- [-1, 0, 1]
-            , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-            , let pixel = gridPixelSafe grid (x + dx, y + dy)
-            , isJust pixel -- pixel /= Just '#'
-            ]
 
 -- Place a building footprint on the grid if possible at the given placement point
 addMark :: Grid -> Footprint -> TilePos -> Grid
