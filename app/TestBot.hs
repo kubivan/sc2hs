@@ -568,7 +568,7 @@ neighbors p@(x, y) grid =
     , dy <- [-1, 0, 1]
     , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
     , let pixel = gridPixelSafe grid (x + dx, y + dy)
-    , pixel /= Just '#'
+    , pixel /= Just '#' && isJust pixel
     ]
 
 -- Check if an enemy is in range
