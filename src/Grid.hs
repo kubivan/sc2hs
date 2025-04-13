@@ -25,6 +25,12 @@ module Grid (
     findChokePoint,
     getAllNeigbors,
     getAllNotSharpNeigbors,
+
+    gridPlaceRay,
+    gridSplitByRay,
+    gridRaycastTile,
+    findAllChokePoints,
+    checkVolumes
 )
 where
 
@@ -48,6 +54,13 @@ import Utils (TilePos, dbg, distSquared, fromTuple)
 import Data.Sequence qualified as Seq -- (Seq (..), empty, (|>))
 import Debug.Trace (trace)
 import UnitTypeId (UnitTypeId)
+
+-- raycasting
+import Control.Monad.Trans.Maybe
+import Control.Monad.State
+import Control.Monad (guard, mplus)
+import Data.Maybe (catMaybes, fromMaybe)
+import Debug.Trace (traceShow, traceShowId, traceM)
 
 type Grid = V.Vector (V.Vector Char)
 
@@ -191,30 +204,55 @@ updatePixel grid p@(i, j) value = if currentPixel == '#' then grid else grid V./
   where
     currentPixel = gridPixel grid p
 
-gridRaycastTile :: Grid -> TilePos -> TilePos -> Maybe [TilePos]
+--
+-- Grid raycasting & choke points
+--
+type Ray = [TilePos]
+type ChokeM = MaybeT (State (Grid, Set.Set Ray)) Ray
+
+neighborsRay :: Grid -> TilePos -> [TilePos]
+neighborsRay grid (x, y) =
+    filter isValid [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+  where
+    isValid (nx, ny) = case gridPixelSafe grid (nx, ny) of
+        Just '#' -> False -- Only move on empty spaces
+        Just '*' -> False -- Only move on empty spaces
+        Nothing -> False
+        _ -> True
+
+gridPlaceRay :: Grid -> Ray -> Grid
+gridPlaceRay = foldl (\accGrid pixel -> updatePixel accGrid pixel '*')
+
+gridRaycastTile :: Grid -> TilePos -> TilePos -> Maybe Ray
 gridRaycastTile grid origin (dx, dy) =
     find isObstacle $ takeWhile inBounds $ iterate step [origin]
   where
     step ray@((px, py) : _) = (px + dx, py + dy) : ray
     inBounds ray = isJust $ gridPixelSafe grid (head ray)
-    isObstacle ray = Just '#' == gridPixelSafe grid (head ray)
+    isObstacle ray = case gridPixelSafe grid (head ray) of
+        Just '*' -> True
+        Just '#' -> True
+        Nothing -> True
+        _ -> False
 
 findChokePoint :: Grid -> Int -> TilePos -> Maybe [TilePos]
 findChokePoint grid threshold start =
-    zipRays <$> find rayShortEnough rays
+    find (\r -> rayShortEnough r && rayDoesntCross2Rays r) (zipRays <$> rays)
   where
-    zipRays :: ([TilePos], [TilePos]) -> [TilePos] -- drop first elem from backward ray as it duplicates forward
-    zipRays (forward, backward) = sort $ forward ++ (drop 1 . reverse $ backward) `Utils.dbg` ("zipping rays " ++ show (forward, backward))
+    zipRays :: (Ray, Ray) -> Ray -- drop first elem from backward ray as it duplicates forward
+    zipRays (forward, backward) = sort $ forward ++ (drop 1 . reverse $ backward) -- `Utils.dbg` ("zipping rays " ++ show (forward, backward))
     raycast = gridRaycastTile grid start
-    rayShortEnough :: ([TilePos], [TilePos]) -> Bool
-    rayShortEnough (forward, backward) =
+    rayDoesntCross2Rays :: Ray -> Bool
+    rayDoesntCross2Rays ray = not $ gridPixelSafe grid (head ray) == Just '*' || gridPixelSafe grid (last ray) == Just '*'
+    rayShortEnough :: Ray -> Bool
+    rayShortEnough ray =
         threshold * threshold
             >= round
-                ( distSquared (head forward) (head backward)
-                -- `Utils.dbg` ("checking " ++ show (forward, backward) ++ " " ++ show (distSquared forward backward))
+                ( distSquared (head ray) (last ray)
+                 --`Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
                 )
 
-    rays :: [([TilePos], [TilePos])]
+    rays :: [(Ray, Ray)]
     rays =
         [ (forwardRay, backwardRay)
         | angle <- [0, 45, 90, 135, 180]
@@ -224,3 +262,109 @@ findChokePoint grid threshold start =
         , Just forwardRay <- [raycast dir_forward]
         , Just backwardRay <- [raycast dir_backward]
         ]
+
+
+gridSplitByRay :: Grid -> Int -> Ray -> (Maybe (Set.Set TilePos), Maybe (Set.Set TilePos))
+gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay --`Utils.dbg` ("pointsAroundRay: " ++ show pointsAroundRay)
+  where
+    minVolume = minVolume' * 2
+    pointsAroundRay :: [TilePos]
+    pointsAroundRay =
+            Set.toList . Set.fromList $
+                concatMap (neighborsRay grid) ray
+
+    checkFirst2 :: [TilePos] -> (Maybe (Set.Set TilePos), Maybe (Set.Set TilePos))
+    checkFirst2 [] = (Nothing, Nothing)
+    checkFirst2 (a : ns) =
+        let (visitedA, minVolumeReachedA) = gridFloodPeek grid (Set.fromList ray) minVolume a `Utils.dbg` ("gridFloodPeek:checking: " ++ show a)
+            regionA = if minVolumeReachedA then Nothing else Just visitedA
+            rest = filter (`Set.notMember` visitedA) ns
+         in case rest of
+                (b : _) ->
+                    let (visitedB, minVolumeReachedB) = gridFloodPeek grid visitedA minVolume b
+                     in trace
+                            ( "A size: "
+                                ++ show (Set.size visitedA, minVolumeReachedA)
+                                ++ ", B size: "
+                                ++ show (Set.size visitedB, minVolumeReachedB)
+                            )
+                            $ (regionA, if minVolumeReachedB then Nothing else Just visitedB)
+                [] -> (regionA, Just Set.empty) -- trace "[checkFirst2] No disjoint B found" (visitedA, Set.empty)
+
+checkVolumes :: Grid -> [TilePos] -> Int -> Bool
+checkVolumes grid ray minVolume =
+    case gridSplitByRay grid minVolume ray of
+        (Just a, Just b) -> volumeA >= minVolume && volumeB >= minVolume `Utils.dbg` ("(Just a, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show (volumeA, volumeB))
+            where
+                volumeA = Set.size a
+                volumeB = Set.size b
+        (Just a, Nothing) -> volumeA >= minVolume `Utils.dbg` ("(Just a, Nothing) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeA)
+            where
+                volumeA = Set.size a
+        (Nothing, Just b) -> volumeB >= minVolume `Utils.dbg` ("(Nothing, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeB)
+            where
+                volumeB = Set.size b
+        d -> True `Utils.dbg` (show d ++ "ray " ++ show ray ++ " Doesn't splits grid into volumes, but ok")
+
+
+gridFloodPeek :: Grid -> Set.Set TilePos -> Int -> TilePos -> (Set.Set TilePos, Bool)
+gridFloodPeek grid visited minVolume start
+  | start `Set.member` visited = (Set.empty, False)
+  | otherwise = (region, minVolumeReached) where
+        (finalVisited, minVolumeReached) = bfs (Seq.singleton start) (Set.insert start visited)
+        region = Set.difference finalVisited visited
+        firstRegionSize = Set.size visited
+
+        bfs :: Seq.Seq TilePos -> Set.Set TilePos -> (Set.Set TilePos, Bool)
+        bfs Seq.Empty vis = (vis, False)
+        bfs (curr Seq.:<| queue) vis
+            | Set.size vis - firstRegionSize > minVolume = (vis, True)
+            | otherwise =
+                let newNeighbors = filter (`Set.notMember` vis) (neighborsRay grid curr)
+                    vis' = foldr Set.insert vis newNeighbors
+                    queue' = queue Seq.>< Seq.fromList newNeighbors
+                in bfs queue' vis'
+
+checkIfChoke :: TilePos -> ChokeM
+checkIfChoke pos = do
+    --traceM $ "checkIfChoke: " ++ show pos
+    (grid, visited) <- lift get
+
+    guard (gridPixel grid pos `notElem` ['#', '*'])
+
+    ray <- MaybeT $ return $ findChokePoint grid 15 pos  -- Lift Maybe into ChokeM
+    guard (ray /= [])
+
+    -- guard (all (all (\c -> distSquared pos c > 4 * 4)) currentChokes)
+
+    guard (ray `Set.notMember` visited)
+    lift $ put (grid, Set.insert ray visited)
+    --traceM "Ray not yet checked"
+
+    -- Update state
+    let grid' = gridPlaceRay grid ray
+    traceM "checking volumes"
+    -- let volumesRes = checkVolumes grid' ray 100
+    let volumesRes = checkVolumes grid' ray 250
+    guard (trace ("volume check " ++ show volumesRes) volumesRes)
+    traceM "volumes check passed!!!!"
+
+    lift $ put (grid', Set.insert ray visited)
+
+    traceM "volumes check passed2!!!"
+    return ray
+
+findAllChokePoints :: Grid -> ([Ray], Grid)
+findAllChokePoints grid =
+    let openCells =
+          [ (x, y)
+          | y <- [0 .. gridH grid - 1]
+          , x <- [0 .. gridW grid - 1]
+          , gridPixel grid (x, y) /= '#'
+          ]
+
+        runEach pos = runMaybeT (checkIfChoke pos)
+
+        (maybeRays, (grid', _)) = runState (mapM runEach openCells) (grid, Set.empty)
+
+    in (catMaybes maybeRays, grid')
