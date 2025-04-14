@@ -4,7 +4,7 @@
 module Grid (
     gridFromImage,
     gridToStr,
-    createGrid,
+    gridFromLines,
     Grid,
     findPlacementPoint,
     findPlacementPointInRadius,
@@ -76,8 +76,8 @@ gridPixel g (x, y) = (g V.! y) V.! x
 gridPixelSafe :: Grid -> TilePos -> Maybe Char
 gridPixelSafe g (x, y) = g V.!? y >>= (V.!? x)
 
-createGrid :: [String] -> Grid
-createGrid rows = V.fromList [V.fromList row | row <- rows]
+gridFromLines :: [String] -> Grid
+gridFromLines rows = V.fromList [V.fromList row | row <- rows]
 
 gridToStr :: Grid -> String
 gridToStr g = unlines $ V.toList $ V.toList <$> V.reverse g

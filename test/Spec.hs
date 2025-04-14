@@ -37,7 +37,6 @@ import qualified Data.Sequence as Seq
 
 import Control.Monad (guard, mplus)
 import Control.Monad.Trans.Maybe
--- import Control.Monad.Extra (liftMaybe)
 import Control.Monad.State
 import Control.Monad.Writer
 
@@ -242,7 +241,7 @@ spec =
                 it "findFirstChoke" $ \(obs, gi) -> do
                     let
                         grid =
-                            createGrid
+                            gridFromLines
                                 [ "#################################"
                                 , "#             ###################"
                                 , "#             ###################"
@@ -294,7 +293,7 @@ spec =
 gridUnitTests :: Spec
 gridUnitTests = do
     let testGrid =
-            createGrid
+            gridFromLines
                 [ "###################################################"
                 , "#                                                 #"
                 , "#                                                 #"
@@ -324,7 +323,7 @@ gridUnitTests = do
     describe "Grid raycast test" $ do
         it "basic raycast" $ do
             let grid =
-                    createGrid
+                    gridFromLines
                         [ "#####"
                         , "#   #"
                         , "# c #"
@@ -335,7 +334,7 @@ gridUnitTests = do
             head <$> res `shouldBe` Just (4, 4)
         it "choke_point" $ do
             let grid =
-                    createGrid
+                    gridFromLines
                         [ "#################################"
                         , "#             ###################"
                         , "#             ###################"
