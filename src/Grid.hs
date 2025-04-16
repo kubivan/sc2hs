@@ -14,7 +14,7 @@ module Grid (
     addMark,
     printGrid,
     gridToFile,
-    updatePixel,
+    gridSetPixel,
     gridPixel,
     gridPixelSafe,
     gridMerge,
@@ -90,6 +90,22 @@ gridFromImage image = decodeImageData width height bpp bs
     bpp = fromIntegral $ image ^. P.bitsPerPixel
     bs = image ^. P.data' :: BS.ByteString
 
+    decodeImageData :: Int -> Int -> Int -> BS.ByteString -> Grid
+    decodeImageData width height bpp bytes = V.generate height rowGenerator
+      where
+        rowGenerator i = V.generate width (pixelGenerator bpp i)
+        pixelGenerator 1 j i = if (byte `shiftR` (7 - bitIndex)) .&. 1 == 1 then ' ' else '#'
+          where
+            offset = j * width + i
+            byteIndex = offset `div` 8
+            bitIndex = offset `rem` 8
+            byte = BS.index bytes byteIndex :: Word8
+        pixelGenerator 8 i j = if byte == 1 then ' ' else '#'
+          where
+            offset = j * width + i
+            byte = BS.index bytes offset :: Word8
+        pixelGenerator _ i j = undefined
+
 pixelIsRamp :: Char -> Char -> Char
 pixelIsRamp placement pathing
     | pathing == ' ' && placement == '#' = '/'
@@ -112,22 +128,6 @@ printGrid = putStrLn . gridToStr
 -- Decode a single byte into a list of bits.
 decodeByte :: Word8 -> [Bool]
 decodeByte byte = [testBit byte i | i <- [0 .. 7]]
-
-decodeImageData :: Int -> Int -> Int -> BS.ByteString -> Grid
-decodeImageData width height bpp bytes = V.generate height rowGenerator
-  where
-    rowGenerator i = V.generate width (pixelGenerator bpp i)
-    pixelGenerator 1 j i = if (byte `shiftR` (7 - bitIndex)) .&. 1 == 1 then ' ' else '#'
-      where
-        offset = j * width + i
-        byteIndex = offset `div` 8
-        bitIndex = offset `rem` 8
-        byte = BS.index bytes byteIndex :: Word8
-    pixelGenerator 8 i j = if byte == 1 then ' ' else '#'
-      where
-        offset = j * width + i
-        byte = BS.index bytes offset :: Word8
-    pixelGenerator _ i j = undefined
 
 canPlaceBuilding :: Grid -> Grid -> TilePos -> Footprint -> Bool
 canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
@@ -191,16 +191,16 @@ gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
 -- Place a building footprint on the grid if possible at the given placement point
 addMark :: Grid -> Footprint -> TilePos -> Grid
 addMark grid (Footprint pixels) (cx, cy) =
-    foldl (\accGrid (x, y, mark) -> updatePixel accGrid (cx + x, cy + y) mark) grid pixels
+    foldl (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
 
-gridPlace :: UnitTypeId -> TilePos -> Grid -> Grid
-gridPlace u (cx, cy) g = foldl (\accGrid (x, y, mark) -> updatePixel accGrid (cx + x, cy + y) mark) g ptrn
+gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
+gridPlace g u (cx, cy) = foldl (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
   where
     ptrn = pixels (getFootprint u)
 
 -- Update a cell in the Grid
-updatePixel :: Grid -> TilePos -> Char -> Grid
-updatePixel grid p@(i, j) value = if currentPixel == '#' then grid else grid V.// [(j, (grid V.! j) V.// [(i, value)])]
+gridSetPixel :: Grid -> TilePos -> Char -> Grid
+gridSetPixel grid p@(i, j) value = if currentPixel == '#' then grid else grid V.// [(j, (grid V.! j) V.// [(i, value)])]
   where
     currentPixel = gridPixel grid p
 
@@ -221,7 +221,7 @@ neighborsRay grid (x, y) =
         _ -> True
 
 gridPlaceRay :: Grid -> Ray -> Grid
-gridPlaceRay = foldl (\accGrid pixel -> updatePixel accGrid pixel '*')
+gridPlaceRay = foldl (\accGrid pixel -> gridSetPixel accGrid pixel '*')
 
 gridRaycastTile :: Grid -> TilePos -> TilePos -> Maybe Ray
 gridRaycastTile grid origin (dx, dy) =

@@ -65,8 +65,8 @@ loadTestData = do
 markClusters :: MapClusters -> Grid -> Grid
 markClusters labels grid = foldl' mark grid (Map.toList labels)
   where
-    mark g (p, Cluster n) = updatePixel g (tilePos $ p ^. #pos) 'x'
-    mark g (p, Noise) = updatePixel g (tilePos $ p ^. #pos) 'X'
+    mark g (p, Cluster n) = gridSetPixel g (tilePos $ p ^. #pos) 'x'
+    mark g (p, Noise) = gridSetPixel g (tilePos $ p ^. #pos) 'X'
 
 -- Get all valid neighboring tiles
 neighbors :: Grid -> TilePos -> [TilePos]
@@ -85,7 +85,7 @@ fillRegion grid pos regionID = do
     currentGrid <- get
     case gridPixelSafe currentGrid pos of
         Just ' ' -> do
-            let updatedGrid = updatePixel currentGrid pos regionID
+            let updatedGrid = gridSetPixel currentGrid pos regionID
             put updatedGrid
             mapM_ (\p -> fillRegion updatedGrid p regionID) (neighbors updatedGrid pos)
             return updatedGrid
@@ -146,7 +146,7 @@ spec =
                                 grid
 
                         grid' =
-                            foldl' (flip (gridPlace UnitTypeId.ProtossNexus)) grid expands
+                            foldl' (`gridPlace` UnitTypeId.ProtossNexus) grid expands
 
                     print $ foldl (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
                     print $ bbFootPrints
@@ -285,7 +285,7 @@ spec =
                         --Just (chokes, (grid', rays, _)) = findAllChokePoints grid
                         --(grid', rays) = findAllChokePoints grid
                         (rays, grid') = findAllChokePoints grid
-                        grid'' = foldl (\gridA p -> updatePixel gridA p 'c') grid' [(136,36),(137,36),(138,36),(139,36),(140,36),(141,36)]
+                        grid'' = foldl (\gridA p -> gridSetPixel gridA p 'c') grid' [(136,36),(137,36),(138,36),(139,36),(140,36),(141,36)]
 
                     gridToFile "outgrid_with_all_chokes.txt" grid''
                     print $ "found " ++ show (length rays) ++ " chokes"

@@ -630,7 +630,7 @@ instance Agent TestBot TestDynamicState where
         agentUpdateGrid
             ( \g ->
                 foldl
-                    (\ga (u, p) -> gridPlace u p ga)
+                    (\ga (u, p) -> gridPlace ga u p)
                     g
                     [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
             )
