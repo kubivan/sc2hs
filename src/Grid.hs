@@ -25,6 +25,7 @@ module Grid (
     findChokePoint,
     getAllNeigbors,
     getAllNotSharpNeigbors,
+    smartTransition,
 
     gridPlaceRay,
     gridSplitByRay,
@@ -142,15 +143,32 @@ canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
 
 findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
 findPlacementPointInRadius grid heightMap footprint start radius =
-    gridBfs grid start getAllNeigbors acceptWhen terminateWhen
+    fst $ gridBfs grid start (getAllNeigbors grid) acceptWhen terminateWhen
   where
     acceptWhen p = canPlaceBuilding grid heightMap p footprint
     terminateWhen p = distSquared (fromTuple start) (fromTuple p) > (radius * radius)
 
 findPlacementPoint :: Grid -> Grid -> Footprint -> TilePos -> (TilePos -> Bool) -> Maybe TilePos
-findPlacementPoint grid heightMap footprint start acceptanceCriteria = gridBfs grid start getAllNeigbors acceptance (const False)
+findPlacementPoint grid heightMap footprint start acceptanceCriteria = fst $ gridBfs grid start (getAllNeigbors grid) acceptance (const False)
   where
     acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
+
+smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
+smartTransition grid transitions  pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
+  where
+    pixelFrom = gridPixel grid pos
+    allAdjacent =
+      [ (x + dx, y + dy)
+      | dx <- [-1, 0, 1]
+      , dy <- [-1, 0, 1]
+      , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+      , let pixel = gridPixelSafe grid (x + dx, y + dy)
+      , isJust pixel -- pixel /= Just '#'
+      ]
+    passTransitions p = isJust $ find (canTransit p) transitions
+    canTransit p (f, t) = res `Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
+      where
+        res = pixelFrom == f && gridPixel grid p == t
 
 getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
 getAllNeigbors grid (x, y) =
@@ -175,17 +193,17 @@ getAllNotSharpNeigbors grid (x, y) =
         ]
 
 gridBfs ::
-    Grid -> TilePos -> (Grid -> TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> Maybe TilePos
+    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
     bfs (Seq.singleton start) (Set.singleton start)
   where
-    bfs Seq.Empty _ = Nothing
+    bfs Seq.Empty visited = (Nothing, visited)
     bfs (top Seq.:<| rest) visited
-        | acceptanceCriteria top = Just top `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
-        | terminationCriteria top = Nothing
+        | acceptanceCriteria top = (Just top, visited) `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
+        | terminationCriteria top = (Nothing, visited)
         | otherwise = bfs (rest Seq.>< newPoints) newVisited
       where
-        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc grid top)
+        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc top)
         newVisited = Set.union visited (Set.fromList . toList $ newPoints)
 
 -- Place a building footprint on the grid if possible at the given placement point
@@ -276,7 +294,7 @@ gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay --`Utils.dbg` (
     checkFirst2 :: [TilePos] -> (Maybe (Set.Set TilePos), Maybe (Set.Set TilePos))
     checkFirst2 [] = (Nothing, Nothing)
     checkFirst2 (a : ns) =
-        let (visitedA, minVolumeReachedA) = gridFloodPeek grid (Set.fromList ray) minVolume a `Utils.dbg` ("gridFloodPeek:checking: " ++ show a)
+        let (visitedA, minVolumeReachedA) = gridFloodPeek grid (Set.fromList ray) minVolume a --`Utils.dbg` ("gridFloodPeek:checking: " ++ show a)
             regionA = if minVolumeReachedA then Nothing else Just visitedA
             rest = filter (`Set.notMember` visitedA) ns
          in case rest of
@@ -294,14 +312,14 @@ gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay --`Utils.dbg` (
 checkVolumes :: Grid -> [TilePos] -> Int -> Bool
 checkVolumes grid ray minVolume =
     case gridSplitByRay grid minVolume ray of
-        (Just a, Just b) -> volumeA >= minVolume && volumeB >= minVolume `Utils.dbg` ("(Just a, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show (volumeA, volumeB))
+        (Just a, Just b) -> volumeA >= minVolume && volumeB >= minVolume --`Utils.dbg` ("(Just a, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show (volumeA, volumeB))
             where
                 volumeA = Set.size a
                 volumeB = Set.size b
-        (Just a, Nothing) -> volumeA >= minVolume `Utils.dbg` ("(Just a, Nothing) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeA)
+        (Just a, Nothing) -> volumeA >= minVolume --`Utils.dbg` ("(Just a, Nothing) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeA)
             where
                 volumeA = Set.size a
-        (Nothing, Just b) -> volumeB >= minVolume `Utils.dbg` ("(Nothing, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeB)
+        (Nothing, Just b) -> volumeB >= minVolume --`Utils.dbg` ("(Nothing, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeB)
             where
                 volumeB = Set.size b
         d -> True `Utils.dbg` (show d ++ "ray " ++ show ray ++ " Doesn't splits grid into volumes, but ok")

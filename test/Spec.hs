@@ -154,29 +154,9 @@ spec =
 
                     length marked `shouldBe` length resourceFields
                     length expands `shouldBe` 15 -- 16 - already buit start nexus
-                    -- it "ray cast & find choke points" $ \(obs, gi) -> do
-                    --     let grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                    --         allPixels =
-                    --             [ (x, y)
-                    --             | x <- [0 .. gridW grid - 1]
-                    --             , y <- [0 .. gridH grid - 1]
-                    --             , isJust (gridPixelSafe grid (x, y))
-                    --             ]
-                    --         grid' = foldl (\gridAcc pixel -> maybe gridAcc (gridPlaceRay gridAcc) (findChokePoint grid 12 pixel)) grid allPixels
-
-                --     gridToFile "outgrid_with_choke_points.txt" grid'
                 it "grid segmentation" $ \(obs, gi) -> do
                     let
                         grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        -- grid :: Grid
-                        -- grid =
-                        --     V.fromList
-                        --         [ V.fromList "#####"
-                        --         , V.fromList "#   #"
-                        --         , V.fromList "# # #"
-                        --         , V.fromList "#   #"
-                        --         , V.fromList "#####"
-                        --         ]
 
                         allPixels =
                             [ (x, y)

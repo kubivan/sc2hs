@@ -100,7 +100,7 @@ unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
 
 -- TODO: it's redundant it's fixed on the grid level by adding '.' around resources
 findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
-findExpandPosInCluster grid heightMap cluster = gridBfs grid (tilePos . view #pos . head $ cluster) getAllNeigbors canPlaceDist69 (const False)
+findExpandPosInCluster grid heightMap cluster = fst $ gridBfs grid (tilePos . view #pos . head $ cluster) (getAllNeigbors grid) canPlaceDist69 (const False)
   where
     clusterTiles = tilePos . view #pos <$> cluster
     canPlaceDist69 p =
