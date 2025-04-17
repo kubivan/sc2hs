@@ -42,7 +42,6 @@ import Control.Monad.Writer
 
 import Data.Char (digitToInt, intToDigit)
 import Data.Maybe (catMaybes, fromMaybe)
-import qualified Data.Vector as V
 
 import qualified Data.Set as Set
 
@@ -73,44 +72,6 @@ markClusters labels grid = foldl' mark grid (Map.toList labels)
     mark g (p, Cluster n) = gridSetPixel g (tilePos $ p ^. #pos) 'x'
     mark g (p, Noise) = gridSetPixel g (tilePos $ p ^. #pos) 'X'
 
--- Get all valid neighboring tiles
-neighbors :: Grid -> TilePos -> [TilePos]
-neighbors grid (x, y) =
-    filter isValid [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-  where
-    isValid (nx, ny) = case gridPixelSafe grid (nx, ny) of
-        Just '#' -> False -- Only move on empty spaces
-        Just '*' -> False -- Only move on empty spaces
-        Nothing -> False
-        _ -> True
-
--- Backtracking-based flood fill for region segmentation
-fillRegion :: Grid -> TilePos -> Char -> State Grid Grid
-fillRegion grid pos regionID = do
-    currentGrid <- get
-    case gridPixelSafe currentGrid pos of
-        Just ' ' -> do
-            let updatedGrid = gridSetPixel currentGrid pos regionID
-            put updatedGrid
-            mapM_ (\p -> fillRegion updatedGrid p regionID) (neighbors updatedGrid pos)
-            return updatedGrid
-        _ -> return currentGrid -- Stop if we hit a boundary
-
--- Find all regions and assign region IDs
-segmentGrid :: Grid -> Grid
-segmentGrid grid = evalState (exploreAll grid '1') grid
-  where
-    exploreAll :: Grid -> Char -> State Grid Grid
-    exploreAll g regionID = do
-        let openCells = [(x, y) | y <- [0 .. gridH g - 1], x <- [0 .. gridW g - 1], gridPixelSafe g (x, y) == Just ' ']
-        case openCells of
-            [] -> return g
-            (start : _) -> do
-                filledGrid <- fillRegion g start regionID
-                if digitToInt regionID >= 9 then return filledGrid else exploreAll filledGrid (intToDigit (digitToInt regionID + 1))
-
-isValidSegment _ = True
-
 spec :: Spec
 spec =
     beforeAll loadTestData $
@@ -127,7 +88,6 @@ spec =
                         nexusCenter = gridPixel grid nexusPos
 
                     print $ "nexus Pos: " ++ show nexusPos
-
 
                     gridPixel gridWithNexus nexusPos `shouldBe` 'c'
                     gridToFile "check_object_orientation.txt" gridWithNexus
@@ -151,13 +111,6 @@ spec =
                     isBuildingType ProtossCyberneticscore `shouldBe` True
 
                     isBuildingType ProtossStalker `shouldBe` False
-                it "grid_update" $ \(obs, gi) -> do
-                    -- print obs
-                    let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
-                        grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
-
-                    gridToFile "ingrid.txt" grid
 
                 it "dbscan tests" $ \(obs, gi) -> do
                     -- print obs
@@ -185,25 +138,28 @@ spec =
 
                     print $ foldl' (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
                     print $ bbFootPrints
-                    gridToFile "outgrid.txt" grid'
                     gridToFile "outgrid_with_clasters.txt" gridWithClusters
 
                     length marked `shouldBe` length resourceFields
                     length expands `shouldBe` 15 -- 16 - already buit start nexus
-                it "grid segmentation" $ \(obs, gi) -> do
+                it "grid_segmentation" $ \(obs, gi) -> do
                     let
+                        nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
                         grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+                        (rays, grid') = findAllChokePoints grid
 
-                        allPixels =
-                            [ (x, y)
-                            | x <- [0 .. gridW grid - 1]
-                            , y <- [0 .. gridH grid - 1]
-                            , isJust (gridPixelSafe grid (x, y))
-                            ]
-                        firstBlank = find (\p -> ' ' == gridPixel grid p) allPixels
-                        grid' = segmentGrid grid
+                        res = gridSegment grid'
+                        charLabels :: [Char]
+                        charLabels = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
 
-                    gridToFile "outgrid_segmented.txt" grid'
+                        resWithCharId = zip charLabels (map snd res)
+
+                        grid'' = foldl (\gridAcc (id, region) -> foldl'(\ga p -> gridSetPixel ga p id ) gridAcc (Set.toList region) ) grid' resWithCharId
+
+                    print $ "nexusPos pixel: " ++ show nexusPos ++ " " ++ show (gridPixel grid nexusPos)
+                    print $ "grid segmented into " ++ show (length res)
+                    print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a ) [] res)
+                    gridToFile "outgrid_segmented_start.txt" grid''
                 it "check volumes" $ \(obs, gi) -> do
                     let grid =
                             gridFromLines
@@ -307,4 +263,4 @@ spec =
                     print $ "found " ++ show (length rays) ++ " chokes"
 
 main :: IO ()
-main = hspec $ gridUnitTests  >> spec
+main = hspec $ spec >> gridUnitTests

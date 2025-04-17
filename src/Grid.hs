@@ -32,7 +32,8 @@ module Grid (
     gridSplitByRay,
     gridRaycastTile,
     findAllChokePoints,
-    checkVolumes
+    checkVolumes,
+    gridSegment
 )
 where
 
@@ -75,7 +76,6 @@ gridW (w, _, _)= w
 gridPixel :: Grid -> TilePos -> Char
 gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
   where
-
     index = x + y * w
 
 gridPixelSafe :: Grid -> TilePos -> Maybe Char
@@ -166,19 +166,17 @@ findPlacementPoint grid heightMap footprint start acceptanceCriteria = fst $ gri
     acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
 
 smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
-smartTransition grid transitions  pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
+smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
   where
     pixelFrom = gridPixel grid pos
     allAdjacent =
       [ (x + dx, y + dy)
-      | dx <- [-1, 0, 1]
-      , dy <- [-1, 0, 1]
-      , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+      | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)]
       , let pixel = gridPixelSafe grid (x + dx, y + dy)
-      , isJust pixel -- pixel /= Just '#'
+      , isJust pixel
       ]
     passTransitions p = isJust $ find (canTransit p) transitions
-    canTransit p (f, t) = res `Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
+    canTransit p (f, t) = res --`Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
       where
         res = pixelFrom == f && gridPixel grid p == t
 
@@ -394,3 +392,29 @@ findAllChokePoints grid =
         (maybeRays, (grid', _)) = runState (mapM runEach openCells) (grid, Set.empty)
 
     in (catMaybes maybeRays, grid')
+
+
+gridSegment :: Grid -> [(Int, Set.Set TilePos)]
+gridSegment grid =
+    go 0 openCells
+  where
+    openCells = Set.fromList
+        [ (x, y)
+        | y <- [0 .. gridH grid - 1]
+        , x <- [0 .. gridW grid - 1]
+        , gridPixel grid (x, y) == ' '
+        ]
+
+    go id rest
+        | trace (show id ++ " openCells: " ++ show (Set.size rest)) False = undefined
+        | Set.null rest = []
+        | otherwise =
+            let start = Set.findMin rest
+                region = fillRegion' start
+                rest' = rest `Set.difference` region
+            in trace ("found region " ++ show (Set.size region) ++ " rest to check: " ++ show (Set.size rest')) $ case Set.minView rest' of
+                Nothing -> [(id, region)]
+                _ -> (id, region) : go (id + 1) rest'
+
+    fillRegion' pos =
+        snd $ gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const False) (const False)

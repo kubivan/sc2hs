@@ -637,17 +637,14 @@ instance Agent TestBot TestDynamicState where
                     g
                     [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
             )
-        traceM "-agentUpdateGrid"
         let reservedResources = actionsCost si queue'
             interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
         unless (null interruptedOrders) $
             agentChat ("interrupted: " ++ show interruptedOrders)
 
-        traceM $ "+splitAffordable " ++ show (interruptedOrders ++ buildOrder)
         (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
         -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
 
-        traceM $ "-splitAffordable: affordable " ++ show (affordableActions)
         unless (null affordableActions) $ do
             agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
 
