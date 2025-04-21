@@ -72,7 +72,7 @@ addUnit unitType obs =
     unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
 
 gridUpdate :: Observation -> Grid.Grid -> Grid.Grid
-gridUpdate obs grid = foldl (\acc (fp, pos) -> Grid.addMark acc fp pos) grid (getFootprints <$> units)
+gridUpdate obs grid = foldl' (\acc (fp, pos) -> Grid.addMark acc fp pos) grid (getFootprints <$> units)
   where
     -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
     -- units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))

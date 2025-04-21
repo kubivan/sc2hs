@@ -1,3 +1,5 @@
+{-# OPTIONS -Wall #-}
+
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
@@ -21,7 +23,6 @@ module Grid (
     pixelIsRamp,
     gridW,
     gridH,
-    gridRaycastTile,
     findChokePoint,
     getAllNeigbors,
     getAllNotSharpNeigbors,
@@ -38,8 +39,8 @@ where
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.List (find, sort)
-import Data.Vector qualified as V
 import Data.Word (Word8)
+import qualified Data.Vector.Unboxed as VU
 
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
@@ -52,7 +53,7 @@ import Data.Maybe (isJust)
 import Footprint
 import Utils (TilePos, dbg, distSquared, fromTuple)
 
-import Data.Sequence qualified as Seq -- (Seq (..), empty, (|>))
+import Data.Sequence qualified as Seq
 import Debug.Trace (trace)
 import UnitTypeId (UnitTypeId)
 
@@ -63,28 +64,50 @@ import Control.Monad (guard, mplus)
 import Data.Maybe (catMaybes, fromMaybe)
 import Debug.Trace (traceShow, traceShowId, traceM)
 
-type Grid = V.Vector (V.Vector Char)
+type Grid = (Int, Int, VU.Vector Char)
 
 gridH :: Grid -> Int
-gridH = V.length
+gridH (_, h, _)= h
 
 gridW :: Grid -> Int
-gridW = V.length . V.head
+gridW (w, _, _)= w
 
 gridPixel :: Grid -> TilePos -> Char
-gridPixel g (x, y) = (g V.! y) V.! x
+gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
+  where
+
+    index = x + y * w
 
 gridPixelSafe :: Grid -> TilePos -> Maybe Char
-gridPixelSafe g (x, y) = g V.!? y >>= (V.!? x)
+gridPixelSafe (w, h, g) (x, y)
+  | x < 0 || x >= w = Nothing
+  | y < 0 || y >= h = Nothing
+  | otherwise = g VU.!? index
+  where
+    index = x + y * w
+
+
+-- Update a cell in the Grid
+gridSetPixel :: Grid -> TilePos -> Char -> Grid
+gridSetPixel grid@(w, h, g) (x, y) value
+  | gridPixel grid (x, y) == '#' = grid
+  | otherwise= (w, h, g VU.// [(index, value)]) where --`Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
+      index = x + y * w
+
 
 gridFromLines :: [String] -> Grid
-gridFromLines rows = V.fromList [V.fromList row | row <- rows]
+gridFromLines rows =
+  let h = length rows
+      w = length (head rows)
 
-gridToStr :: Grid -> String
-gridToStr g = unlines $ V.toList $ V.toList <$> V.reverse g
+  in (w, h, VU.fromList $ concat rows)
+
+
+gridToStr (w, h, g) = unlines $ [ [ g VU.! (x + y * w) | x <- [0..w-1] ] | y <- [0..h-1] ]
+
 
 gridFromImage :: P.ImageData -> Grid
-gridFromImage image = decodeImageData width height bpp bs
+gridFromImage image = trace ("gridFromImage " ++ show (width, height, bpp, BS.length bs)) $ decodeImageData width height bpp bs
   where
     width = fromIntegral $ image ^. (P.size . P.x)
     height = fromIntegral $ image ^. (P.size . P.y)
@@ -92,20 +115,17 @@ gridFromImage image = decodeImageData width height bpp bs
     bs = image ^. P.data' :: BS.ByteString
 
     decodeImageData :: Int -> Int -> Int -> BS.ByteString -> Grid
-    decodeImageData width height bpp bytes = V.generate height rowGenerator
+    decodeImageData idw idh idbpp bytes
+       | idbpp == 8 = (idw, idh, VU.fromList $ map (\w -> if w == 0 then '#' else ' ' ) (BS.unpack bytes))
+       | idbpp == 1 = (idw, idh, (\b -> if b then ' ' else '#') `VU.map` unpackBits bytes )
+       | otherwise = error "Not implemented"
+
+    -- Unpack bits from ByteString into Vector Bool
+    unpackBits :: BS.ByteString -> VU.Vector Bool
+    unpackBits ubbs = VU.concatMap unpackByte (VU.fromList $ BS.unpack ubbs)
       where
-        rowGenerator i = V.generate width (pixelGenerator bpp i)
-        pixelGenerator 1 j i = if (byte `shiftR` (7 - bitIndex)) .&. 1 == 1 then ' ' else '#'
-          where
-            offset = j * width + i
-            byteIndex = offset `div` 8
-            bitIndex = offset `rem` 8
-            byte = BS.index bytes byteIndex :: Word8
-        pixelGenerator 8 i j = if byte == 1 then ' ' else '#'
-          where
-            offset = j * width + i
-            byte = BS.index bytes offset :: Word8
-        pixelGenerator _ i j = undefined
+        unpackByte :: Word8 -> VU.Vector Bool
+        unpackByte byte = VU.generate 8 (\i -> testBit byte (7 - i)) -- MSB first
 
 pixelIsRamp :: Char -> Char -> Char
 pixelIsRamp placement pathing
@@ -113,22 +133,14 @@ pixelIsRamp placement pathing
     | otherwise = placement
 
 gridMerge :: (Char -> Char -> Char) -> Grid -> Grid -> Grid
-gridMerge pixelFunc placementGrid pathingGrid =
-    V.fromList
-        [ V.fromList
-            [pixelFunc (gridPixel placementGrid (x, y)) (gridPixel pathingGrid (x, y)) | x <- [0 .. (gridW placementGrid - 1)]]
-        | y <- [0 .. (gridH placementGrid - 1)]
-        ]
+gridMerge pixelFunc placementGrid@(w,h, g1) pathingGrid@(_,_,g2) = (w, h, VU.fromList [pixelFunc pa pb | (pa, pb) <- zip (VU.toList g1) (VU.toList g2)])
+
 gridToFile :: FilePath -> Grid -> IO ()
 gridToFile filePath grid =
     writeFile filePath (gridToStr grid)
 
 printGrid :: Grid -> IO ()
 printGrid = putStrLn . gridToStr
-
--- Decode a single byte into a list of bits.
-decodeByte :: Word8 -> [Bool]
-decodeByte byte = [testBit byte i | i <- [0 .. 7]]
 
 canPlaceBuilding :: Grid -> Grid -> TilePos -> Footprint -> Bool
 canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
@@ -171,8 +183,9 @@ smartTransition grid transitions  pos@(x, y) = Seq.fromList $ filter passTransit
         res = pixelFrom == f && gridPixel grid p == t
 
 getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNeigbors grid (x, y) =
-    Seq.fromList
+getAllNeigbors grid (x, y) = res  --`Utils.dbg` ("ns of " ++ show (x,y) ++ " is " ++ show (Seq.length res))
+  where
+    res = Seq.fromList
         [ (x + dx, y + dy)
         | dx <- [-1, 0, 1]
         , dy <- [-1, 0, 1]
@@ -195,12 +208,13 @@ getAllNotSharpNeigbors grid (x, y) =
 gridBfs ::
     Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
-    bfs (Seq.singleton start) (Set.singleton start)
+    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton start) (Set.singleton start)
   where
     bfs Seq.Empty visited = (Nothing, visited)
     bfs (top Seq.:<| rest) visited
         | acceptanceCriteria top = (Just top, visited) `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
         | terminationCriteria top = (Nothing, visited)
+        -- | otherwise = trace ("gridBfs processing: " ++ show (top)) $ bfs (rest Seq.>< newPoints) newVisited
         | otherwise = bfs (rest Seq.>< newPoints) newVisited
       where
         newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc top)
@@ -209,18 +223,12 @@ gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
 -- Place a building footprint on the grid if possible at the given placement point
 addMark :: Grid -> Footprint -> TilePos -> Grid
 addMark grid (Footprint pixels) (cx, cy) =
-    foldl (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
+    foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
 
 gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
-gridPlace g u (cx, cy) = foldl (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
+gridPlace g u (cx, cy) = trace ("gridPlace " ++ show u) $ foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
   where
     ptrn = pixels (getFootprint u)
-
--- Update a cell in the Grid
-gridSetPixel :: Grid -> TilePos -> Char -> Grid
-gridSetPixel grid p@(i, j) value = if currentPixel == '#' then grid else grid V.// [(j, (grid V.! j) V.// [(i, value)])]
-  where
-    currentPixel = gridPixel grid p
 
 --
 -- Grid raycasting & choke points
@@ -239,7 +247,7 @@ neighborsRay grid (x, y) =
         _ -> True
 
 gridPlaceRay :: Grid -> Ray -> Grid
-gridPlaceRay = foldl (\accGrid pixel -> gridSetPixel accGrid pixel '*')
+gridPlaceRay = foldl' (\accGrid pixel -> gridSetPixel accGrid pixel '*')
 
 gridRaycastTile :: Grid -> TilePos -> TilePos -> Maybe Ray
 gridRaycastTile grid origin (dx, dy) =

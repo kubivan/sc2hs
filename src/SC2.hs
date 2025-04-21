@@ -88,7 +88,7 @@ clientPortSet = (portHost + 4, portHost + 5)
 
 startStarCraft :: Int32 -> IO ProcessHandle
 startStarCraft port = do
-  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base92440\\SC2_x64.exe\""
+  let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base93333\\SC2_x64.exe\""
       cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
       args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
       proc = (shell $ sc2 ++ " " ++ unwords args) {cwd = cwd}
@@ -248,6 +248,8 @@ runGameLoop conn signals agent playerId = do
       playerInfos = gi ^. #playerInfo
       playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId ) playerInfos
       pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
+
+
   printGrid pathingGrid
   liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
@@ -258,11 +260,15 @@ runGameLoop conn signals agent playerId = do
       obsRaw = obs0 ^. #observation . #observation
       unitTraits = unitsData $ gameDataResp ^. #data' . #units
       grid = gridMerge pixelIsRamp (gridFromImage $ gi ^. #startRaw . #placementGrid) (gridFromImage $ gi ^. #startRaw . #pathingGrid)
+      gridPlacement = gridFromImage $ gi ^. #startRaw . #placementGrid
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw
       si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart
 
+      nexusCenter = gridPixel gridPlacement (tilePos nexusPos)
+
+  print $ "!!! nexusCenter is: " ++ show nexusCenter ++ " at " ++ show (tilePos nexusPos)
   trace "create ds" return ()
   dynamicState <- makeDynamicState agent obsRaw grid
   trace "created ds" return ()

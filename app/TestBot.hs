@@ -105,6 +105,8 @@ import Utils (
  )
 
 import AgentBulidUtils
+import Debug.Trace (traceM)
+
 
 type BuildOrder = [UnitTypeId]
 
@@ -273,6 +275,7 @@ createAction grid reserved order = do
     (isAffordable, cost) <- lift $ canAfford order reserved
     guard isAffordable -- `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
     buildAction order grid reserved <|> pylonBuildAction grid reserved
+
 
 trainProbes :: (AgentDynamicState d) => StepMonad d ()
 trainProbes = do
@@ -622,7 +625,7 @@ instance Agent TestBot TestDynamicState where
         abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
             -- abilities /= abilitiesPrev then do
-            agentChat "buildingsSelfChanged !!!: "
+            --agentChat "buildingsSelfChanged !!!: "
             agentResetGrid
         (queue', interruptedAbilities) <- processQueue queue ([], [])
 
@@ -634,14 +637,17 @@ instance Agent TestBot TestDynamicState where
                     g
                     [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
             )
+        traceM "-agentUpdateGrid"
         let reservedResources = actionsCost si queue'
             interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
         unless (null interruptedOrders) $
             agentChat ("interrupted: " ++ show interruptedOrders)
 
+        traceM $ "+splitAffordable " ++ show (interruptedOrders ++ buildOrder)
         (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
         -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
 
+        traceM $ "-splitAffordable: affordable " ++ show (affordableActions)
         unless (null affordableActions) $ do
             agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
 
