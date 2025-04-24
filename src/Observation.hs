@@ -72,13 +72,11 @@ addUnit unitType obs =
     unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
 
 gridUpdate :: Observation -> Grid.Grid -> Grid.Grid
-gridUpdate obs grid = foldl' (\acc (fp, pos) -> Grid.addMark acc fp pos) grid (getFootprints <$> units)
+gridUpdate obs grid = foldl' (\acc u -> Grid.gridPlace acc (toEnum' $ u ^. #unitType) (tilePos $ u ^. #pos)) grid units
   where
-    -- `Utils.dbg` ("gridUpdate" ++ show fp ++ " " ++ show pos)) grid (getFootprints <$> units)
-    -- units = filter (\u -> toEnum' (u ^. #unitType) /= ProtossProbe) (obs ^. (#rawData . #units))
+
     units = runConduitPure $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u) .| sinkList
-    getFootprints :: Units.Unit -> (Footprint, TilePos)
-    getFootprints u = (getFootprint (toEnum' $ u ^. #unitType), tilePos $ u ^. #pos) -- `Utils.dbg` ("getFootPrint " ++ show (toEnum' (u ^. #unitType) :: UnitTypeId) ++ " " ++ show (tilePos $ u ^. #pos))
+
 
 buildingsSelfChanged :: Observation -> Observation -> Bool
 buildingsSelfChanged obs obsPrev = blen obs /= blen obsPrev || blen obs == 1 -- `Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
