@@ -48,7 +48,7 @@ import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
 import Data.Set qualified as Set
 import Footprint (getFootprint)
-import Grid (
+import Grid.Grid (
     Grid (..),
     addMark,
     findPlacementPoint,

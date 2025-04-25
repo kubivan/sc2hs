@@ -26,7 +26,7 @@ import Data.List (find, sortBy)
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
-import Grid (
+import Grid.Grid (
     Grid (..),
     canPlaceBuilding,
     findPlacementPoint,

@@ -48,7 +48,7 @@ import Data.ProtoLens (defMessage)
 import Data.Text (Text, pack)
 import Debug.Trace
 import GHC.Word qualified
-import Grid
+import Grid.Grid
 import Lens.Micro ((^.), (.~), (&))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C

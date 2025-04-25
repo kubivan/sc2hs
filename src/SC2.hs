@@ -38,7 +38,7 @@ import System.Process
 import Conduit ( sinkList, yieldMany, mapC, (.|), runConduitPure )
 import Data.Conduit.List (catMaybes)
 import Data.Functor((<&>))
-import Grid
+import Grid.Grid
 
 import System.IO.Error (tryIOError)
 
@@ -70,7 +70,7 @@ import qualified Proto.S2clientprotocol.Common as A
 import qualified Network.WebSockets as A
 import qualified GHC.Int
 import Data.Int (Int32)
-import Grid (gridMerge, pixelIsRamp)
+import Grid.Utils (gridMerge, pixelIsRamp)
 
 hostName :: String
 hostName = "127.0.0.1"

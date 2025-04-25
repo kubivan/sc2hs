@@ -29,7 +29,7 @@ where
 import AbilityId
 import Actions (UnitTag)
 import Footprint
-import Grid
+import Grid.Grid
 import UnitTypeId
 import Units
 import Utils
@@ -71,8 +71,8 @@ addUnit unitType obs =
     unit :: UnitTypeId -> Units.Unit
     unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
 
-gridUpdate :: Observation -> Grid.Grid -> Grid.Grid
-gridUpdate obs grid = foldl' (\acc u -> Grid.gridPlace acc (toEnum' $ u ^. #unitType) (tilePos $ u ^. #pos)) grid units
+gridUpdate :: Observation -> Grid -> Grid
+gridUpdate obs grid = foldl' (\acc u -> gridPlace acc (toEnum' $ u ^. #unitType) (tilePos $ u ^. #pos)) grid units
   where
 
     units = runConduitPure $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u) .| sinkList

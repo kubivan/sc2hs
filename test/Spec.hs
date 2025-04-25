@@ -3,7 +3,7 @@
 
 import Conduit
 import Footprint
-import Grid
+import Grid.Grid
 import UnitTypeId
 
 import qualified Data.ByteString as B
@@ -83,7 +83,7 @@ spec =
                         image = gi ^. (#startRaw . #pathingGrid)
                         grid@(w, h, bs) = gridFromImage image
                         -- wallC = charToWord8 '#'
-                        gridWithNexus = Grid.gridPlace grid (toEnum' $ nexus ^. #unitType) (tilePos $ nexus ^. #pos)
+                        gridWithNexus = gridPlace grid (toEnum' $ nexus ^. #unitType) (tilePos $ nexus ^. #pos)
 
                         nexusCenter = gridPixel grid nexusPos
 

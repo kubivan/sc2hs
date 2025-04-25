@@ -3,30 +3,13 @@
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module Grid (
-    gridFromImage,
-    gridToStr,
-    gridFromLines,
-    Grid,
-    findPlacementPoint,
-    findPlacementPointInRadius,
-    canPlaceBuilding,
+module Grid.Algo (
     gridBfs,
-    gridPlace,
-    addMark,
-    printGrid,
-    gridToFile,
-    gridSetPixel,
-    gridPixel,
-    gridPixelSafe,
-    gridMerge,
-    pixelIsRamp,
-    gridW,
-    gridH,
-    findChokePoint,
+    smartTransition,
     getAllNeigbors,
     getAllNotSharpNeigbors,
-    smartTransition,
+
+    findChokePoint,
 
     gridPlaceRay,
     gridSplitByRay,
@@ -36,6 +19,8 @@ module Grid (
     gridSegment
 )
 where
+
+import Grid.Core
 
 import Data.Bits
 import Data.ByteString qualified as BS
@@ -65,105 +50,20 @@ import Control.Monad (guard, mplus)
 import Data.Maybe (catMaybes, fromMaybe)
 import Debug.Trace (traceShow, traceShowId, traceM)
 
-type Grid = (Int, Int, VU.Vector Char)
-
-gridH :: Grid -> Int
-gridH (_, h, _)= h
-
-gridW :: Grid -> Int
-gridW (w, _, _)= w
-
-gridPixel :: Grid -> TilePos -> Char
-gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
+gridBfs ::
+    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
+gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
+    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton start) (Set.singleton start)
   where
-    index = x + y * w
-
-gridPixelSafe :: Grid -> TilePos -> Maybe Char
-gridPixelSafe (w, h, g) (x, y)
-  | x < 0 || x >= w = Nothing
-  | y < 0 || y >= h = Nothing
-  | otherwise = g VU.!? index
-  where
-    index = x + y * w
-
-
--- Update a cell in the Grid
-gridSetPixel :: Grid -> TilePos -> Char -> Grid
-gridSetPixel grid@(w, h, g) (x, y) value
-  | gridPixel grid (x, y) == '#' = grid
-  | otherwise= (w, h, g VU.// [(index, value)]) where --`Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
-      index = x + y * w
-
-
-gridFromLines :: [String] -> Grid
-gridFromLines rows =
-  let h = length rows
-      w = length (head rows)
-
-  in (w, h, VU.fromList $ concat rows)
-
-
-gridToStr (w, h, g) = unlines $ [ [ g VU.! (x + y * w) | x <- [0..w-1] ] | y <- [0..h-1] ]
-
-
-gridFromImage :: P.ImageData -> Grid
-gridFromImage image = trace ("gridFromImage " ++ show (width, height, bpp, BS.length bs)) $ decodeImageData width height bpp bs
-  where
-    width = fromIntegral $ image ^. (P.size . P.x)
-    height = fromIntegral $ image ^. (P.size . P.y)
-    bpp = fromIntegral $ image ^. P.bitsPerPixel
-    bs = image ^. P.data' :: BS.ByteString
-
-    decodeImageData :: Int -> Int -> Int -> BS.ByteString -> Grid
-    decodeImageData idw idh idbpp bytes
-       | idbpp == 8 = (idw, idh, VU.fromList $ map (\w -> if w == 0 then '#' else ' ' ) (BS.unpack bytes))
-       | idbpp == 1 = (idw, idh, (\b -> if b then ' ' else '#') `VU.map` unpackBits bytes )
-       | otherwise = error "Not implemented"
-
-    -- Unpack bits from ByteString into Vector Bool
-    unpackBits :: BS.ByteString -> VU.Vector Bool
-    unpackBits ubbs = VU.concatMap unpackByte (VU.fromList $ BS.unpack ubbs)
+    bfs Seq.Empty visited = (Nothing, visited)
+    bfs (top Seq.:<| rest) visited
+        | acceptanceCriteria top = (Just top, visited) `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
+        | terminationCriteria top = (Nothing, visited)
+        -- | otherwise = trace ("gridBfs processing: " ++ show (top)) $ bfs (rest Seq.>< newPoints) newVisited
+        | otherwise = bfs (rest Seq.>< newPoints) newVisited
       where
-        unpackByte :: Word8 -> VU.Vector Bool
-        unpackByte byte = VU.generate 8 (\i -> testBit byte (7 - i)) -- MSB first
-
-pixelIsRamp :: Char -> Char -> Char
-pixelIsRamp placement pathing
-    | pathing == ' ' && placement == '#' = '/'
-    | otherwise = placement
-
-gridMerge :: (Char -> Char -> Char) -> Grid -> Grid -> Grid
-gridMerge pixelFunc placementGrid@(w,h, g1) pathingGrid@(_,_,g2) = (w, h, VU.fromList [pixelFunc pa pb | (pa, pb) <- zip (VU.toList g1) (VU.toList g2)])
-
-gridToFile :: FilePath -> Grid -> IO ()
-gridToFile filePath grid =
-    writeFile filePath (gridToStr grid)
-
-printGrid :: Grid -> IO ()
-printGrid = putStrLn . gridToStr
-
-canPlaceBuilding :: Grid -> Grid -> TilePos -> Footprint -> Bool
-canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
-    all pixelOk pixels && sameHeight pixels
-  where
-    pixelOk (x, y, _) = case gridPixelSafe grid (cx + x, cy + y) of
-        Nothing -> False
-        Just p -> p == ' ' -- TODO: now . has multiple meanings, rework
-    sameHeight pixels = all (== head pixelHeights) (tail pixelHeights)
-      where
-        pixelHeights = [gridPixel heightMap pos | (x, y, _) <- pixels, let pos = (cx + x, cy + y)]
-
-findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
-findPlacementPointInRadius grid heightMap footprint start radius =
-    fst $ gridBfs grid start (getAllNeigbors grid) acceptWhen terminateWhen
-  where
-    acceptWhen p = canPlaceBuilding grid heightMap p footprint
-    terminateWhen p = distSquared (fromTuple start) (fromTuple p) > (radius * radius)
-
-findPlacementPoint :: Grid -> Grid -> Footprint -> TilePos -> (TilePos -> Bool) -> Maybe TilePos
-findPlacementPoint grid heightMap footprint start acceptanceCriteria = fst $ gridBfs grid start (getAllNeigbors grid) acceptance (const False)
-  where
-    acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
+        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc top)
+        newVisited = Set.union visited (Set.fromList . toList $ newPoints)
 
 smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
 smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
@@ -202,31 +102,6 @@ getAllNotSharpNeigbors grid (x, y) =
         , let pixel = gridPixelSafe grid (x + dx, y + dy)
         , pixel /= Just '#'
         ]
-
-gridBfs ::
-    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
-gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
-    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton start) (Set.singleton start)
-  where
-    bfs Seq.Empty visited = (Nothing, visited)
-    bfs (top Seq.:<| rest) visited
-        | acceptanceCriteria top = (Just top, visited) `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
-        | terminationCriteria top = (Nothing, visited)
-        -- | otherwise = trace ("gridBfs processing: " ++ show (top)) $ bfs (rest Seq.>< newPoints) newVisited
-        | otherwise = bfs (rest Seq.>< newPoints) newVisited
-      where
-        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc top)
-        newVisited = Set.union visited (Set.fromList . toList $ newPoints)
-
--- Place a building footprint on the grid if possible at the given placement point
-addMark :: Grid -> Footprint -> TilePos -> Grid
-addMark grid (Footprint pixels) (cx, cy) =
-    foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
-
-gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
-gridPlace g u (cx, cy) = trace ("gridPlace " ++ show u) $ foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
-  where
-    ptrn = pixels (getFootprint u)
 
 --
 -- Grid raycasting & choke points
@@ -359,6 +234,7 @@ checkIfChoke pos = do
     ray <- MaybeT $ return $ findChokePoint grid 15 pos  -- Lift Maybe into ChokeM
     guard (ray /= [])
 
+    --TODO: check & enable
     -- guard (all (all (\c -> distSquared pos c > 4 * 4)) currentChokes)
 
     guard (ray `Set.notMember` visited)

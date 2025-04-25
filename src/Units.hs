@@ -55,7 +55,7 @@ import UnitTypeId
 import AbilityId
 import Proto.S2clientprotocol.Common (Point)
 import Conduit (Identity)
-import Grid (Grid, canPlaceBuilding, gridBfs)
+import Grid.Grid (Grid, canPlaceBuilding, gridBfs)
 import Footprint (getFootprint)
 import Data.Maybe (isJust, catMaybes, mapMaybe)
 import Data.List (stripPrefix)
