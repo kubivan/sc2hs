@@ -16,17 +16,21 @@ module Grid.Algo (
     gridRaycastTile,
     findAllChokePoints,
     checkVolumes,
-    gridSegment
+    gridSegment,
+
+    buildRegionGraph,
+    buildRegionLookup,
+    RegionId,
+    Region,
+    RegionGraph,
 )
 where
 
 import Grid.Core
 
 import Data.Bits
-import Data.ByteString qualified as BS
 import Data.List (find, sort)
 import Data.Word (Word8)
-import qualified Data.Vector.Unboxed as VU
 
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
@@ -35,20 +39,22 @@ import Proto.S2clientprotocol.Common qualified as P
 import Proto.S2clientprotocol.Common_Fields qualified as P
 
 import Data.Foldable (toList)
-import Data.Maybe (isJust)
 import Footprint
 import Utils (TilePos, dbg, distSquared, fromTuple)
 
 import Data.Sequence qualified as Seq
-import Debug.Trace (trace)
 import UnitTypeId (UnitTypeId)
 
 -- raycasting
 import Control.Monad.Trans.Maybe
 import Control.Monad.State
 import Control.Monad (guard, mplus)
-import Data.Maybe (catMaybes, fromMaybe)
-import Debug.Trace (traceShow, traceShowId, traceM)
+import Data.Maybe (isJust, catMaybes, fromMaybe)
+import Debug.Trace (trace, traceShow, traceShowId, traceM)
+
+--
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 gridBfs ::
     Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
@@ -294,3 +300,30 @@ gridSegment grid =
 
     fillRegion' pos =
         snd $ gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const False) (const False)
+
+
+type RegionId = Int
+type Region = Set.Set TilePos
+type RegionGraph = Map.Map RegionId (Set.Set RegionId)
+type RegionLookup = Map.Map TilePos RegionId
+
+-- Get 4-connected neighbors (no diagonals)
+adjacent4 :: TilePos -> [TilePos]
+adjacent4 (x, y) = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
+
+buildRegionLookup :: [(RegionId, Region)] -> RegionLookup
+buildRegionLookup regions = Map.fromList
+    [ (pos, rid) | (rid, region) <- regions, pos <- Set.toList region ]
+
+buildRegionGraph :: [(RegionId, Region)] -> RegionGraph
+buildRegionGraph regions =
+    Map.fromListWith Set.union
+        [ (rid, Set.singleton rid')
+        | (rid, region) <- regions
+        , pos <- Set.toList region
+        , neighbor <- adjacent4 pos
+        , Just rid' <- [Map.lookup neighbor regionLookup]
+        , rid /= rid' -- skip self
+        ]
+  where
+    regionLookup = buildRegionLookup regions

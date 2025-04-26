@@ -160,6 +160,27 @@ spec =
                     print $ "grid segmented into " ++ show (length res)
                     print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a ) [] res)
                     gridToFile "outgrid_segmented_start.txt" grid''
+                it "grid_split_to_regions" $ \(obs, gi) -> do
+                    let
+                        nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
+                        enemyPos = tilePos $ enemyBaseLocation gi obs
+                        grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+                        bases = gi ^. (#startRaw . #startLocations)
+
+                        (rays, grid') = findAllChokePoints grid
+
+                        regions = gridSegment grid'
+                        regionLookup = buildRegionLookup regions
+                        regionGraph = buildRegionGraph regions
+
+                        nexusRegion = Map.lookup nexusPos regionLookup
+
+                    -- print $ "enemy start " ++ show enemyPos ++ " " ++ show (Map.lookup enemyPos regionLookup)
+                    print $ "player start " ++ show nexusPos ++ " " ++ show nexusRegion
+                    nexusRegion `shouldBe` Just 2 --just fix the value to catch regression
+                    print $ "bases " ++ show bases
+
+
                 it "check volumes" $ \(obs, gi) -> do
                     let grid =
                             gridFromLines
