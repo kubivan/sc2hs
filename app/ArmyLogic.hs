@@ -1,0 +1,190 @@
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE OverloadedLabels #-}
+
+module ArmyLogic where
+
+import Agent
+import BotDynamicState
+
+import AbilityId
+import Actions (Action (..), UnitTag)
+import Grid.Grid
+import Observation
+import UnitTypeId
+import Units
+import Utils
+
+import Data.HashMap.Strict qualified as HashMap
+import Data.List (minimumBy, partition)
+import Data.Sequence qualified as Seq
+import Data.Set qualified as Set
+
+-- TODO:
+
+import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
+import Data.Foldable qualified as Seq
+import Data.Function (on)
+import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Ord (comparing)
+import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Lens.Micro.Extras (view)
+import Safe (headMay, minimumByMay)
+import System.Random (Random, StdGen, newStdGen, randomR)
+
+import Proto.S2clientprotocol.Common as C
+
+-- Update the visited tiles for a unit in the army
+updateVisitedTile :: UnitTag -> TilePos -> StepMonad BotDynamicState ()
+updateVisitedTile tag tile = do
+    ds <- agentGet
+    let grid = getGrid ds
+        army = armyUnits . dsArmy $ ds
+        defaultUnitData = ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)
+        unitData = HashMap.lookupDefault defaultUnitData tag army
+        newVisited = Set.insert tile (auVisitedTiles unitData)
+        newUnvisitedEdge =
+            Set.foldl'
+                ( \accEdge vt ->
+                    let unvisitedNs = Set.fromList [n | n <- Seq.toList (neighbors vt grid), n `Set.notMember` newVisited]
+                     in accEdge `Set.union` unvisitedNs
+                )
+                Set.empty
+                (auUnvisitedEdge unitData)
+
+        newUnitData = unitData{auVisitedTiles = newVisited, auUnvisitedEdge = newUnvisitedEdge}
+
+    agentPut $ bdsUpdateArmyUnitData ds tag newUnitData -- ds { dsArmy = {Army (HashMap.insert tag newUnitData army)} }
+
+randomArmyFiddling :: StepMonad BotDynamicState ()
+randomArmyFiddling = do
+    obs <- agentObs
+    ds <- agentGet
+    -- Retrieve army units and enemies
+    let armyUs = runC $ unitsSelf obs .| filterC isArmyUnit
+        grid = getGrid ds -- Retrieve the grid from the dynamic state
+
+    -- Execute a random command for each unit in the army
+    mapM_
+        ( \u ->
+            let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnits . dsArmy $ ds)
+             in randCmd2 grid unitData u
+        )
+        armyUs
+
+randCmd2 :: Grid -> ArmyUnitData -> Unit -> StepMonad BotDynamicState ()
+randCmd2 grid udata u = do
+    obs <- agentObs
+    let enemies = runC $ obsUnitsC obs .| filterC isEnemy
+    -- Check if there's an enemy in range
+    case enemyInRange u enemies of
+        Just e -> command [Actions.UnitCommand Attack u e] -- Attack the enemy
+        Nothing ->
+            if not . null . view #orders $ u
+                then return ()
+                else do
+                    -- Move to a random neighboring position if no enemy is in range
+                    si <- agentStatic
+                    ds <- agentGet
+                    let army = dsArmy ds
+                        allUnitPos = armyUnitsPos army
+                        unvisitedNeighbors = filter (`Set.notMember` allUnitPos) $ filter (\p -> p `Set.notMember` auVisitedTiles udata) (neighbors upos grid)
+
+                    pos <- calcMovePos unvisitedNeighbors
+
+                    command [PointCommand Move u (toPoint2D pos)] -- Move to the random position
+  where
+    upos = tilePos (u ^. #pos)
+    nearest :: (Pointable p) => p -> [p] -> p
+    nearest p = minimumBy (compare `on` distSquared p)
+
+    calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
+    calcMovePos candidates = do
+        ds <- agentGet
+        rnd <- randGen <$> agentGet -- Retrieve the current random generator
+        let scored = scoreMoveCandidates upos udata candidates
+            (wrandPos, rnd') = weightedRandomChoice scored rnd -- `Utils.dbg` ("scored: " ++ show scored)
+        agentPut $ setRandGen rnd' ds -- Update the random generator in the dynamic state
+        updateVisitedTile (u ^. #tag) wrandPos
+        return wrandPos
+
+scoreMoveCandidates :: TilePos -> ArmyUnitData -> [TilePos] -> [(TilePos, Double)]
+scoreMoveCandidates upos udata = map (\tile -> (tile, calcScore tile))
+  where
+    calcScore tile = baseScore + unvisitedScore tile -- + closeToUnvisitedEdgeScore tile -- + enemyScore tile
+    baseScore = 0.0
+    unvisitedScore tile
+        | tile `Set.member` auVisitedTiles udata = 1.0
+        | otherwise = 10.0
+
+    closeToUnvisitedEdgeScore tile =
+        Set.foldl'
+            ( \score edgeTile ->
+                let distToEdge :: TilePos -> Float
+                    distToEdge = distSquared (edgeTile :: TilePos)
+                    isCloserToEdgeThen :: TilePos -> TilePos -> Bool
+                    a `isCloserToEdgeThen` b = distToEdge a < distToEdge b
+                 in if tile `isCloserToEdgeThen` upos then score + 5.0 else score
+            )
+            0
+            (auUnvisitedEdge udata)
+
+weightedRandomChoice :: [(a, Double)] -> StdGen -> (a, StdGen)
+weightedRandomChoice weightedItems gen = (selectItem weightedItems r, newGen)
+  where
+    totalWeight = sum (map snd weightedItems) -- Sum of all weights
+    (r, newGen) = randomR (0, totalWeight) gen -- Generate a random number between 0 and the total weight
+
+selectItem :: [(a, Double)] -> Double -> a
+selectItem ((item, weight) : xs) r
+    | r <= weight = item -- If random value is within current item's weight, return it
+    | otherwise = selectItem xs (r - weight) -- Otherwise, subtract the weight and move to the next item
+selectItem [] _ = error "weightedRandomChoice: empty list"
+
+-- Get the direction vector from one position to another
+directionTo :: Point2D -> Point2D -> (Int, Int)
+directionTo p1 p2 = (round $ signum (p2 ^. #x - p1 ^. #x), round $ signum (p2 ^. #y - p1 ^. #y))
+
+-- Get the nearest enemy unit
+nearestEnemy :: Unit -> [Unit] -> Maybe Unit
+nearestEnemy u = minimumByMay (comparing (distSquared (u ^. #pos) . (^. #pos)))
+
+nearestTarget :: Unit -> [Point2D] -> Maybe Point2D
+nearestTarget u = minimumByMay (comparing (distSquared (toPoint2D $ u ^. #pos)))
+
+-- Function to select a random element from a list of weights
+weightedRandom :: [Double] -> StdGen -> (Int, StdGen)
+weightedRandom weights gen =
+    let totalWeight = sum weights
+        (randValue, newGen) = randomR (0, totalWeight) gen -- Random value between 0 and the total weight
+     in (selectIndex weights randValue, newGen)
+
+-- Function to select the index based on the random value and the cumulative sum of weights
+selectIndex :: [Double] -> Double -> Int
+selectIndex weights randValue = go weights randValue 0
+  where
+    go (w : ws) rv idx
+        | rv <= w = idx -- If random value is less than or equal to current weight, return the index
+        | otherwise = go ws (rv - w) (idx + 1) -- Subtract the weight and continue
+    go [] _ idx = idx -- Default case, in case something goes wrong (should not happen with proper weights)
+
+-- Get neighboring tiles
+neighbors :: TilePos -> Grid -> [TilePos]
+neighbors p@(x, y) grid =
+    [ (x + dx, y + dy)
+    | dx <- [-1, 0, 1]
+    , dy <- [-1, 0, 1]
+    , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , pixel /= Just '#' && isJust pixel
+    ]
+
+-- Check if an enemy is in range
+enemyInRange :: Unit -> [Unit] -> Maybe Unit
+enemyInRange u enemies =
+    headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- Stalker attack range of 6
+
+agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
+agentUpdateArmy obsPrev = agentUpdateArmyPositions -- TODO: no diff with obsPrev
+
+selfBuildingsCount :: Observation -> Int
+selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding
