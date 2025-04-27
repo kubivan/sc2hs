@@ -16,9 +16,6 @@ import Data.HashMap.Strict qualified as HashMap
 import System.Random (Random, StdGen, newStdGen, randomR)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
-import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
-
-import Proto.S2clientprotocol.Raw qualified as R
 
 data Target = TargetPos TilePos | TargetUnit UnitTag
 
@@ -41,6 +38,9 @@ data Army = Army
     , armyUnitsPos :: Set.Set TilePos
     , armySquads :: [ArmySquad]
     }
+
+emptyArmy :: Army
+emptyArmy = Army HashMap.empty Set.empty []
 
 data BotDynamicState = BotDynamicState
     { observation :: Observation
@@ -67,8 +67,6 @@ getRandValue range (BotDynamicState obs grid gen army) =
     let (value, newGen) = randomR range gen
      in (value, BotDynamicState obs grid newGen army)
 
-emptyArmy :: Army
-emptyArmy = Army HashMap.empty Set.empty []
 
 bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynamicState
 bdsUpdateArmyUnitData ds tag newUnitData= ds{dsArmy = dsArmy'}
@@ -76,22 +74,3 @@ bdsUpdateArmyUnitData ds tag newUnitData= ds{dsArmy = dsArmy'}
         army = dsArmy ds
         dsArmy' = army{armyUnits = armyUnits'}
         armyUnits' = HashMap.insert tag newUnitData (armyUnits army)
-
-agentUpdateArmyPositions :: StepMonad BotDynamicState ()
-agentUpdateArmyPositions = do
-    ds <- agentGet
-    obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
-    let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
-        army' = (dsArmy ds){armyUnitsPos = Set.fromList armyPoss}
-
-    agentPut $ ds{dsArmy = army'}
-
--- Define if a unit is considered an army unit
-isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
-isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
-  where
-    utype = toEnum' (u ^. #unitType)
-
--- Define an enemy unit filter
-isEnemy :: Unit -> Bool
-isEnemy u = (u ^. #alliance) == R.Enemy -- Enemy alliance code

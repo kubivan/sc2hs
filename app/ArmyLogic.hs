@@ -30,8 +30,38 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
 import System.Random (Random, StdGen, newStdGen, randomR)
+import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
 
 import Proto.S2clientprotocol.Common as C
+import Proto.S2clientprotocol.Raw qualified as R
+
+-- Define if a unit is considered an army unit
+isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
+isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
+  where
+    utype = toEnum' (u ^. #unitType)
+
+-- Define an enemy unit filter
+isEnemy :: Unit -> Bool
+isEnemy u = (u ^. #alliance) == R.Enemy -- Enemy alliance code
+
+agentUpdateArmyPositions :: StepMonad BotDynamicState ()
+agentUpdateArmyPositions = do
+    ds <- agentGet
+    obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
+    let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
+        army' = (dsArmy ds){armyUnitsPos = Set.fromList armyPoss}
+
+    agentPut $ ds{dsArmy = army'}
+
+agentBot :: StepMonad BotDynamicState ()
+agentBot = do
+    ds <- agentGet
+    obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
+    let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
+        army' = (dsArmy ds){armyUnitsPos = Set.fromList armyPoss}
+
+    agentPut $ ds{dsArmy = army'}
 
 -- Update the visited tiles for a unit in the army
 updateVisitedTile :: UnitTag -> TilePos -> StepMonad BotDynamicState ()
