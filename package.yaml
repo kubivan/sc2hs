@@ -41,6 +41,7 @@ dependencies:
 - loop
 - template-haskell
 - safe
+- split
 
 ghc-options:
 - -Wall

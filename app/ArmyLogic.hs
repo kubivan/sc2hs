@@ -16,10 +16,11 @@ import Utils
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
+import Data.List.Split (chunksOf)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 
--- TODO:
+import Control.Monad(when, void)
 
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
 import Data.Foldable qualified as Seq
@@ -30,10 +31,10 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
 import System.Random (Random, StdGen, newStdGen, randomR)
-import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
 
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Raw qualified as R
+import Debug.Trace (traceM)
 
 -- Define if a unit is considered an army unit
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
@@ -54,13 +55,56 @@ agentUpdateArmyPositions = do
 
     agentPut $ ds{dsArmy = army'}
 
-agentBot :: StepMonad BotDynamicState ()
-agentBot = do
+noneOf :: (a -> Bool) -> [a] -> Bool
+noneOf p = not . any p
+
+debugTraceM :: Bool -> String -> StepMonad BotDynamicState ()
+debugTraceM cond msg = when cond $ Control.Monad.void (traceM msg)
+
+
+agentUpdateDsArmy :: StepMonad BotDynamicState ()
+agentUpdateDsArmy = do
     ds <- agentGet
     obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
-    let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
-        army' = (dsArmy ds){armyUnitsPos = Set.fromList armyPoss}
+    let obsArmyUnits = unitsSelf obs .| filterC isArmyUnit
+        obsArmyUnitsPoss = runC $ obsArmyUnits .| mapC (tilePos . view #pos)
+        armyHashMap = HashMap.fromList $ [( u ^. #tag :: UnitTag, u) | u <- runC obsArmyUnits ]
+        squadSize = 5
 
+        fillSquads :: [ArmySquad] -> [UnitTag] -> ([ArmySquad], [UnitTag])
+        fillSquads [] rest = ([], rest)
+        fillSquads squads [] = (squads, [])
+        fillSquads (s:rest) rookies =
+            let aliveUnits = filter (`HashMap.member` armyHashMap) (squadUnits s)
+                unitsNeeded = squadSize - length aliveUnits
+                (assigned, remaining) = splitAt unitsNeeded rookies
+                updatedSquad = s { squadUnits = aliveUnits ++ assigned }
+                (filledRest, leftover) = fillSquads rest remaining
+            in (updatedSquad : filledRest, leftover)
+
+        isSquadFull :: ArmySquad -> Bool
+        isSquadFull squad = (all (`HashMap.member` armyHashMap) (squadUnits squad)) && (squadSize == length (squadUnits squad))
+
+        isSquadEmpty :: ArmySquad -> Bool
+        isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
+
+        (squadsFull, squadsToCheck) = partition isSquadFull (armySquads (dsArmy ds))
+        (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
+
+
+        squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
+
+        freeArmyUnitTags = runC $ obsArmyUnits .| mapC (view #tag) .| filterC (\utag -> not $ utag `Set.member` squadedUnitTags)
+        (refilledSquads, restUnits) = fillSquads squadsNotFull freeArmyUnitTags
+
+        newSquadUnits = chunksOf 5 restUnits
+        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = Idle}]) newSquadUnits
+
+        army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
+
+    _ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
+    _ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
+    _ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
     agentPut $ ds{dsArmy = army'}
 
 -- Update the visited tiles for a unit in the army
@@ -68,7 +112,7 @@ updateVisitedTile :: UnitTag -> TilePos -> StepMonad BotDynamicState ()
 updateVisitedTile tag tile = do
     ds <- agentGet
     let grid = getGrid ds
-        army = armyUnits . dsArmy $ ds
+        army = armyUnitsData . dsArmy $ ds
         defaultUnitData = ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)
         unitData = HashMap.lookupDefault defaultUnitData tag army
         newVisited = Set.insert tile (auVisitedTiles unitData)
@@ -96,7 +140,7 @@ randomArmyFiddling = do
     -- Execute a random command for each unit in the army
     mapM_
         ( \u ->
-            let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnits . dsArmy $ ds)
+            let unitData = HashMap.lookupDefault (ArmyUnitData Set.empty Set.empty) (u ^. #tag) (armyUnitsData . dsArmy $ ds)
              in randCmd2 grid unitData u
         )
         armyUs
@@ -214,7 +258,7 @@ enemyInRange u enemies =
     headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- Stalker attack range of 6
 
 agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
-agentUpdateArmy obsPrev = agentUpdateArmyPositions -- TODO: no diff with obsPrev
+agentUpdateArmy obsPrev = agentUpdateDsArmy >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding

@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module TestBot (TestBot (..), AgentDynamicState (..)) where
 
@@ -377,7 +378,8 @@ agentUpdateGrid f = do
     agentPut $ setGrid (f (getGrid ds)) ds
 
 instance Agent TestBot BotDynamicState where
-    -- type DynamicState TestBot = BotDynamicState
+    type DynamicState TestBot = BotDynamicState
+    makeDynamicState :: TestBot -> Observation -> Grid -> IO BotDynamicState
     makeDynamicState _ obs grid = do
         gen <- newStdGen -- Initialize a new random generator
         return $ BotDynamicState obs grid gen emptyArmy
@@ -459,6 +461,6 @@ instance Agent TestBot BotDynamicState where
         command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) gate | gate <- idleGates]
 
         trainProbes
-        randomArmyFiddling
+        --randomArmyFiddling
 
         return $ BuildArmyAndWin obs

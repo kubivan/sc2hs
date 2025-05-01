@@ -17,16 +17,16 @@ import System.Random (Random, StdGen, newStdGen, randomR)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 
-data Target = TargetPos TilePos | TargetUnit UnitTag
+data Target = TargetPos TilePos | TargetUnit UnitTag deriving (Eq, Show)
 
-data ArmyUnitState = Exploring Target | Attacking Target | Evading
+data ArmyUnitState = Idle | Exploring Target | Attacking Target | Evading deriving (Eq, Show)
 
 data ProtossUnit = Stalker Unit ArmyUnitState | Zealot Unit ArmyUnitState
 
 data ArmySquad = ArmySquad
-    { squadUnits :: [ProtossUnit]
+    { squadUnits :: [UnitTag]
     , squadState :: ArmyUnitState
-    }
+    } deriving (Eq, Show)
 
 data ArmyUnitData = ArmyUnitData
     { auVisitedTiles :: Set.Set TilePos
@@ -34,13 +34,14 @@ data ArmyUnitData = ArmyUnitData
     }
 
 data Army = Army
-    { armyUnits :: HashMap.HashMap UnitTag ArmyUnitData
+    { armyUnitsData :: HashMap.HashMap UnitTag ArmyUnitData
+    , armyUnits :: HashMap.HashMap UnitTag Unit
     , armyUnitsPos :: Set.Set TilePos
     , armySquads :: [ArmySquad]
     }
 
 emptyArmy :: Army
-emptyArmy = Army HashMap.empty Set.empty []
+emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
 
 data BotDynamicState = BotDynamicState
     { observation :: Observation
@@ -72,5 +73,5 @@ bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynami
 bdsUpdateArmyUnitData ds tag newUnitData= ds{dsArmy = dsArmy'}
     where
         army = dsArmy ds
-        dsArmy' = army{armyUnits = armyUnits'}
-        armyUnits' = HashMap.insert tag newUnitData (armyUnits army)
+        dsArmy' = army{armyUnitsData = armyUnitsData'}
+        armyUnitsData' = HashMap.insert tag newUnitData (armyUnitsData army)
