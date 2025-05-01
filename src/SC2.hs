@@ -259,13 +259,14 @@ runGameLoop conn signals agent playerId = do
   let heightMap = gridFromImage $ gi ^. #startRaw . #terrainHeight
       obsRaw = obs0 ^. #observation . #observation
       unitTraits = unitsData $ gameDataResp ^. #data' . #units
-      grid = gridMerge pixelIsRamp (gridFromImage $ gi ^. #startRaw . #placementGrid) (gridFromImage $ gi ^. #startRaw . #pathingGrid)
       gridPlacement = gridFromImage $ gi ^. #startRaw . #placementGrid
+      gridPathing = gridFromImage $ gi ^. #startRaw . #pathingGrid
+      grid = gridMerge pixelIsRamp gridPlacement gridPathing
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw
 
-      (rays, gridChoked) = findAllChokePoints (gridFromImage $ gi ^. #startRaw . #pathingGrid)
+      (rays, gridChoked) = findAllChokePoints gridPathing
       regions = gridSegment gridChoked
       regionGraph = buildRegionGraph regions
       regionLookup = buildRegionLookup regions
