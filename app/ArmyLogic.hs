@@ -20,7 +20,7 @@ import Data.List.Split (chunksOf)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 
-import Control.Monad(when, void)
+import Control.Monad (void, when)
 
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
 import Data.Foldable qualified as Seq
@@ -32,9 +32,9 @@ import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
 import System.Random (Random, StdGen, newStdGen, randomR)
 
+import Debug.Trace (traceM)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Raw qualified as R
-import Debug.Trace (traceM)
 
 -- Define if a unit is considered an army unit
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
@@ -61,36 +61,34 @@ noneOf p = not . any p
 debugTraceM :: Bool -> String -> StepMonad BotDynamicState ()
 debugTraceM cond msg = when cond $ Control.Monad.void (traceM msg)
 
-
 agentUpdateDsArmy :: StepMonad BotDynamicState ()
 agentUpdateDsArmy = do
     ds <- agentGet
     obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
     let obsArmyUnits = unitsSelf obs .| filterC isArmyUnit
         obsArmyUnitsPoss = runC $ obsArmyUnits .| mapC (tilePos . view #pos)
-        armyHashMap = HashMap.fromList $ [( u ^. #tag :: UnitTag, u) | u <- runC obsArmyUnits ]
+        armyHashMap = HashMap.fromList $ [(u ^. #tag :: UnitTag, u) | u <- runC obsArmyUnits]
         squadSize = 5
 
         fillSquads :: [ArmySquad] -> [UnitTag] -> ([ArmySquad], [UnitTag])
         fillSquads [] rest = ([], rest)
         fillSquads squads [] = (squads, [])
-        fillSquads (s:rest) rookies =
+        fillSquads (s : rest) rookies =
             let aliveUnits = filter (`HashMap.member` armyHashMap) (squadUnits s)
                 unitsNeeded = squadSize - length aliveUnits
                 (assigned, remaining) = splitAt unitsNeeded rookies
-                updatedSquad = s { squadUnits = aliveUnits ++ assigned }
+                updatedSquad = s{squadUnits = aliveUnits ++ assigned}
                 (filledRest, leftover) = fillSquads rest remaining
-            in (updatedSquad : filledRest, leftover)
+             in (updatedSquad : filledRest, leftover)
 
         isSquadFull :: ArmySquad -> Bool
-        isSquadFull squad = (all (`HashMap.member` armyHashMap) (squadUnits squad)) && (squadSize == length (squadUnits squad))
+        isSquadFull squad = all (`HashMap.member` armyHashMap) (squadUnits squad) && (squadSize == length (squadUnits squad))
 
         isSquadEmpty :: ArmySquad -> Bool
         isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
 
         (squadsFull, squadsToCheck) = partition isSquadFull (armySquads (dsArmy ds))
         (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
-
 
         squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
 
@@ -258,7 +256,7 @@ enemyInRange u enemies =
     headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- Stalker attack range of 6
 
 agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
-agentUpdateArmy obsPrev = agentUpdateDsArmy >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
+agentUpdateArmy obsPrev = agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding

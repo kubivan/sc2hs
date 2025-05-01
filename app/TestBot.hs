@@ -1,12 +1,12 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE InstanceSigs #-}
 
 module TestBot (TestBot (..), AgentDynamicState (..)) where
 
@@ -29,6 +29,7 @@ import Agent (
     agentStatic,
     command,
     debugTexts,
+    regionLookup,
  )
 import BotDynamicState
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
@@ -44,7 +45,8 @@ import Data.Foldable qualified as Seq
 import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
-import Data.Maybe (fromJust, isJust)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.Ord (comparing)
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
@@ -361,6 +363,24 @@ splitAffordable bo reserved = agentGet >>= (\ds -> go bo Data.Sequence.empty (ge
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
 
+getUnits :: [UnitTag] -> HashMap.HashMap UnitTag Unit -> [Unit]
+getUnits tags hashArmy = catMaybes $ (\t -> HashMap.lookup t hashArmy) <$> tags
+
+debugSquads :: StepMonad BotDynamicState ()
+debugSquads = do
+    -- agentObs >>= \obs -> debugTexts [("squad " ++ show (), c ^. #pos) | c <- runC $ unitsSelf obs]
+    ds <- agentGet
+    (si, _) <- agentAsk
+    let regionLookupMap = regionLookup si
+        squads = armySquads . dsArmy $ ds
+        hashArmy :: HashMap.HashMap UnitTag Unit
+        hashArmy = armyUnits . dsArmy $ ds
+
+        squadLeaderTags :: [UnitTag]
+        squadLeaderTags = head . squadUnits <$> squads
+        squadLeaders = getUnits squadLeaderTags hashArmy
+    debugTexts [("squad " ++ show (u ^. #tag) ++ " at " ++ show (Map.lookup (tilePos (u ^. #pos)) regionLookupMap), u ^. #pos) | u <- squadLeaders]
+
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
 agentResetGrid = do
     obs <- agentObs
@@ -443,10 +463,10 @@ instance Agent TestBot BotDynamicState where
             else
                 return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
     agentStep (BuildArmyAndWin obsPrev) = do
-        -- debugUnitPos
         si <- agentStatic
         obs <- agentObs
         agentUpdateArmy obsPrev
+        debugSquads
         when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
         reassignIdleProbes
         -- when (unitsChanged obs obsPrev) $ do
@@ -461,6 +481,6 @@ instance Agent TestBot BotDynamicState where
         command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) gate | gate <- idleGates]
 
         trainProbes
-        --randomArmyFiddling
+        -- randomArmyFiddling
 
         return $ BuildArmyAndWin obs

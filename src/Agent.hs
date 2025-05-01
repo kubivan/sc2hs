@@ -43,6 +43,8 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict qualified as HashMap
+import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.List (foldl')
 import Data.ProtoLens (defMessage)
 import Data.Text (Text, pack)
@@ -114,7 +116,9 @@ data StaticInfo = StaticInfo
     unitTraits :: UnitTraits,
     heightMap :: Grid,
     expandsPos :: [TilePos],
-    enemyStartLocation :: TilePos
+    enemyStartLocation :: TilePos,
+    regionGraph :: Map.Map RegionId (Set.Set RegionId),
+    regionLookup :: Map.Map TilePos RegionId
   }
 
 class AgentDynamicState dyn where

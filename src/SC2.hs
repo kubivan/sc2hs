@@ -264,7 +264,12 @@ runGameLoop conn signals agent playerId = do
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw
-      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart
+
+      (rays, gridChoked) = findAllChokePoints (gridFromImage $ gi ^. #startRaw . #pathingGrid)
+      regions = gridSegment gridChoked
+      regionGraph = buildRegionGraph regions
+      regionLookup = buildRegionLookup regions
+      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup
 
       nexusCenter = gridPixel gridPlacement (tilePos nexusPos)
 
