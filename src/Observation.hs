@@ -29,6 +29,7 @@ where
 import AbilityId
 import Actions (UnitTag)
 import Footprint
+import Grid.Algo
 import Grid.Grid
 import UnitTypeId
 import Units
@@ -74,9 +75,7 @@ addUnit unitType obs =
 gridUpdate :: Observation -> Grid -> Grid
 gridUpdate obs grid = foldl' (\acc u -> gridPlace acc (toEnum' $ u ^. #unitType) (tilePos $ u ^. #pos)) grid units
   where
-
     units = runConduitPure $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u) .| sinkList
-
 
 buildingsSelfChanged :: Observation -> Observation -> Bool
 buildingsSelfChanged obs obsPrev = blen obs /= blen obsPrev || blen obs == 1 -- `Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
@@ -98,7 +97,7 @@ unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
 
 -- TODO: it's redundant it's fixed on the grid level by adding '.' around resources
 findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
-findExpandPosInCluster grid heightMap cluster = fst $ gridBfs grid (tilePos . view #pos . head $ cluster) (getAllNeigbors grid) canPlaceDist69 (const False)
+findExpandPosInCluster grid heightMap cluster = bfsRes $ gridBfs grid (tilePos . view #pos . head $ cluster) (getAllNeigbors grid) canPlaceDist69 (const False)
   where
     clusterTiles = tilePos . view #pos <$> cluster
     canPlaceDist69 p =

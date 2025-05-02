@@ -1,23 +1,20 @@
 {-# OPTIONS -Wall #-}
-
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
 module Grid.Algo (
     gridBfs,
+    GridBfsRes (..),
     smartTransition,
     getAllNeigbors,
     getAllNotSharpNeigbors,
-
     findChokePoint,
-
     gridPlaceRay,
     gridSplitByRay,
     gridRaycastTile,
     findAllChokePoints,
     checkVolumes,
     gridSegment,
-
     buildRegionGraph,
     buildRegionLookup,
     RegionId,
@@ -46,57 +43,69 @@ import Data.Sequence qualified as Seq
 import UnitTypeId (UnitTypeId)
 
 -- raycasting
-import Control.Monad.Trans.Maybe
-import Control.Monad.State
+
 import Control.Monad (guard, mplus)
-import Data.Maybe (isJust, catMaybes, fromMaybe)
-import Debug.Trace (trace, traceShow, traceShowId, traceM)
+import Control.Monad.State
+import Control.Monad.Trans.Maybe
+import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Debug.Trace (trace, traceM, traceShow, traceShowId)
 
 --
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import Data.Map qualified as Map
+import Data.Set qualified as Set
+
+type TilePath = [TilePos]
+
+data GridBfsRes = GridBfsRes
+    { bfsRes :: Maybe TilePos
+    , bfsVisited :: Set.Set TilePos
+    , bfsPath :: [TilePos]
+    }
+    deriving (Show)
 
 gridBfs ::
-    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> (Maybe TilePos, Set.Set TilePos)
+    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
-    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton start) (Set.singleton start)
+    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton (start, [start])) (Set.singleton start)
   where
-    bfs Seq.Empty visited = (Nothing, visited)
-    bfs (top Seq.:<| rest) visited
-        | acceptanceCriteria top = (Just top, visited) `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
-        | terminationCriteria top = (Nothing, visited)
-        -- | otherwise = trace ("gridBfs processing: " ++ show (top)) $ bfs (rest Seq.>< newPoints) newVisited
-        | otherwise = bfs (rest Seq.>< newPoints) newVisited
+    bfs Seq.Empty visited = GridBfsRes Nothing visited []
+    bfs ((top, path) Seq.:<| queue) visited
+        | acceptanceCriteria top = GridBfsRes (Just top) visited (reverse path) -- `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
+        | terminationCriteria top = GridBfsRes Nothing visited []
+        | otherwise = bfs queue' newVisited
       where
-        newPoints = Seq.filter (`Set.notMember` visited) (transitionFunc top)
-        newVisited = Set.union visited (Set.fromList . toList $ newPoints)
+        neighbors = Seq.filter (`Set.notMember` visited) (transitionFunc top)
+        newVisited = foldr Set.insert visited neighbors
+        queue' :: Seq.Seq (TilePos, TilePath)
+        queue' = queue Seq.>< fmap (\n -> (n, n : path)) neighbors
 
 smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
 smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
   where
     pixelFrom = gridPixel grid pos
     allAdjacent =
-      [ (x + dx, y + dy)
-      | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)]
-      , let pixel = gridPixelSafe grid (x + dx, y + dy)
-      , isJust pixel
-      ]
+        [ (x + dx, y + dy)
+        | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        , let pixel = gridPixelSafe grid (x + dx, y + dy)
+        , isJust pixel
+        ]
     passTransitions p = isJust $ find (canTransit p) transitions
-    canTransit p (f, t) = res --`Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
+    canTransit p (f, t) = res -- `Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
       where
         res = pixelFrom == f && gridPixel grid p == t
 
 getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNeigbors grid (x, y) = res  --`Utils.dbg` ("ns of " ++ show (x,y) ++ " is " ++ show (Seq.length res))
+getAllNeigbors grid (x, y) = res -- `Utils.dbg` ("ns of " ++ show (x,y) ++ " is " ++ show (Seq.length res))
   where
-    res = Seq.fromList
-        [ (x + dx, y + dy)
-        | dx <- [-1, 0, 1]
-        , dy <- [-1, 0, 1]
-        , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-        , let pixel = gridPixelSafe grid (x + dx, y + dy)
-        , isJust pixel -- pixel /= Just '#'
-        ]
+    res =
+        Seq.fromList
+            [ (x + dx, y + dy)
+            | dx <- [-1, 0, 1]
+            , dy <- [-1, 0, 1]
+            , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+            , let pixel = gridPixelSafe grid (x + dx, y + dy)
+            , isJust pixel -- pixel /= Just '#'
+            ]
 
 getAllNotSharpNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
 getAllNotSharpNeigbors grid (x, y) =
@@ -154,7 +163,7 @@ findChokePoint grid threshold start =
         threshold * threshold
             >= round
                 ( distSquared (head ray) (last ray)
-                 --`Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
+                -- `Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
                 )
 
     rays :: [(Ray, Ray)]
@@ -168,20 +177,19 @@ findChokePoint grid threshold start =
         , Just backwardRay <- [raycast dir_backward]
         ]
 
-
 gridSplitByRay :: Grid -> Int -> Ray -> (Maybe (Set.Set TilePos), Maybe (Set.Set TilePos))
-gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay --`Utils.dbg` ("pointsAroundRay: " ++ show pointsAroundRay)
+gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay -- `Utils.dbg` ("pointsAroundRay: " ++ show pointsAroundRay)
   where
     minVolume = minVolume' * 2
     pointsAroundRay :: [TilePos]
     pointsAroundRay =
-            Set.toList . Set.fromList $
-                concatMap (neighborsRay grid) ray
+        Set.toList . Set.fromList $
+            concatMap (neighborsRay grid) ray
 
     checkFirst2 :: [TilePos] -> (Maybe (Set.Set TilePos), Maybe (Set.Set TilePos))
     checkFirst2 [] = (Nothing, Nothing)
     checkFirst2 (a : ns) =
-        let (visitedA, minVolumeReachedA) = gridFloodPeek grid (Set.fromList ray) minVolume a --`Utils.dbg` ("gridFloodPeek:checking: " ++ show a)
+        let (visitedA, minVolumeReachedA) = gridFloodPeek grid (Set.fromList ray) minVolume a -- `Utils.dbg` ("gridFloodPeek:checking: " ++ show a)
             regionA = if minVolumeReachedA then Nothing else Just visitedA
             rest = filter (`Set.notMember` visitedA) ns
          in case rest of
@@ -199,53 +207,53 @@ gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay --`Utils.dbg` (
 checkVolumes :: Grid -> [TilePos] -> Int -> Bool
 checkVolumes grid ray minVolume =
     case gridSplitByRay grid minVolume ray of
-        (Just a, Just b) -> volumeA >= minVolume && volumeB >= minVolume --`Utils.dbg` ("(Just a, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show (volumeA, volumeB))
-            where
-                volumeA = Set.size a
-                volumeB = Set.size b
-        (Just a, Nothing) -> volumeA >= minVolume --`Utils.dbg` ("(Just a, Nothing) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeA)
-            where
-                volumeA = Set.size a
-        (Nothing, Just b) -> volumeB >= minVolume --`Utils.dbg` ("(Nothing, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeB)
-            where
-                volumeB = Set.size b
+        (Just a, Just b) -> volumeA >= minVolume && volumeB >= minVolume -- `Utils.dbg` ("(Just a, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show (volumeA, volumeB))
+          where
+            volumeA = Set.size a
+            volumeB = Set.size b
+        (Just a, Nothing) -> volumeA >= minVolume -- `Utils.dbg` ("(Just a, Nothing) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeA)
+          where
+            volumeA = Set.size a
+        (Nothing, Just b) -> volumeB >= minVolume -- `Utils.dbg` ("(Nothing, Just b) ray " ++ show ray ++ " splits grid into volumes " ++ show volumeB)
+          where
+            volumeB = Set.size b
         d -> True `Utils.dbg` (show d ++ "ray " ++ show ray ++ " Doesn't splits grid into volumes, but ok")
-
 
 gridFloodPeek :: Grid -> Set.Set TilePos -> Int -> TilePos -> (Set.Set TilePos, Bool)
 gridFloodPeek grid visited minVolume start
-  | start `Set.member` visited = (Set.empty, False)
-  | otherwise = (region, minVolumeReached) where
-        (finalVisited, minVolumeReached) = bfs (Seq.singleton start) (Set.insert start visited)
-        region = Set.difference finalVisited visited
-        firstRegionSize = Set.size visited
+    | start `Set.member` visited = (Set.empty, False)
+    | otherwise = (region, minVolumeReached)
+  where
+    (finalVisited, minVolumeReached) = bfs (Seq.singleton start) (Set.insert start visited)
+    region = Set.difference finalVisited visited
+    firstRegionSize = Set.size visited
 
-        bfs :: Seq.Seq TilePos -> Set.Set TilePos -> (Set.Set TilePos, Bool)
-        bfs Seq.Empty vis = (vis, False)
-        bfs (curr Seq.:<| queue) vis
-            | Set.size vis - firstRegionSize > minVolume = (vis, True)
-            | otherwise =
-                let newNeighbors = filter (`Set.notMember` vis) (neighborsRay grid curr)
-                    vis' = foldr Set.insert vis newNeighbors
-                    queue' = queue Seq.>< Seq.fromList newNeighbors
-                in bfs queue' vis'
+    bfs :: Seq.Seq TilePos -> Set.Set TilePos -> (Set.Set TilePos, Bool)
+    bfs Seq.Empty vis = (vis, False)
+    bfs (curr Seq.:<| queue) vis
+        | Set.size vis - firstRegionSize > minVolume = (vis, True)
+        | otherwise =
+            let newNeighbors = filter (`Set.notMember` vis) (neighborsRay grid curr)
+                vis' = foldr Set.insert vis newNeighbors
+                queue' = queue Seq.>< Seq.fromList newNeighbors
+             in bfs queue' vis'
 
 checkIfChoke :: TilePos -> ChokeM
 checkIfChoke pos = do
-    --traceM $ "checkIfChoke: " ++ show pos
+    -- traceM $ "checkIfChoke: " ++ show pos
     (grid, visited) <- lift get
 
     guard (gridPixel grid pos `notElem` ['#', '*'])
 
-    ray <- MaybeT $ return $ findChokePoint grid 15 pos  -- Lift Maybe into ChokeM
+    ray <- MaybeT $ return $ findChokePoint grid 15 pos -- Lift Maybe into ChokeM
     guard (ray /= [])
 
-    --TODO: check & enable
+    -- TODO: check & enable
     -- guard (all (all (\c -> distSquared pos c > 4 * 4)) currentChokes)
 
     guard (ray `Set.notMember` visited)
     lift $ put (grid, Set.insert ray visited)
-    --traceM "Ray not yet checked"
+    -- traceM "Ray not yet checked"
 
     -- Update state
     let grid' = gridPlaceRay grid ray
@@ -263,29 +271,28 @@ checkIfChoke pos = do
 findAllChokePoints :: Grid -> ([Ray], Grid)
 findAllChokePoints grid =
     let openCells =
-          [ (x, y)
-          | y <- [0 .. gridH grid - 1]
-          , x <- [0 .. gridW grid - 1]
-          , gridPixel grid (x, y) /= '#'
-          ]
+            [ (x, y)
+            | y <- [0 .. gridH grid - 1]
+            , x <- [0 .. gridW grid - 1]
+            , gridPixel grid (x, y) /= '#'
+            ]
 
         runEach pos = runMaybeT (checkIfChoke pos)
 
         (maybeRays, (grid', _)) = runState (mapM runEach openCells) (grid, Set.empty)
-
-    in (catMaybes maybeRays, grid')
-
+     in (catMaybes maybeRays, grid')
 
 gridSegment :: Grid -> [(Int, Set.Set TilePos)]
 gridSegment grid =
     go 0 openCells
   where
-    openCells = Set.fromList
-        [ (x, y)
-        | y <- [0 .. gridH grid - 1]
-        , x <- [0 .. gridW grid - 1]
-        , gridPixel grid (x, y) == ' '
-        ]
+    openCells =
+        Set.fromList
+            [ (x, y)
+            | y <- [0 .. gridH grid - 1]
+            , x <- [0 .. gridW grid - 1]
+            , gridPixel grid (x, y) == ' '
+            ]
 
     go id rest
         | trace (show id ++ " openCells: " ++ show (Set.size rest)) False = undefined
@@ -294,13 +301,12 @@ gridSegment grid =
             let start = Set.findMin rest
                 region = fillRegion' start
                 rest' = rest `Set.difference` region
-            in trace ("found region " ++ show (Set.size region) ++ " rest to check: " ++ show (Set.size rest')) $ case Set.minView rest' of
-                Nothing -> [(id, region)]
-                _ -> (id, region) : go (id + 1) rest'
+             in trace ("found region " ++ show (Set.size region) ++ " rest to check: " ++ show (Set.size rest')) $ case Set.minView rest' of
+                    Nothing -> [(id, region)]
+                    _ -> (id, region) : go (id + 1) rest'
 
     fillRegion' pos =
-        snd $ gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const False) (const False)
-
+        bfsVisited $ gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const False) (const False)
 
 type RegionId = Int
 type Region = Set.Set TilePos
@@ -309,15 +315,17 @@ type RegionLookup = Map.Map TilePos RegionId
 
 -- Get 4-connected neighbors (no diagonals)
 adjacent4 :: TilePos -> [TilePos]
-adjacent4 (x, y) = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
+adjacent4 (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
 buildRegionLookup :: [(RegionId, Region)] -> RegionLookup
-buildRegionLookup regions = Map.fromList
-    [ (pos, rid) | (rid, region) <- regions, pos <- Set.toList region ]
+buildRegionLookup regions =
+    Map.fromList
+        [(pos, rid) | (rid, region) <- regions, pos <- Set.toList region]
 
 buildRegionGraph :: [(RegionId, Region)] -> RegionGraph
 buildRegionGraph regions =
-    Map.fromListWith Set.union
+    Map.fromListWith
+        Set.union
         [ (rid, Set.singleton rid')
         | (rid, region) <- regions
         , pos <- Set.toList region
