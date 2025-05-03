@@ -1,19 +1,17 @@
-
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE OverloadedLabels #-}
-
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
-module Agent
-  ( Agent (..),
+module Agent (
+    Agent (..),
     StepPlan (..),
     StaticInfo (..),
-    AgentDynamicState(..),
+    AgentDynamicState (..),
     StepMonad,
     MaybeStepMonad,
     runStep,
@@ -30,67 +28,68 @@ module Agent
     debugText,
     debugTexts,
     command,
-  )
+)
 where
 
 import AbilityId qualified
-import Actions (Action, DebugCommand(..), getCmd, getExecutor)
-import Control.Monad.Identity (Identity (..))
+import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Control.Monad
+import Control.Monad.Identity (Identity (..))
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict qualified as HashMap
-import Data.Map qualified as Map
-import Data.Set qualified as Set
 import Data.List (foldl')
+import Data.Map qualified as Map
 import Data.ProtoLens (defMessage)
+import Data.Set qualified as Set
 import Data.Text (Text, pack)
 import Debug.Trace
 import GHC.Word qualified
 import Grid.Grid
-import Lens.Micro ((^.), (.~), (&))
+import Lens.Micro ((&), (.~), (^.))
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Data qualified as A
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import UnitTypeId
---import Utils (Pointable, dbg)
+
+-- import Utils (Pointable, dbg)
 import Utils
 
-import Observation
 import Data.Kind (Type)
---type Observation = A.Observation
+import Observation
+
+-- type Observation = A.Observation
 
 type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
 
 type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
 
 data StepPlan = StepPlan
-  {
-    botCommands :: [Action]
-  , botChat  :: [Text]
-  , botDebug :: [DebugCommand]
-  }
+    { botCommands :: [Action]
+    , botChat :: [Text]
+    , botDebug :: [DebugCommand]
+    }
 
 obsApplyAction :: Action -> Observation -> Observation
-obsApplyAction a = addOrder (unit ^. #tag) ability
+obsApplyAction a obs = foldl (\obsAcc unit -> addOrder (unit ^. #tag) ability obsAcc) obs units
   where
-    unit = getExecutor a
+    units = getExecutors a
     ability = getCmd a
 
-command :: AgentDynamicState d => [Action] -> StepMonad d ()
+command :: (AgentDynamicState d) => [Action] -> StepMonad d ()
 command acts = do
-   --unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
-   dyn <- agentGet
+    -- unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+    dyn <- agentGet
 
-   let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
-   put $ setObs obs' dyn
+    let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
+    put $ setObs obs' dyn
 
-   tell (StepPlan acts [] [])
+    tell (StepPlan acts [] [])
 
 debug :: [DebugCommand] -> StepMonad dyn ()
 debug acts = tell (StepPlan [] [] acts)
@@ -105,30 +104,30 @@ agentChat :: String -> StepMonad dyn ()
 agentChat msg = tell (StepPlan [] [pack msg] [])
 
 instance Semigroup StepPlan where
-  (<>) (StepPlan as1 cs1 ds1) (StepPlan as2 cs2 ds2) = StepPlan (as1 <> as2) (cs1 <> cs2) (ds1 <> ds2)
+    (<>) (StepPlan as1 cs1 ds1) (StepPlan as2 cs2 ds2) = StepPlan (as1 <> as2) (cs1 <> cs2) (ds1 <> ds2)
 
 instance Monoid StepPlan where
     mempty = StepPlan [] [] []
 
 data StaticInfo = StaticInfo
-  { gameInfo :: A.ResponseGameInfo,
-    playerInfo :: A.PlayerInfo,
-    unitTraits :: UnitTraits,
-    heightMap :: Grid,
-    expandsPos :: [TilePos],
-    enemyStartLocation :: TilePos,
-    regionGraph :: Map.Map RegionId (Set.Set RegionId),
-    regionLookup :: Map.Map TilePos RegionId
-  }
+    { gameInfo :: A.ResponseGameInfo
+    , playerInfo :: A.PlayerInfo
+    , unitTraits :: UnitTraits
+    , heightMap :: Grid
+    , expandsPos :: [TilePos]
+    , enemyStartLocation :: TilePos
+    , regionGraph :: Map.Map RegionId (Set.Set RegionId)
+    , regionLookup :: Map.Map TilePos RegionId
+    }
 
 class AgentDynamicState dyn where
-  getObs :: dyn -> Observation
-  getGrid :: dyn -> Grid
+    getObs :: dyn -> Observation
+    getGrid :: dyn -> Grid
 
-  setObs :: Observation -> dyn -> dyn
-  setGrid :: Grid -> dyn -> dyn
+    setObs :: Observation -> dyn -> dyn
+    setGrid :: Grid -> dyn -> dyn
 
-  dsUpdate :: Observation -> Grid -> dyn -> dyn
+    dsUpdate :: Observation -> Grid -> dyn -> dyn
 
 agentAsk :: StepMonad dyn (StaticInfo, UnitAbilities)
 agentAsk = lift $ lift ask
@@ -136,7 +135,7 @@ agentAsk = lift $ lift ask
 agentAbilities :: StepMonad dyn UnitAbilities
 agentAbilities = agentAsk <&> snd
 
-agentObs :: AgentDynamicState dyn => StepMonad dyn Observation
+agentObs :: (AgentDynamicState dyn) => StepMonad dyn Observation
 agentObs = agentGet <&> getObs
 
 agentStatic :: StepMonad dyn StaticInfo
@@ -148,15 +147,15 @@ agentGet = lift get
 agentPut :: dyn -> StepMonad dyn ()
 agentPut = lift . put
 
---agentDsUpdate :: Observation -> Grid -> StepMonad dyn
+-- agentDsUpdate :: Observation -> Grid -> StepMonad dyn
 
 runStep :: (Agent a d, AgentDynamicState d) => StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
---runStep staticInfo dynamicState stepMonad = runReaderT (runStateT (runWriterT stepMonad) dynamicState) staticInfo
+-- runStep staticInfo dynamicState stepMonad = runReaderT (runStateT (runWriterT stepMonad) dynamicState) staticInfo
 runStep staticInfo abilities dynamicState stepMonad =
- let writerRes = runWriterT stepMonad
-     stateRes = runStateT writerRes dynamicState
-     ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
- in (a, stepPlan, dyn')
+    let writerRes = runWriterT stepMonad
+        stateRes = runStateT writerRes dynamicState
+        ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
+     in (a, stepPlan, dyn')
 class (AgentDynamicState d) => Agent a d | a -> d where
     type DynamicState a :: Type
 

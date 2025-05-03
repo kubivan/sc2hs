@@ -149,7 +149,7 @@ randCmd2 grid udata u = do
     let enemies = runC $ obsUnitsC obs .| filterC isEnemy
     -- Check if there's an enemy in range
     case enemyInRange u enemies of
-        Just e -> command [Actions.UnitCommand Attack u e] -- Attack the enemy
+        Just e -> command [Actions.UnitCommand Attack [u] e] -- Attack the enemy
         Nothing ->
             if not . null . view #orders $ u
                 then return ()
@@ -163,7 +163,7 @@ randCmd2 grid udata u = do
 
                     pos <- calcMovePos unvisitedNeighbors
 
-                    command [PointCommand Move u (toPoint2D pos)] -- Move to the random position
+                    command [PointCommand Move [u] (toPoint2D pos)] -- Move to the random position
   where
     upos = tilePos (u ^. #pos)
     nearest :: (Pointable p) => p -> [p] -> p

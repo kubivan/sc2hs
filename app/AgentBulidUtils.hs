@@ -76,7 +76,7 @@ unitToAbility traits uid = case traits HashMap.!? uid of
     Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
 
 findAssignee :: Observation -> Action -> Maybe Units.Unit
-findAssignee obs a = find (\u -> u ^. #tag == getExecutor a ^. #tag) (obs ^. (#rawData . #units))
+findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
 
 unitCost :: Agent.UnitTraits -> UnitTypeId -> Cost
 unitCost traits uid = case traits HashMap.!? uid of

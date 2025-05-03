@@ -143,7 +143,7 @@ buildAction ProtossAssimilator grid reservedRes = do
     builder <- MaybeT . return $ findBuilder obs
     geyser <- MaybeT . return $ findFreeGeyser obs
 
-    let res = UnitCommand BuildAssimilator builder geyser
+    let res = UnitCommand BuildAssimilator [builder] geyser
 
     return (res, cost, grid) -- `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 buildAction order grid reservedRes = do
@@ -167,7 +167,7 @@ buildAction order grid reservedRes = do
         dsUpdate obs' grid' ds
             `Utils.dbg` (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 
-    let res = PointCommand ability builder (fromTuple pos)
+    let res = PointCommand ability [builder] (fromTuple pos)
 
     return (res, cost, grid') `Utils.dbg` ("builder orders " ++ show (builder ^. #orders))
 
@@ -197,7 +197,7 @@ pylonBuildAction grid reservedRes = do
     let grid' = addMark grid footprint pylonPos
     let obs' = addOrder (builder ^. #tag) AbilityId.BuildPylon obs
     lift . agentPut $ dsUpdate obs' grid' ds
-    return (PointCommand BuildPylon builder (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
+    return (PointCommand BuildPylon [builder] (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
 
 createAction :: (AgentDynamicState d) => Grid -> Cost -> UnitTypeId -> MaybeStepMonad d (Action, Cost, Grid)
 createAction grid reserved order = do
@@ -215,7 +215,7 @@ trainProbes = do
         nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1) .| unitIdleC
         nexusCount = length nexuses
         optimalCount = assimCount * 3 + nexusCount * 16
-    when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe n | n <- nexuses]
+    when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe nexuses]
 
 -- `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
 
@@ -276,7 +276,7 @@ reassignIdleProbes = do
                         CL.sourceList mineralHarvesters
                             .| filterC (unitIsAssignedToAny (nexusesOver ++ nexusesIdeal)) -- TODO: use manhattan
             command
-                [ UnitCommand HarvestGatherProbe harvester assimilator
+                [ UnitCommand HarvestGatherProbe [harvester] assimilator
                 | (assimilator, harvester) <- zip assimUnder probePool
                 ]
         else
@@ -293,14 +293,14 @@ reassignIdleProbes = do
                                 runConduitPure $
                                     obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
                     command
-                        [ UnitCommand HarvestGatherProbe harvester (closestMineralTo nexus)
+                        [ UnitCommand HarvestGatherProbe [harvester] (closestMineralTo nexus)
                         | (nexus, harvester) <- zip nexusesUnder probePool
                         ]
                 else do
                     -- trace "staffing: just idle probes" (return ())
                     let closestMineral to = runConduitPure $ obsUnitsC obs .| filterC isMineral .| closestC to
                     -- TODO: obsolete, rewrite
-                    command [UnitCommand HarvestGatherProbe idle (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
+                    command [UnitCommand HarvestGatherProbe [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
 buildPylons :: (AgentDynamicState d) => MaybeStepMonad d ()
 buildPylons = do
@@ -416,7 +416,7 @@ instance Agent TestBot BotDynamicState where
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
             expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
 
-        command [SelfCommand AbilityId.TrainProbe nexus]
+        command [SelfCommand AbilityId.TrainProbe [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
     agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
         debugUnitPos
@@ -477,8 +477,8 @@ instance Agent TestBot BotDynamicState where
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsfacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
-        command [SelfCommand TrainImmortal robo | robo <- idleRobos]
-        command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) gate | gate <- idleGates]
+        command [SelfCommand TrainImmortal idleRobos]
+        command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]
 
         trainProbes
         -- randomArmyFiddling
