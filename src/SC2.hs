@@ -49,6 +49,7 @@ import Lens.Micro.Extras(view)
 import Data.ProtoLens.Labels ()
 
 import Data.Either (either)
+import Data.Map qualified as Map
 
 import AbilityId
 import UnitTypeId
@@ -263,6 +264,7 @@ runGameLoop conn signals agent playerId = do
       gridPathing = gridFromImage $ gi ^. #startRaw . #pathingGrid
       grid = gridMerge pixelIsRamp gridPlacement gridPathing
       nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
+      --TODO: sort expands based on region connectivity: closest is not always the next one
       expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
       enemyStart = tilePos $ enemyBaseLocation gi obsRaw
 
@@ -270,10 +272,12 @@ runGameLoop conn signals agent playerId = do
       regions = gridSegment gridChoked
       regionGraph = buildRegionGraph regions
       regionLookup = buildRegionLookup regions
-      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup
+      si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (Map.fromList regions)
 
       nexusCenter = gridPixel gridPlacement (tilePos nexusPos)
 
+  print $ "!!! regions is: " ++ show regions
+  print $ "!!! regions: " ++ show (Map.keysSet $ siRegions si)
   print $ "!!! nexusCenter is: " ++ show nexusCenter ++ " at " ++ show (tilePos nexusPos)
   trace "create ds" return ()
   dynamicState <- makeDynamicState agent obsRaw grid

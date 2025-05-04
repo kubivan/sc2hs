@@ -116,8 +116,9 @@ data StaticInfo = StaticInfo
     , heightMap :: Grid
     , expandsPos :: [TilePos]
     , enemyStartLocation :: TilePos
-    , regionGraph :: Map.Map RegionId (Set.Set RegionId)
-    , regionLookup :: Map.Map TilePos RegionId
+    , regionGraph :: !(Map.Map RegionId (Set.Set RegionId))
+    , regionLookup :: !(Map.Map TilePos RegionId)
+    , siRegions :: !(Map.Map RegionId Region)
     }
 
 class AgentDynamicState dyn where
