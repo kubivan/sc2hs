@@ -379,7 +379,7 @@ debugSquads = do
         squadLeaderTags :: [UnitTag]
         squadLeaderTags = head . squadUnits <$> squads
         squadLeaders = getUnits squadLeaderTags hashArmy
-    debugTexts [("squad " ++ show (u ^. #tag) ++ " at " ++ show (Map.lookup (tilePos (u ^. #pos)) regionLookupMap), u ^. #pos) | u <- squadLeaders]
+    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (Map.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
 agentResetGrid = do
@@ -469,6 +469,9 @@ instance Agent TestBot BotDynamicState where
         debugSquads
         when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
         reassignIdleProbes
+        agentAssignSquads
+        agentUpdateSquads
+        agentFiddleSquads
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 

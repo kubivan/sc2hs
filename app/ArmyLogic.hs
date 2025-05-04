@@ -17,15 +17,17 @@ import Utils
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
+import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 
-import Control.Monad (void, when)
+import Control.Applicative ((<|>))
+import Control.Monad (filterM, void, when)
 
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
 import Data.Foldable qualified as Seq
 import Data.Function (on)
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Ord (comparing)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
@@ -35,6 +37,7 @@ import System.Random (Random, StdGen, newStdGen, randomR)
 import Debug.Trace (traceM)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Raw qualified as R
+import Proto.S2clientprotocol.Raw_Fields (buildProgress)
 
 -- Define if a unit is considered an army unit
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
@@ -65,10 +68,12 @@ agentUpdateDsArmy :: StepMonad BotDynamicState ()
 agentUpdateDsArmy = do
     ds <- agentGet
     obs <- agentObs -- allUnitPos = Set.fromList $ runC $ obsUnitsC obs .| filterC (not.isBuilding) .| mapC (view #pos) .| mapC tilePos
-    let obsArmyUnits = unitsSelf obs .| filterC isArmyUnit
+    let obsArmyUnits = unitsSelf obs .| filterC isArmyUnit .| filterC (\u -> u ^. #buildProgress == 1)
         obsArmyUnitsPoss = runC $ obsArmyUnits .| mapC (tilePos . view #pos)
         armyHashMap = HashMap.fromList $ [(u ^. #tag :: UnitTag, u) | u <- runC obsArmyUnits]
         squadSize = 5
+        -- remove dead units
+        squads = concatMap (\s -> let su = squadUnits s in [s{squadUnits = filter (`HashMap.member` armyHashMap) su}]) (armySquads $ dsArmy ds)
 
         fillSquads :: [ArmySquad] -> [UnitTag] -> ([ArmySquad], [UnitTag])
         fillSquads [] rest = ([], rest)
@@ -77,9 +82,9 @@ agentUpdateDsArmy = do
             let aliveUnits = filter (`HashMap.member` armyHashMap) (squadUnits s)
                 unitsNeeded = squadSize - length aliveUnits
                 (assigned, remaining) = splitAt unitsNeeded rookies
-                updatedSquad = s{squadUnits = aliveUnits ++ assigned}
+                s' = s{squadUnits = aliveUnits ++ assigned}
                 (filledRest, leftover) = fillSquads rest remaining
-             in (updatedSquad : filledRest, leftover)
+             in (s' : filledRest, leftover)
 
         isSquadFull :: ArmySquad -> Bool
         isSquadFull squad = all (`HashMap.member` armyHashMap) (squadUnits squad) && (squadSize == length (squadUnits squad))
@@ -87,7 +92,7 @@ agentUpdateDsArmy = do
         isSquadEmpty :: ArmySquad -> Bool
         isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
 
-        (squadsFull, squadsToCheck) = partition isSquadFull (armySquads (dsArmy ds))
+        (squadsFull, squadsToCheck) = partition isSquadFull squads
         (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
 
         squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
@@ -96,7 +101,7 @@ agentUpdateDsArmy = do
         (refilledSquads, restUnits) = fillSquads squadsNotFull freeArmyUnitTags
 
         newSquadUnits = chunksOf 5 restUnits
-        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = Idle}]) newSquadUnits
+        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = StateIdle}]) newSquadUnits
 
         army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
 
@@ -250,6 +255,22 @@ neighbors p@(x, y) grid =
     , pixel /= Just '#' && isJust pixel
     ]
 
+tilesInRadius :: Int -> TilePos -> [TilePos]
+tilesInRadius r (x, y) =
+    [ (x + dx, y + dy)
+    | dx <- [-r .. r]
+    , dy <- [-r .. r]
+    , dx * dx + dy * dy <= r * r -- circular mask
+    -- , (dx, dy) /= (0, 0)          -- exclude center
+    ]
+
+backoffList :: [a] -> Int -> Maybe a
+backoffList xs n
+    | n < 0 = Nothing
+    | otherwise = takeMaybe n xs <|> backoffList xs (n - 1)
+  where
+    takeMaybe i ys = if i < length ys then Just (ys !! i) else Nothing
+
 -- Check if an enemy is in range
 enemyInRange :: Unit -> [Unit] -> Maybe Unit
 enemyInRange u enemies =
@@ -260,3 +281,146 @@ agentUpdateArmy obsPrev = agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TO
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding
+
+isSquadFull :: ArmySquad -> StepMonad BotDynamicState Bool
+isSquadFull squad = do
+    ds <- agentGet
+    let unitMap = armyUnits $ dsArmy ds
+        tags = squadUnits squad
+        squadSize = length tags
+    return $ length tags == squadSize && all (`HashMap.member` unitMap) tags
+
+squadAssignedRegion :: ArmySquad -> Maybe RegionId
+squadAssignedRegion squad = case squadState squad of
+    StateExploreRegion rid _ -> Just rid
+    _ -> Nothing
+
+replaceSquad :: ArmySquad -> [ArmySquad] -> [ArmySquad]
+replaceSquad new = map (\s -> if squadId s == squadId new then new else s)
+
+assignLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
+assignLoop [] = return ()
+assignLoop (s : rest) = do
+    ds <- agentGet
+    (si, _) <- agentAsk
+    let regionById rid = siRegions si Map.! rid
+        allRegions = Map.keysSet $ siRegions si
+        usedRegions = Set.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
+        availableRegionIds = Set.toList $ allRegions Set.\\ usedRegions
+    traceM $ "assigning: all regions " ++ show (allRegions)
+    traceM $ "assigning: used regions " ++ show (usedRegions)
+    traceM $ "assigning: availableRegionIds " ++ show (availableRegionIds)
+    case availableRegionIds of
+        [] -> return () -- no unassigned regions left
+        (rid : _) -> do
+            -- Assign squad to region
+            let squad' = s{squadState = StateExploreRegion rid (regionById rid)}
+                squads' = replaceSquad squad' (armySquads (dsArmy ds))
+                army' = (dsArmy ds){armySquads = squads'}
+            traceM $ "   assigded squads': " ++ show squad'
+            agentPut ds{dsArmy = army'}
+
+            assignLoop rest
+
+agentAssignSquads :: StepMonad BotDynamicState ()
+agentAssignSquads = do
+    ds <- agentGet
+    let army = dsArmy ds
+        squads = armySquads army
+
+    fullIdleSquads <- filter isSquadIdle <$> filterM isSquadFull squads
+    assignLoop fullIdleSquads
+
+agentFiddleSquads :: StepMonad BotDynamicState ()
+agentFiddleSquads = do
+    ds <- agentGet
+    let
+        army = dsArmy ds
+        squads = armySquads army
+
+    squadFiddleLoop squads
+
+-- data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StackEvade deriving (Eq, Show)
+squadExploreRegion :: ArmySquad -> RegionId -> Region -> StepMonad BotDynamicState ()
+squadExploreRegion s rid region =
+    do
+        traceM $ "exploring " ++ show rid ++ " size: " ++ show (Set.size region)
+        ds <- agentGet
+        let army = dsArmy ds
+            unitByTag t = fromJust $ HashMap.lookup t (armyUnits army)
+            grid = getGrid ds
+            targetPos = head $ Set.toList region
+            unitTags@(squadLeaderTag : squadsRest) = squadUnits s
+            leaderPos = tilePos . view #pos . unitByTag $ squadLeaderTag
+
+            GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeigbors grid) (== targetPos) (const False)
+            posToGo = fromJust $ backoffList path 3
+
+        if isNothing isFound
+            then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
+            else do
+                command [PointCommand AttackAttack [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
+
+squadDoAttack :: ArmySquad -> Target -> StepMonad BotDynamicState ()
+squadDoAttack squad target = return ()
+
+squadFiddleLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
+squadFiddleLoop [] = return ()
+squadFiddleLoop (s : squads) =
+    do
+        case squadState s of
+            (StateExploreRegion rid region) -> squadExploreRegion s rid region
+            (StateAttack t) -> squadDoAttack s t
+            _ -> return ()
+        squadFiddleLoop squads
+
+agentUpdateSquads :: StepMonad BotDynamicState ()
+agentUpdateSquads = do
+    ds <- agentGet
+    let army = dsArmy ds
+        squads = armySquads army
+
+    squadUpdateStateLoop squads
+
+squadSwitchIdle :: ArmySquad -> StepMonad BotDynamicState ()
+squadSwitchIdle s = do
+    traceM "switch to idle"
+    ds <- agentGet
+    let squad' = s{squadState = StateIdle}
+        squads' = replaceSquad squad' (armySquads (dsArmy ds))
+        army' = (dsArmy ds){armySquads = squads'}
+    agentPut ds{dsArmy = army'}
+
+-- data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StackEvade deriving (Eq, Show)
+squadUpdateStateExploreRegion :: ArmySquad -> RegionId -> Region -> StepMonad BotDynamicState ()
+squadUpdateStateExploreRegion s rid region
+    | Set.size region == 0 = squadSwitchIdle s
+    | otherwise = do
+        ds <- agentGet
+        let army = dsArmy ds
+            unitByTag t = HashMap.lookup t (armyUnits army)
+            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+            units = catMaybes $ [unitByTag t | t <- squadUnits s]
+
+            -- TODO: correct radius
+            -- TODO: intersect 2 sets instead
+            pixelsToRemove = concatMap (tilesInRadius 5) (tilePos . view #pos <$> units)
+            region' = foldl' (flip Set.delete) region pixelsToRemove
+
+            squad' = s{squadState = StateExploreRegion rid region'}
+            updateSquads = replaceSquad squad' (armySquads (dsArmy ds))
+            army' = (dsArmy ds){armySquads = updateSquads}
+        if Set.size region' == 0
+            then
+                squadSwitchIdle s
+            else
+                agentPut ds{dsArmy = army'}
+
+squadUpdateStateLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
+squadUpdateStateLoop [] = return ()
+squadUpdateStateLoop (s : squads) =
+    do
+        case squadState s of
+            (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region
+            _ -> return ()
+        squadUpdateStateLoop squads

@@ -3,30 +3,46 @@
 
 module BotDynamicState where
 
+import Actions (UnitTag)
 import Agent
-import Observation
 import Grid.Grid
-import Utils(TilePos, tilePos)
-import Units
-import Actions(UnitTag)
+import Observation
 import UnitTypeId
+import Units
+import Utils (TilePos, tilePos)
 
-import Data.Set qualified as Set
 import Data.HashMap.Strict qualified as HashMap
-import System.Random (Random, StdGen, newStdGen, randomR)
+import Data.Set qualified as Set
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
+import System.Random (Random, StdGen, newStdGen, randomR)
 
 data Target = TargetPos TilePos | TargetUnit UnitTag deriving (Eq, Show)
 
-data ArmyUnitState = Idle | Exploring Target | Attacking Target | Evading deriving (Eq, Show)
+data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StateEvade deriving (Eq, Show)
+
+armyUnitStateStr :: ArmyUnitState -> String
+armyUnitStateStr (StateIdle) = "Idle"
+armyUnitStateStr (StateExplore t) = "Explore: " ++ show t
+armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r)
+armyUnitStateStr (StateAttack t) = "Attack: " ++ show t
+armyUnitStateStr (StateEvade) = "Evade"
 
 data ProtossUnit = Stalker Unit ArmyUnitState | Zealot Unit ArmyUnitState
 
 data ArmySquad = ArmySquad
     { squadUnits :: [UnitTag]
     , squadState :: ArmyUnitState
-    } deriving (Eq, Show)
+    }
+    deriving (Eq, Show)
+
+squadId :: ArmySquad -> UnitTag
+squadId s = head $ squadUnits s
+
+isSquadIdle :: ArmySquad -> Bool
+isSquadIdle s = case squadState s of
+    StateIdle -> True
+    _ -> False
 
 data ArmyUnitData = ArmyUnitData
     { auVisitedTiles :: Set.Set TilePos
@@ -68,10 +84,9 @@ getRandValue range (BotDynamicState obs grid gen army) =
     let (value, newGen) = randomR range gen
      in (value, BotDynamicState obs grid newGen army)
 
-
 bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynamicState
-bdsUpdateArmyUnitData ds tag newUnitData= ds{dsArmy = dsArmy'}
-    where
-        army = dsArmy ds
-        dsArmy' = army{armyUnitsData = armyUnitsData'}
-        armyUnitsData' = HashMap.insert tag newUnitData (armyUnitsData army)
+bdsUpdateArmyUnitData ds tag newUnitData = ds{dsArmy = dsArmy'}
+  where
+    army = dsArmy ds
+    dsArmy' = army{armyUnitsData = armyUnitsData'}
+    armyUnitsData' = HashMap.insert tag newUnitData (armyUnitsData army)

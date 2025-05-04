@@ -76,7 +76,7 @@ data StepPlan = StepPlan
     }
 
 obsApplyAction :: Action -> Observation -> Observation
-obsApplyAction a obs = foldl (\obsAcc unit -> addOrder (unit ^. #tag) ability obsAcc) obs units
+obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) obs units
   where
     units = getExecutors a
     ability = getCmd a

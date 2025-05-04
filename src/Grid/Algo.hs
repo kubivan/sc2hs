@@ -66,16 +66,17 @@ data GridBfsRes = GridBfsRes
 gridBfs ::
     Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
-    trace ("gridBfs start " ++ show start) $ bfs (Seq.singleton (start, [start])) (Set.singleton start)
+    --trace ("gridBfs start " ++ show start) $
+    bfs (Seq.singleton (start, [start])) (Set.singleton start)
   where
     bfs Seq.Empty visited = GridBfsRes Nothing visited []
     bfs ((top, path) Seq.:<| queue) visited
         | acceptanceCriteria top = GridBfsRes (Just top) visited (reverse path) -- `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
         | terminationCriteria top = GridBfsRes Nothing visited []
-        | otherwise = bfs queue' newVisited
+        | otherwise = bfs queue' visited'
       where
         neighbors = Seq.filter (`Set.notMember` visited) (transitionFunc top)
-        newVisited = foldr Set.insert visited neighbors
+        visited' = foldr Set.insert visited neighbors
         queue' :: Seq.Seq (TilePos, TilePath)
         queue' = queue Seq.>< fmap (\n -> (n, n : path)) neighbors
 

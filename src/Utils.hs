@@ -30,7 +30,7 @@ import Lens.Micro.Extras ( view )
 import Debug.Trace
 
 toPoint2D :: Pointable a => a -> Point2D
-toPoint2D p = defMessage & x .~ getX p & y .~ getY p
+toPoint2D p = defMessage & x .~ (0.5 + getX p) & y .~ (0.5 + getY p)
 
 class Pointable p where
   getX :: p -> Float

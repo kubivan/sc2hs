@@ -96,7 +96,7 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage& #createGame .~ mo
     setPlayers participants = #playerSetup .~ (toPlayerSetup <$> participants)
 
     toPlayerSetup :: Participant -> A.PlayerSetup
-    toPlayerSetup (Proto.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.Hard --TODO: computer
+    toPlayerSetup (Proto.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.VeryEasy --TODO: computer
     toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ Participant
 
 requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> C.Race -> A.Request
