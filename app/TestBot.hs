@@ -393,9 +393,14 @@ agentResetGrid = do
 
     agentPut $ setGrid grid' ds
 
-agentUpdateGrid f = do
+agentUpdateGrid f = {-# SCC "agentUpdateGrid" #-} do
     ds <- agentGet
     agentPut $ setGrid (f (getGrid ds)) ds
+
+
+agentArmyControl :: StepMonad BotDynamicState ()
+agentArmyControl = {-# SCC "agentStep:agentArmyControl" #-} agentAssignIdleSquads >> agentUpdateSquads >> agentSquadsStep
+
 
 instance Agent TestBot BotDynamicState where
     type DynamicState TestBot = BotDynamicState
@@ -404,7 +409,7 @@ instance Agent TestBot BotDynamicState where
         gen <- newStdGen -- Initialize a new random generator
         return $ BotDynamicState obs grid gen emptyArmy
     agentRace _ = C.Protoss
-    agentStep Opening = do
+    agentStep Opening =  {-# SCC "agentStep:Opening" #-} do
         si <- agentStatic
         ds <- agentGet
 
@@ -418,7 +423,7 @@ instance Agent TestBot BotDynamicState where
 
         command [SelfCommand AbilityId.TrainProbe [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
-    agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = do
+    agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = {-# SCC "agentStep:BuildOrderExecutor" #-} do
         debugUnitPos
         reassignIdleProbes
         trainProbes
@@ -462,19 +467,17 @@ instance Agent TestBot BotDynamicState where
                 return $ BuildArmyAndWin obs
             else
                 return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
-    agentStep (BuildArmyAndWin obsPrev) = do
+    agentStep (BuildArmyAndWin obsPrev) = {-# SCC "agentStep:BuildArmyAndWin" #-} do
         si <- agentStatic
         obs <- agentObs
         agentUpdateArmy obsPrev
         debugSquads
         when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
         reassignIdleProbes
-
-        agentAssignIdleSquads
-        agentUpdateSquads
-        agentSquadsStep
+        agentArmyControl
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
+
 
         res <- runMaybeT buildPylons
 

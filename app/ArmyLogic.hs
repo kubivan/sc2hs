@@ -277,7 +277,7 @@ enemyInRange u enemies =
     headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
 
 agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
-agentUpdateArmy obsPrev = agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
+agentUpdateArmy obsPrev = {-# SCC "agentUpdateArmy" #-} agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding
