@@ -469,9 +469,10 @@ instance Agent TestBot BotDynamicState where
         debugSquads
         when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
         reassignIdleProbes
-        agentAssignSquads
+
+        agentAssignIdleSquads
         agentUpdateSquads
-        agentFiddleSquads
+        agentSquadsStep
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 

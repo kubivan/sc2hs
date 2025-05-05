@@ -274,7 +274,7 @@ backoffList xs n
 -- Check if an enemy is in range
 enemyInRange :: Unit -> [Unit] -> Maybe Unit
 enemyInRange u enemies =
-    headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- Stalker attack range of 6
+    headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
 
 agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
 agentUpdateArmy obsPrev = agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TODO: no diff with obsPrev
@@ -298,9 +298,8 @@ squadAssignedRegion squad = case squadState squad of
 replaceSquad :: ArmySquad -> [ArmySquad] -> [ArmySquad]
 replaceSquad new = map (\s -> if squadId s == squadId new then new else s)
 
-assignLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
-assignLoop [] = return ()
-assignLoop (s : rest) = do
+squadAssign :: ArmySquad -> StepMonad BotDynamicState ()
+squadAssign s = do
     ds <- agentGet
     (si, _) <- agentAsk
     let regionById rid = siRegions si Map.! rid
@@ -320,25 +319,23 @@ assignLoop (s : rest) = do
             traceM $ "   assigded squads': " ++ show squad'
             agentPut ds{dsArmy = army'}
 
-            assignLoop rest
-
-agentAssignSquads :: StepMonad BotDynamicState ()
-agentAssignSquads = do
+agentAssignIdleSquads :: StepMonad BotDynamicState ()
+agentAssignIdleSquads = do
     ds <- agentGet
     let army = dsArmy ds
         squads = armySquads army
 
     fullIdleSquads <- filter isSquadIdle <$> filterM isSquadFull squads
-    assignLoop fullIdleSquads
+    mapM_ squadAssign fullIdleSquads
 
-agentFiddleSquads :: StepMonad BotDynamicState ()
-agentFiddleSquads = do
+agentSquadsStep :: StepMonad BotDynamicState ()
+agentSquadsStep = do
     ds <- agentGet
     let
         army = dsArmy ds
         squads = armySquads army
 
-    squadFiddleLoop squads
+    mapM_ squadStep squads
 
 -- data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StackEvade deriving (Eq, Show)
 squadExploreRegion :: ArmySquad -> RegionId -> Region -> StepMonad BotDynamicState ()
@@ -364,15 +361,12 @@ squadExploreRegion s rid region =
 squadDoAttack :: ArmySquad -> Target -> StepMonad BotDynamicState ()
 squadDoAttack squad target = return ()
 
-squadFiddleLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
-squadFiddleLoop [] = return ()
-squadFiddleLoop (s : squads) =
-    do
+squadStep :: ArmySquad -> StepMonad BotDynamicState ()
+squadStep s =
         case squadState s of
             (StateExploreRegion rid region) -> squadExploreRegion s rid region
             (StateAttack t) -> squadDoAttack s t
             _ -> return ()
-        squadFiddleLoop squads
 
 agentUpdateSquads :: StepMonad BotDynamicState ()
 agentUpdateSquads = do
@@ -380,7 +374,7 @@ agentUpdateSquads = do
     let army = dsArmy ds
         squads = armySquads army
 
-    squadUpdateStateLoop squads
+    mapM_ squadUpdateState squads
 
 squadSwitchIdle :: ArmySquad -> StepMonad BotDynamicState ()
 squadSwitchIdle s = do
@@ -416,11 +410,8 @@ squadUpdateStateExploreRegion s rid region
             else
                 agentPut ds{dsArmy = army'}
 
-squadUpdateStateLoop :: [ArmySquad] -> StepMonad BotDynamicState ()
-squadUpdateStateLoop [] = return ()
-squadUpdateStateLoop (s : squads) =
-    do
+squadUpdateState :: ArmySquad -> StepMonad BotDynamicState ()
+squadUpdateState s =
         case squadState s of
             (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region
             _ -> return ()
-        squadUpdateStateLoop squads
