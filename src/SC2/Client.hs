@@ -153,7 +153,7 @@ waitAllClientsJoined signals = do
     joinedCountNotMeet = do
         count <- readMVar $ allClientsJoined signals
         let expectedCount = expectedClients signals
-        -- trace ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount) (return ())
+        --traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
         when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
 
 -- Wait for the host's game creation signal

@@ -69,34 +69,35 @@ import Proto.S2clientprotocol.Sc2api as S (
     ResponseGameInfo,
  )
 
-runGame :: [Proto.Participant] -> IO ()
-runGame participants = do
-    let (host, players, joinFunc) = splitParticipants participants
-    signals <- newGameSignals (1 + length players)
+runGame :: Proto.Participant -> Proto.Participant -> IO ()
+--1vs1
+runGame firstParticipant secondParticipant@(Proto.Player{}) = do
+    let joinRequest = requestJoinGame1vs1 serverPortSet clientPortSet
+    signals <- newGameSignals 2
+
     asyncHostTask <- async $ do
         threadId <- myThreadId
-        putStrLn $ "Current thread ID: " ++ show threadId
-        runHost host participants signals joinFunc
+        putStrLn $ "Host thread ID: " ++ show threadId
+        runHost firstParticipant [firstParticipant, secondParticipant] signals joinRequest
 
-    asyncClientTasks <- mapM (\p -> async $ clientRunGame p signals joinFunc) players
+    asyncClientTask <- async $ clientRunGame secondParticipant signals joinRequest
 
     gameOver <- wait asyncHostTask
-    mapM_ wait asyncClientTasks
-    putStrLn $ "Game Ended :" ++ show gameOver
+    wait asyncClientTask
+    putStrLn $ "Game Ended: " ++ show gameOver
 
--- host/players
-splitParticipants :: [Proto.Participant] -> (Proto.Participant, [Proto.Participant], Race -> S.Request)
-splitParticipants = doSplit (Nothing, [], Nothing)
-  where
-    doSplit :: (Maybe Proto.Participant, [Proto.Participant], Maybe (Race -> S.Request)) -> [Proto.Participant] -> (Proto.Participant, [Proto.Participant], Race -> S.Request)
-    doSplit (host, players, joinFunc) (r : rest) = case r of
-        Proto.Player{} ->
-            if isNothing host
-                then doSplit (Just r, players, joinFunc) rest
-                else doSplit (host, r : players, Just $ requestJoinGame1vs1 serverPortSet clientPortSet) rest
-        Proto.Computer{} -> doSplit (host, players, Just requestJoinGameVsAi) rest
-    doSplit (Just h, p, j) [] = (h, p, fromJust j)
-    doSplit _ [] = Prelude.error "There should be atleast one Bot player!"
+--1vsComputer
+runGame firstParticipant secondParticipant = do
+    let (joinRequest, playersCount) = (requestJoinGameVsAi, 1)
+
+    signals <- newGameSignals playersCount
+    asyncHostTask <- async $ do
+        threadId <- myThreadId
+        putStrLn $ "Host thread ID: " ++ show threadId
+        runHost firstParticipant [firstParticipant, secondParticipant] signals joinRequest
+
+    gameOver <- wait asyncHostTask
+    putStrLn $ "Game Ended: " ++ show gameOver
 
 runHost :: Proto.Participant -> [Proto.Participant] -> GameSignals -> (A.Race -> S.Request) -> IO [PlayerResult]
 runHost (Proto.Computer _) _ _ _ = Prelude.error "computer cannot be the host"
@@ -119,7 +120,7 @@ runHost (Proto.Player agent) participants signals joinFunc = do
         responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
         print responseJoinGame
         let playerId = responseJoinGame ^. #joinGame . #playerId
-        trace ("playerId " ++ show playerId) return ()
+        traceM $ "playerId " ++ show playerId
         signalClientJoined signals
 
         runGameLoop conn signals agent playerId
