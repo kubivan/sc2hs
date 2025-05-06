@@ -350,7 +350,7 @@ squadExploreRegion s rid region =
             unitTags@(squadLeaderTag : squadsRest) = squadUnits s
             leaderPos = tilePos . view #pos . unitByTag $ squadLeaderTag
 
-            GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeigbors grid) (== targetPos) (const False)
+            GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeighbors grid) (== targetPos) (const False)
             posToGo = fromJust $ backoffList path 3
 
         if isNothing isFound

@@ -6,8 +6,8 @@ module Grid.Algo (
     gridBfs,
     GridBfsRes (..),
     smartTransition,
-    getAllNeigbors,
-    getAllNotSharpNeigbors,
+    getAllNeighbors,
+    getAllNotSharpNeighbors,
     findChokePoint,
     gridPlaceRay,
     gridSplitByRay,
@@ -64,7 +64,7 @@ data GridBfsRes = GridBfsRes
     deriving (Show)
 
 gridBfs ::
-    Grid -> TilePos -> (TilePos -> Seq.Seq TilePos) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
+    Grid -> TilePos -> (TilePos -> [TilePos]) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
     --trace ("gridBfs start " ++ show start) $
     bfs (Seq.singleton (start, [start])) (Set.singleton start)
@@ -75,13 +75,13 @@ gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
         | terminationCriteria top = GridBfsRes Nothing visited []
         | otherwise = bfs queue' visited'
       where
-        neighbors = Seq.filter (`Set.notMember` visited) (transitionFunc top)
+        neighbors = filter (`Set.notMember` visited) (transitionFunc top)
         visited' = foldr Set.insert visited neighbors
         queue' :: Seq.Seq (TilePos, TilePath)
-        queue' = queue Seq.>< fmap (\n -> (n, n : path)) neighbors
+        queue' = queue Seq.>< (Seq.fromList $ (\n -> (n, n : path)) <$> neighbors)
 
-smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
-smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
+smartTransition :: Grid -> [(Char, Char)] -> TilePos -> [TilePos]
+smartTransition grid transitions pos@(x, y) = filter passTransitions allAdjacent
   where
     pixelFrom = gridPixel grid pos
     allAdjacent =
@@ -95,11 +95,8 @@ smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransiti
       where
         res = pixelFrom == f && gridPixel grid p == t
 
-getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNeigbors grid (x, y) = res -- `Utils.dbg` ("ns of " ++ show (x,y) ++ " is " ++ show (Seq.length res))
-  where
-    res =
-        Seq.fromList
+getAllNeighbors :: Grid -> TilePos -> [TilePos]
+getAllNeighbors grid (x, y) =
             [ (x + dx, y + dy)
             | dx <- [-1, 0, 1]
             , dy <- [-1, 0, 1]
@@ -108,9 +105,8 @@ getAllNeigbors grid (x, y) = res -- `Utils.dbg` ("ns of " ++ show (x,y) ++ " is 
             , isJust pixel -- pixel /= Just '#'
             ]
 
-getAllNotSharpNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNotSharpNeigbors grid (x, y) =
-    Seq.fromList
+getAllNotSharpNeighbors :: Grid -> TilePos -> [TilePos]
+getAllNotSharpNeighbors grid (x, y) =
         [ (x + dx, y + dy)
         | dx <- [-1, 0, 1]
         , dy <- [-1, 0, 1]

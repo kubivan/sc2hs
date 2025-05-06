@@ -15,7 +15,7 @@ module Grid.Utils (
 )
 where
 
-import Grid.Algo (GridBfsRes (..), gridBfs)
+import Grid.Algo (GridBfsRes (..), gridBfs, getAllNeighbors)
 import Grid.Core
 
 import Data.Bits
@@ -38,45 +38,6 @@ import Utils (TilePos, dbg, distSquared, fromTuple)
 import Data.Sequence qualified as Seq
 import Debug.Trace (trace)
 import UnitTypeId (UnitTypeId)
-
-smartTransition :: Grid -> [(Char, Char)] -> TilePos -> Seq.Seq TilePos
-smartTransition grid transitions pos@(x, y) = Seq.fromList $ filter passTransitions allAdjacent
-  where
-    pixelFrom = gridPixel grid pos
-    allAdjacent =
-        [ (x + dx, y + dy)
-        | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        , let pixel = gridPixelSafe grid (x + dx, y + dy)
-        , isJust pixel
-        ]
-    passTransitions p = isJust $ find (canTransit p) transitions
-    canTransit p (f, t) = res -- `Utils.dbg` (show pos ++ " : " ++show p ++ " " ++ show res ++ " :transition from " ++ show pixelFrom ++ " to " ++ show (gridPixel grid p))
-      where
-        res = pixelFrom == f && gridPixel grid p == t
-
-getAllNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNeigbors grid (x, y) = res -- `Utils.dbg` ("ns of " ++ show (x,y) ++ " is " ++ show (Seq.length res))
-  where
-    res =
-        Seq.fromList
-            [ (x + dx, y + dy)
-            | dx <- [-1, 0, 1]
-            , dy <- [-1, 0, 1]
-            , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-            , let pixel = gridPixelSafe grid (x + dx, y + dy)
-            , isJust pixel -- pixel /= Just '#'
-            ]
-
-getAllNotSharpNeigbors :: Grid -> TilePos -> Seq.Seq TilePos
-getAllNotSharpNeigbors grid (x, y) =
-    Seq.fromList
-        [ (x + dx, y + dy)
-        | dx <- [-1, 0, 1]
-        , dy <- [-1, 0, 1]
-        , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-        , let pixel = gridPixelSafe grid (x + dx, y + dy)
-        , pixel /= Just '#'
-        ]
 
 gridFromLines :: [String] -> Grid
 gridFromLines rows =
@@ -113,13 +74,13 @@ canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
         pixelHeights = [gridPixel heightMap pos | (x, y, _) <- pixels, let pos = (cx + x, cy + y)]
 
 findPlacementPoint :: Grid -> Grid -> Footprint -> TilePos -> (TilePos -> Bool) -> Maybe TilePos
-findPlacementPoint grid heightMap footprint start acceptanceCriteria = bfsRes $ gridBfs grid start (getAllNeigbors grid) acceptance (const False)
+findPlacementPoint grid heightMap footprint start acceptanceCriteria = bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptance (const False)
   where
     acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
 
 findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
 findPlacementPointInRadius grid heightMap footprint start radius =
-    bfsRes $ gridBfs grid start (getAllNeigbors grid) acceptWhen terminateWhen
+    bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptWhen terminateWhen
   where
     acceptWhen p = canPlaceBuilding grid heightMap p footprint
     terminateWhen p = distSquared (fromTuple start) (fromTuple p) > (radius * radius)
