@@ -382,7 +382,7 @@ debugSquads = do
     debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (Map.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
-agentResetGrid = do
+agentResetGrid = {-# SCC "agentResetGrid" #-} do
     obs <- agentObs
     ds <- agentGet
     gridPlacementStart <- gridFromImage . view (#startRaw . #placementGrid) . gameInfo <$> agentStatic

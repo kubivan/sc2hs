@@ -51,13 +51,8 @@ extra-deps:
   - proto-lens-runtime-0.7.0.7
   - proto-lens-setup-0.4.0.9
 
-ghc-build: profiling
 ghc-options:
   "$everything": -fexternal-interpreter
-
-#ghc-options:
-#  "$everything": -fprof-auto
-#  "$locals": -fprof-auto
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

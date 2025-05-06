@@ -19,10 +19,6 @@ extra-source-files:
 # common to point users to the README.md file.
 description:         Please see the README on GitHub at <https://github.com/githubuser/sc2hs-stack#readme>
 
-build:
-  library-profiling: true
-  executable-profiling: true
-
 dependencies:
 - base >= 4.12
 - websockets >= 0.12.7.3
@@ -46,10 +42,10 @@ dependencies:
 - template-haskell
 - safe
 - split
+
 extensions: OverloadedStrings
 
 ghc-options:
-- -prof
 - -Wall
 - -Wcompat
 - -Widentities
@@ -71,7 +67,6 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
-    - -prof
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
@@ -86,7 +81,6 @@ tests:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
-    - -prof
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
