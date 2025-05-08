@@ -5,8 +5,8 @@ module UnitsTh (genBuildingMapping) where
 import Language.Haskell.TH
 import Data.List
 import Data.Maybe
-import AbilityId
-import UnitTypeId
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 --import Data.Char (isPrefixOf)
 
 -- Generates a list of (UnitTypeId, AbilityId) pairs based on naming conventions

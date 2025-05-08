@@ -17,14 +17,14 @@ module SC2.Client (
     unitAbilities,
 ) where
 
-import AbilityId (AbilityId, toEnum)
-import StepMonad (UnitTraits)
-import UnitAbilities
 import Observation (Observation)
+import SC2.Config
+import SC2.Ids.AbilityId (AbilityId, toEnum)
+import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Requests qualified as Proto
-import UnitTypeId (UnitTypeId, toEnum)
-import SC2.Config
+import StepMonad (UnitTraits)
+import UnitAbilities
 
 import Conduit (mapC, runConduitPure, sinkList, yieldMany, (.|))
 import Control.Concurrent (
@@ -62,7 +62,6 @@ import System.Process (
     shell,
  )
 
-
 unitAbilitiesRaw :: WS.Connection -> Observation -> IO [S.ResponseQueryAvailableAbilities]
 unitAbilitiesRaw conn obs = do
     resp <- Proto.sendRequestSync conn $ Proto.requestUnitAbilities obs
@@ -74,8 +73,8 @@ unitAbilities raw =
         yieldMany raw
             .| mapC
                 ( \a ->
-                    let unit = UnitTypeId.toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
-                        abilityIds = [AbilityId.toEnum . fromIntegral $ x ^. #abilityId :: AbilityId | x <- a ^. #abilities]
+                    let unit = toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
+                        abilityIds = [toEnum . fromIntegral $ x ^. #abilityId :: AbilityId | x <- a ^. #abilities]
                      in (unit, abilityIds)
                 )
             .| sinkList
@@ -147,7 +146,7 @@ waitAllClientsJoined signals = do
     joinedCountNotMeet = do
         count <- readMVar $ allClientsJoined signals
         let expectedCount = expectedClients signals
-        --traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
+        -- traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
         when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
 
 -- Wait for the host's game creation signal

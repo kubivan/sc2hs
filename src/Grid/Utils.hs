@@ -36,7 +36,7 @@ import Utils (TilePos, dbg, distSquared, fromTuple)
 
 import Data.Sequence qualified as Seq
 import Debug.Trace (trace)
-import UnitTypeId (UnitTypeId)
+import SC2.Ids.UnitTypeId (UnitTypeId)
 
 gridFromLines :: [String] -> Grid
 gridFromLines rows =

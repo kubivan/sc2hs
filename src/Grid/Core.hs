@@ -17,7 +17,7 @@ module Grid.Core (
 where
 import Footprint
 import Utils (TilePos)
-import UnitTypeId (UnitTypeId)
+import SC2.Ids.UnitTypeId (UnitTypeId)
 
 import Data.Bits
 import Data.ByteString qualified as BS

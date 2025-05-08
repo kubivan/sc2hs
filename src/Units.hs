@@ -32,11 +32,11 @@ module Units (
 )
 where
 
-import AbilityId
 import Data.Maybe (isJust)
-import UnitTypeId
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (Unit, UnitOrder)
 import UnitsTh
-import SC2.Proto.Data(Unit, UnitOrder)
 
 import Conduit
 import Data.Function (on)
@@ -49,6 +49,7 @@ import Lens.Micro.Extras (view)
 import Utils
 
 import Proto.S2clientprotocol.Common_Fields as C
+
 -- import qualified Proto.S2clientprotocol.Raw as PR
 import qualified Proto.S2clientprotocol.Raw_Fields as PR
 

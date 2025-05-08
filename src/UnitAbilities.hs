@@ -1,7 +1,7 @@
 module UnitAbilities where
 
 import qualified Data.HashMap.Strict as HashMap
-import qualified AbilityId
-import UnitTypeId
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 
-type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId.AbilityId]
+type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId]

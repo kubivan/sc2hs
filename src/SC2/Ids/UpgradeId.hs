@@ -1,5 +1,5 @@
 
-module UpgradeId(UpgradeId(..)) where
+module SC2.Ids.UpgradeId(UpgradeId(..)) where
 
 data UpgradeId =
    Invalid  -- 0

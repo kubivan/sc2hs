@@ -1,5 +1,5 @@
 
-module BuffId (BuffId(..)) where
+module SC2.Ids.BuffId (BuffId(..)) where
 
 data BuffId =
    Invalid  -- 0

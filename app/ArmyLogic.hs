@@ -5,12 +5,12 @@ module ArmyLogic where
 
 import BotDynamicState
 
-import AbilityId
+import SC2.Ids.AbilityId
 import Actions (Action (..), UnitTag)
 import Grid.Grid
 import Observation
 import StepMonad
-import UnitTypeId
+import SC2.Ids.UnitTypeId
 import Units
 import Utils
 import SC2.Proto.Data (Point, Point2D, Alliance(..))

@@ -31,9 +31,9 @@ import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Agent
 import Grid.Grid
 import Observation
+import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)
 import UnitAbilities
-import UnitTypeId
 import Utils
 
 import Control.Monad.Reader

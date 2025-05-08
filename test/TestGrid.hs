@@ -2,7 +2,7 @@ module TestGrid (gridUnitTests) where
 
 import Footprint
 import Grid.Grid
-import UnitTypeId
+import SC2.Ids.UnitTypeId
 import Test.Hspec
 import Data.List (sort)
 import Data.Maybe (fromJust)

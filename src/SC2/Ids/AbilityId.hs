@@ -1,4 +1,4 @@
- module AbilityId (AbilityId(..), toEnum, fromEnum, isBuildAbility) where
+ module SC2.Ids.AbilityId (AbilityId(..), toEnum, fromEnum, isBuildAbility) where
 
 import Data.List (isPrefixOf)
 

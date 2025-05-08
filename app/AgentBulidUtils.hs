@@ -9,15 +9,7 @@
 
 module AgentBulidUtils where
 
-import AbilityId
 import Actions
-import Conduit (filterC, mapC, (.|))
-import Data.Function (on)
-import Data.HashMap.Strict qualified as HashMap
-import Data.List (find, sortBy)
-import Data.Maybe (mapMaybe)
-import Data.Set qualified as Set
-import Footprint (getFootprint)
 import Grid.Grid (
     Grid (..),
     canPlaceBuilding,
@@ -34,10 +26,9 @@ import Observation (
     unitsSelf,
  )
 import Proto.S2clientprotocol.Raw qualified as R
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 import StepMonad
-
-import Safe (headMay)
-import UnitTypeId
 import Units (
     Unit,
     UnitOrder,
@@ -55,6 +46,15 @@ import Utils (
     distSquared,
     tilePos,
  )
+
+import Conduit (filterC, mapC, (.|))
+import Data.Function (on)
+import Data.HashMap.Strict qualified as HashMap
+import Data.List (find, sortBy)
+import Data.Maybe (mapMaybe)
+import Data.Set qualified as Set
+import Footprint (getFootprint)
+import Safe (headMay)
 
 -- TODO: move to UnitTraits
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId

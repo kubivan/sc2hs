@@ -26,14 +26,14 @@ module Observation (
 )
 where
 
-import AbilityId
 import Actions (UnitTag)
 import Footprint
 import Grid.Algo
 import Grid.Grid
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
 import SC2.Proto.Data qualified as Proto
-import UnitTypeId
 import Units
 import Utils
 

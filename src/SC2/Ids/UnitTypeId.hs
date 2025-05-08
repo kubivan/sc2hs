@@ -1,5 +1,5 @@
 
-module UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
+module SC2.Ids.UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
 import Data.Hashable
 

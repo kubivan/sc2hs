@@ -1,6 +1,6 @@
 module Footprint (getFootprint, Footprint(..), createFootprint, footprintRect) where
 
-import UnitTypeId
+import SC2.Ids.UnitTypeId
 import Data.List (elemIndices)
 import Control.Monad (join)
 import Utils ( TilePos )

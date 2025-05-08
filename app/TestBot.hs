@@ -10,11 +10,10 @@
 
 module TestBot where
 
-import AbilityId
-import SC2.Proto.Data (Race(..))
-import SC2.Proto.Data qualified as Proto
 import Actions
 import Agent
+import AgentBulidUtils
+import ArmyLogic
 import BotDynamicState
 import Footprint (getFootprint)
 import Grid.Algo
@@ -28,8 +27,11 @@ import Grid.Grid (
     pixelIsRamp,
  )
 import Observation
+import SC2.Proto.Data (Race (..))
+import SC2.Proto.Data qualified as Proto
+import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 import StepMonad
-import UnitTypeId
 import Units (
     Unit,
     closestC,
@@ -50,8 +52,6 @@ import Utils (
     tilePos,
     triPartition,
  )
-import AgentBulidUtils
-import ArmyLogic
 
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, sinkList, yieldMany, (.|))
 import Control.Applicative (Alternative (..))
@@ -68,10 +68,10 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
-import Lens.Micro (to, (&), (.~), (^.), (^..))
-import Lens.Micro.Extras (view)
 import Data.Word (Word32)
 import Debug.Trace (traceM)
+import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Lens.Micro.Extras (view)
 import System.Random (newStdGen)
 
 type BuildOrder = [UnitTypeId]
@@ -90,7 +90,7 @@ unitsData :: [Proto.UnitTypeData] -> UnitTraits
 unitsData raw =
     HashMap.fromList . runConduitPure $
         yieldMany raw
-            .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
+            .| mapC (\a -> (toEnum . fromIntegral $ a ^. #unitId, a))
             .| sinkList
 
 inBuildThechTree :: UnitTypeId -> StepMonad d Bool
@@ -160,7 +160,7 @@ pylonBuildAction grid reservedRes = do
     -- <|> findPylonPlacementPoint (const True)
 
     let grid' = addMark grid footprint pylonPos
-    let obs' = addOrder (builder ^. #tag) AbilityId.BuildPylon obs
+    let obs' = addOrder (builder ^. #tag) BuildPylon obs
     lift . agentPut $ dsUpdate obs' grid' ds
     return (PointCommand BuildPylon [builder] (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
 
@@ -360,7 +360,7 @@ agentResetGrid =
 
         agentPut $ setGrid grid' ds
 
-agentUpdateGrid :: AgentDynamicState dyn => (Grid -> Grid) -> StepMonad dyn ()
+agentUpdateGrid :: (AgentDynamicState dyn) => (Grid -> Grid) -> StepMonad dyn ()
 agentUpdateGrid f =
     {-# SCC "agentUpdateGrid" #-}
     do
@@ -434,7 +434,7 @@ agentStepPhase Opening =
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
             expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
 
-        command [SelfCommand AbilityId.TrainProbe [nexus]]
+        command [SelfCommand TrainProbe [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}

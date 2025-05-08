@@ -4,7 +4,7 @@
 import Conduit
 import Footprint
 import Grid.Grid
-import UnitTypeId
+import SC2.Ids.UnitTypeId
 
 import qualified Data.ByteString as B
 import Data.ProtoLens (decodeMessage)
@@ -134,7 +134,7 @@ spec =
                                 grid
 
                         grid' =
-                            foldl' (`gridPlace` UnitTypeId.ProtossNexus) grid expands
+                            foldl' (`gridPlace` ProtossNexus) grid expands
 
                     print $ foldl' (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
                     print $ bbFootPrints

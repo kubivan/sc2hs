@@ -8,7 +8,7 @@
 
 module Actions (Action (..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand (..), getCmd, getTarget, getExecutors) where
 
-import AbilityId
+import SC2.Ids.AbilityId
 import Utils
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Data(Unit(..), Point(..), Point2D(..))
