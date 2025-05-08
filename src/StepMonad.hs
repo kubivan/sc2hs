@@ -31,6 +31,7 @@ import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Agent
 import Grid.Grid
 import Observation
+import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)
 import UnitAbilities
 import UnitTypeId
 import Utils
@@ -46,11 +47,7 @@ import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
 
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Data qualified as A
-import Proto.S2clientprotocol.Sc2api qualified as A
-
-type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
+type UnitTraits = HashMap.HashMap UnitTypeId UnitTypeData
 
 obsApplyAction :: Action -> Observation -> Observation
 obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) obs units
@@ -71,18 +68,18 @@ command acts = do
 debug :: [DebugCommand] -> StepMonad dyn ()
 debug acts = tell (StepPlan [] [] acts)
 
-debugText :: String -> C.Point -> StepMonad dyn ()
+debugText :: String -> Point -> StepMonad dyn ()
 debugText text p = debug [DebugText (pack text) p]
 
-debugTexts :: [(String, C.Point)] -> StepMonad dyn ()
+debugTexts :: [(String, Point)] -> StepMonad dyn ()
 debugTexts = mapM_ (uncurry debugText)
 
 agentChat :: String -> StepMonad dyn ()
 agentChat msg = tell (StepPlan [] [pack msg] [])
 
 data StaticInfo = StaticInfo
-    { gameInfo :: A.ResponseGameInfo
-    , playerInfo :: A.PlayerInfo
+    { gameInfo :: ResponseGameInfo
+    , playerInfo :: PlayerInfo
     , unitTraits :: UnitTraits
     , heightMap :: Grid
     , expandsPos :: [TilePos]

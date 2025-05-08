@@ -5,11 +5,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module SC2.Game (playMatch, Proto.Participant (..)) where
+module SC2.Game (playMatch) where
 
 import Agent
-import Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi)
-import Proto qualified
+-- import SC2.Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi, Race, Request)
+import SC2.Proto.Requests
+import SC2.Proto.Data qualified as Proto
+import SC2.Proto.Requests qualified as Proto
 import SC2.Client (
     GameSignals,
     newGameSignals,
@@ -22,6 +24,8 @@ import SC2.Client (
     waitForGameCreation,
  )
 import SC2.Config
+import SC2.Participant
+import SC2.Proto.Data
 
 import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (async, wait)
@@ -40,12 +44,9 @@ import Network.WebSockets as WS (
     runClient,
  )
 
-import Proto.S2clientprotocol.Common qualified as A
-import Proto.S2clientprotocol.Sc2api as S
-
-playMatch :: Proto.Participant -> Proto.Participant -> IO ()
+playMatch :: Participant -> Participant -> IO ()
 -- 1vs1
-playMatch firstParticipant secondParticipant@(Proto.Player{}) = do
+playMatch firstParticipant secondParticipant@(Player{}) = do
     let joinRequest = requestJoinGame1vs1 serverPortSet clientPortSet
     signals <- newGameSignals 2
 
@@ -80,7 +81,7 @@ clientAppCreateGame conn participants signals = do
     print responseCreateGame
     signalGameCreated signals
 
-clientAppJoinGame :: (Agent a) => Connection -> a -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
+clientAppJoinGame :: (Agent a) => Connection -> a -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
 clientAppJoinGame conn agent signals joinFunc = do
     responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
     print responseJoinGame
@@ -90,9 +91,9 @@ clientAppJoinGame conn agent signals joinFunc = do
 
     runGameLoop conn signals agent playerId
 
-playHost :: Proto.Participant -> [Proto.Participant] -> GameSignals -> (A.Race -> S.Request) -> IO [PlayerResult]
-playHost (Proto.Computer _) _ _ _ = Prelude.error "computer cannot be the host"
-playHost (Proto.Player agent) participants signals joinFunc = do
+playHost :: Participant -> [Participant] -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
+playHost (Computer _) _ _ _ = Prelude.error "computer cannot be the host"
+playHost (Player agent) participants signals joinFunc = do
     traceM "starting sc2 host"
     _ <- startStarCraft portHost
     traceM "running host"
@@ -100,9 +101,9 @@ playHost (Proto.Player agent) participants signals joinFunc = do
   where
     clientApp conn = putStrLn "creating game..." >> clientAppCreateGame conn participants signals >> putStrLn "Host joining game..." >> clientAppJoinGame conn agent signals joinFunc
 
-playClient :: Proto.Participant -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
-playClient (Proto.Computer _) _ _ = Prelude.error "Computer cannot be host"
-playClient (Proto.Player agent) signals joinFunc = do
+playClient :: Participant -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
+playClient (Computer _) _ _ = Prelude.error "Computer cannot be host"
+playClient (Player agent) signals joinFunc = do
     traceM "starting sc2 for second player"
     threadId <- myThreadId
     putStrLn $ "Current thread ID: " ++ show threadId
@@ -120,8 +121,8 @@ runGameLoop conn signals agent playerId = do
     putStrLn "getting game info..."
     respGameInfo <- Proto.sendRequestSync conn Proto.requestGameInfo
     gameDataResp <- Proto.sendRequestSync conn Proto.requestData
-    let gi :: S.ResponseGameInfo = respGameInfo ^. #gameInfo
-        gd :: S.ResponseData = gameDataResp ^. #data'
+    let gi :: Proto.ResponseGameInfo = respGameInfo ^. #gameInfo
+        gd :: Proto.ResponseData = gameDataResp ^. #data'
         -- Just gd = gameDataResp ^. #maybe'data
         pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
@@ -134,7 +135,7 @@ runGameLoop conn signals agent playerId = do
 
     gameStepLoop conn agent'
 
-gameStepLoop :: (Agent agent) => Connection -> agent -> IO [S.PlayerResult]
+gameStepLoop :: (Agent agent) => Connection -> agent -> IO [PlayerResult]
 gameStepLoop conn agent = do
     responseObs <- Proto.sendRequestSync conn Proto.requestObservation
     let gameOver = responseObs ^. #observation . #playerResult

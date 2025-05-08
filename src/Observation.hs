@@ -31,43 +31,33 @@ import Actions (UnitTag)
 import Footprint
 import Grid.Algo
 import Grid.Grid
+import SC2.Proto.Data (Alliance (..), Point2D)
+import SC2.Proto.Data qualified as Proto
 import UnitTypeId
 import Units
 import Utils
 
-import GHC.Word (Word32, Word64)
-
-import Data.Function (on)
-import Data.List (foldl', groupBy, maximumBy, minimumBy, sortOn)
-import Data.Map qualified as Map
-import Data.Maybe (catMaybes, isJust, mapMaybe)
-import Data.ProtoLens
-
-import Proto.S2clientprotocol.Data qualified as A
-import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-
 import Conduit
+import Data.Function (on)
+import Data.List (groupBy, sortOn)
+import Data.Map qualified as Map
+import Data.Maybe (mapMaybe)
+import Data.ProtoLens
 import Lens.Micro
 import Lens.Micro.Extras (view)
-import Proto.S2clientprotocol.Common (Point, Point2D)
-import Proto.S2clientprotocol.Raw qualified as PR
-import Proto.S2clientprotocol.Raw_Fields (buildProgress)
-import Proto.S2clientprotocol.Raw_Fields qualified as PR
-
 import Safe (headMay)
 
-type Observation = A.Observation
+type Observation = Proto.Observation
 
 addOrder :: UnitTag -> AbilityId -> Observation -> Observation
 addOrder unitTag ability obs =
-    obs & #rawData . A.units . traverse . filtered (\unit -> unit ^. #tag == unitTag) . #orders %~ (order :) -- TODO: append order to the end?
+    obs & #rawData . Proto.units . traverse . filtered (\unit -> unit ^. #tag == unitTag) . #orders %~ (order :) -- TODO: append order to the end?
   where
     order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
 
 addUnit :: UnitTypeId -> Observation -> Observation
 addUnit unitType obs =
-    obs & #rawData . A.units %~ (unit unitType :)
+    obs & #rawData . Proto.units %~ (unit unitType :)
   where
     unit :: UnitTypeId -> Units.Unit
     unit t = defMessage & #unitType .~ fromEnum' t & #buildProgress .~ -1 -- TODO: add target & progress
@@ -93,7 +83,7 @@ getUnit obs utag =
     headMay $ runC $ obsUnitsC obs .| filterC (\u -> u ^. #tag == utag) .| filterC (\u -> u ^. #tag == utag)
 
 unitsSelf :: Observation -> ConduitT a Unit Identity ()
-unitsSelf obs = obsUnitsC obs .| allianceC PR.Self
+unitsSelf obs = obsUnitsC obs .| allianceC Self
 
 -- TODO: it's redundant it's fixed on the grid level by adding '.' around resources
 findExpandPosInCluster :: Grid -> Grid -> [Units.Unit] -> Maybe TilePos
@@ -115,10 +105,10 @@ findExpands obs grid heights = mapMaybe (findExpandPosInCluster grid heights) cl
 obsUnitsC :: Observation -> ConduitT i Unit Identity ()
 obsUnitsC obs = yieldMany (obs ^. (#rawData . #units))
 
-findNexus :: Observation -> PR.Unit
+findNexus :: Observation -> Proto.Unit
 findNexus obs = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
 
-enemyBaseLocation :: A.ResponseGameInfo -> Observation -> Point2D
+enemyBaseLocation :: Proto.ResponseGameInfo -> Observation -> Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases
   where
     nexus = findNexus obs

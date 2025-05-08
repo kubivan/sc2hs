@@ -13,6 +13,8 @@ import StepMonad
 import UnitTypeId
 import Units
 import Utils
+import SC2.Proto.Data (Point, Point2D, Alliance(..))
+import SC2.Proto.Data qualified as Proto
 
 import Conduit (filterC, mapC)
 import Control.Applicative ((<|>))
@@ -32,8 +34,6 @@ import Safe (headMay, minimumByMay)
 import System.Random (StdGen, randomR)
 
 import Debug.Trace (traceM)
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Raw qualified as R
 
 -- Define if a unit is considered an army unit
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
@@ -43,7 +43,7 @@ isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
 
 -- Define an enemy unit filter
 isEnemy :: Unit -> Bool
-isEnemy u = (u ^. #alliance) == R.Enemy -- Enemy alliance code
+isEnemy u = (u ^. #alliance) == Enemy
 
 agentUpdateArmyPositions :: StepMonad BotDynamicState ()
 agentUpdateArmyPositions = do

@@ -1,5 +1,4 @@
 {-# OPTIONS -Wall #-}
--- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
 module Grid.Utils (

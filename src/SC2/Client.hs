@@ -21,7 +21,8 @@ import AbilityId (AbilityId, toEnum)
 import StepMonad (UnitTraits)
 import UnitAbilities
 import Observation (Observation)
-import Proto qualified
+import SC2.Proto.Data qualified as Proto
+import SC2.Proto.Requests qualified as Proto
 import UnitTypeId (UnitTypeId, toEnum)
 import SC2.Config
 

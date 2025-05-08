@@ -8,26 +8,18 @@
 
 module Actions (Action (..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand (..), getCmd, getTarget, getExecutors) where
 
-import Data.Text
-import Lens.Micro ((&), (.~), (^.))
+import AbilityId
+import Utils
+import SC2.Proto.Data qualified as Proto
+import SC2.Proto.Data(Unit(..), Point(..), Point2D(..))
 
 import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Debug qualified as D
-import Proto.S2clientprotocol.Raw as R
-import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields as A
-
-import AbilityId
-
-import Utils
-
--- import Proto.S2clientprotocol.Raw_Fields (unitCommand, abilityId)
--- import qualified GHC.Word
+import Data.Text
 import GHC.Word (Word64)
+import Lens.Micro ((&), (.~), (^.))
+
 import Proto.S2clientprotocol.Debug qualified as D
-import Proto.S2clientprotocol.Raw_Fields (targetUnitTag)
 
 type UnitTag = Word64
 type ChatMsg = Text
@@ -64,7 +56,7 @@ getTarget (UnitCommand _ _ t) = toPoint2D (tPos)
 --   optional Point world_pos = 4;     // Position in the world.
 --   optional uint32 size = 5;         // Pixel height of the text. Defaults to 8px.
 -- }
-data DebugCommand = DebugText Text C.Point
+data DebugCommand = DebugText Text Point
 
 toDebug :: DebugCommand -> D.DebugCommand
 toDebug (DebugText t p) = defMessage & #draw .~ drawMsg
@@ -74,7 +66,7 @@ toDebug (DebugText t p) = defMessage & #draw .~ drawMsg
     textMsg :: D.DebugText
     textMsg = defMessage & #text .~ t & #worldPos .~ p
 
-toChatAction :: ChatMsg -> A.Action
+toChatAction :: ChatMsg -> Proto.Action
 toChatAction msg = defMessage & #actionChat .~ chat
   where
     chat =
@@ -82,7 +74,7 @@ toChatAction msg = defMessage & #actionChat .~ chat
             & #message -- cut the message because there is a limit
             .~ Data.Text.take 128 msg -- TODO: investigate exact limit
 
-toAction :: Action -> A.Action
+toAction :: Action -> Proto.Action
 toAction (PointCommand ability us target) =
     defMessage
         & #actionRaw

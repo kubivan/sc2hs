@@ -24,35 +24,19 @@ module Grid.Algo (
 where
 
 import Grid.Core
+import Utils (TilePos, dbg, distSquared)
 
-import Data.Bits
-import Data.List (find, sort)
-import Data.Word (Word8)
-
-import Data.Set qualified as Set
-import Lens.Micro ((^.))
-
-import Proto.S2clientprotocol.Common qualified as P
-import Proto.S2clientprotocol.Common_Fields qualified as P
-
-import Data.Foldable (toList)
-import Footprint
-import Utils (TilePos, dbg, distSquared, fromTuple)
-
-import Data.Sequence qualified as Seq
-import UnitTypeId (UnitTypeId)
-
--- raycasting
-
-import Control.Monad (guard, mplus)
+import Control.Monad (guard)
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
-import Data.Maybe (catMaybes, fromMaybe, isJust)
-import Debug.Trace (trace, traceM, traceShow, traceShowId)
+import Data.List (find, sort)
+import Data.Maybe (catMaybes, isJust)
+import Data.Sequence qualified as Seq
+import Data.Set qualified as Set
+import Debug.Trace (trace, traceM)
 
 --
 import Data.Map qualified as Map
-import Data.Set qualified as Set
 
 type TilePath = [TilePos]
 
@@ -66,7 +50,7 @@ data GridBfsRes = GridBfsRes
 gridBfs ::
     Grid -> TilePos -> (TilePos -> [TilePos]) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
-    --trace ("gridBfs start " ++ show start) $
+    -- trace ("gridBfs start " ++ show start) $
     bfs (Seq.singleton (start, [start])) (Set.singleton start)
   where
     bfs Seq.Empty visited = GridBfsRes Nothing visited []
@@ -97,23 +81,23 @@ smartTransition grid transitions pos@(x, y) = filter passTransitions allAdjacent
 
 getAllNeighbors :: Grid -> TilePos -> [TilePos]
 getAllNeighbors grid (x, y) =
-            [ (x + dx, y + dy)
-            | dx <- [-1, 0, 1]
-            , dy <- [-1, 0, 1]
-            , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-            , let pixel = gridPixelSafe grid (x + dx, y + dy)
-            , isJust pixel -- pixel /= Just '#'
-            ]
+    [ (x + dx, y + dy)
+    | dx <- [-1, 0, 1]
+    , dy <- [-1, 0, 1]
+    , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , isJust pixel -- pixel /= Just '#'
+    ]
 
 getAllNotSharpNeighbors :: Grid -> TilePos -> [TilePos]
 getAllNotSharpNeighbors grid (x, y) =
-        [ (x + dx, y + dy)
-        | dx <- [-1, 0, 1]
-        , dy <- [-1, 0, 1]
-        , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-        , let pixel = gridPixelSafe grid (x + dx, y + dy)
-        , pixel /= Just '#'
-        ]
+    [ (x + dx, y + dy)
+    | dx <- [-1, 0, 1]
+    , dy <- [-1, 0, 1]
+    , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , pixel /= Just '#'
+    ]
 
 --
 -- Grid raycasting & choke points

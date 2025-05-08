@@ -11,8 +11,7 @@ where
 
 import Actions (Action, DebugCommand (..))
 import Data.Text (Text)
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Sc2api qualified as A
+import SC2.Proto.Data qualified as Proto
 
 
 import UnitAbilities
@@ -32,7 +31,7 @@ instance Monoid StepPlan where
 
 class Agent a where
 
-    makeAgent :: a -> Word32 -> A.ResponseGameInfo -> A.ResponseData -> A.ResponseObservation -> IO a
+    makeAgent :: a -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO a
 
-    agentRace :: a -> C.Race
-    agentStep :: a -> A.ResponseObservation -> UnitAbilities -> (a, StepPlan)
+    agentRace :: a -> Proto.Race
+    agentStep :: a -> Proto.ResponseObservation -> UnitAbilities -> (a, StepPlan)

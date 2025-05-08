@@ -5,11 +5,10 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Proto (
+module SC2.Proto.Requests (
     requestPing,
     requestAvailableMaps,
     requestCreateGame,
-    Map (LocalMap),
     -- TODO: remove code duplication
     requestJoinGame1vs1,
     requestJoinGameVsAi,
@@ -21,11 +20,13 @@ module Proto (
     requestData,
     requestUnitAbilities,
     sendRequestSync,
-    Participant (..),
 ) where
 
+import SC2.Proto.Data
+import SC2.Participant
 import Actions
-import Agent
+    ( DebugCommand, Action, ChatMsg, toDebug, toChatAction, toAction )
+import Agent ( Agent(agentRace) )
 
 import Conduit
 import Control.Exception
@@ -39,10 +40,17 @@ import Lens.Micro ((&), (.~), (^.))
 import Network.WebSockets as WS
 import Proto.S2clientprotocol.Raw_Fields (alliance)
 
-import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Query qualified as A
-import Proto.S2clientprotocol.Raw qualified as A
+import Proto.S2clientprotocol.Common as A
+import Proto.S2clientprotocol.Query as A
+import Proto.S2clientprotocol.Raw as A
 import Proto.S2clientprotocol.Sc2api as A
+import Proto.S2clientprotocol.Sc2api_Fields as A
+import Proto.S2clientprotocol.Data as A
+import Proto.S2clientprotocol.Sc2api qualified as A
+import Proto.S2clientprotocol.Sc2api_Fields qualified as A
+
+import Proto.S2clientprotocol.Sc2api qualified as A
+import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 
 newtype ProtoException = ProtoException String deriving (Show)
 instance Exception ProtoException
@@ -67,12 +75,6 @@ requestPing =
         & #id
         .~ 123
 
-data Map = LocalMap Text (Maybe BS.ByteString)
-
-data Participant where
-    Computer :: C.Race -> Participant
-    Player :: (Agent a) => a -> Participant
-
 requestCreateGame :: Map -> [Participant] -> A.Request
 requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ mods defMessage
   where
@@ -91,14 +93,14 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ m
     setPlayers participants = #playerSetup .~ (toPlayerSetup <$> participants)
 
     toPlayerSetup :: Participant -> A.PlayerSetup
-    toPlayerSetup (Proto.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.VeryEasy -- TODO: computer
+    toPlayerSetup (SC2.Participant.Computer r) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ A.VeryEasy -- TODO: computer
     toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ Participant
 
-requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> C.Race -> A.Request
+requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> Race -> A.Request
 requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage
   where
     mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
-    setParticipation :: C.Race -> A.RequestJoinGame -> A.RequestJoinGame
+    setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
     setParticipation r = #race .~ r
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
@@ -110,12 +112,12 @@ requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mod
     setPortsClient :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
     setPortsClient (gamePort, basePort) = #clientPorts .~ [defMessage & #gamePort .~ gamePort & #basePort .~ basePort]
 
-requestJoinGameVsAi :: C.Race -> A.Request
+requestJoinGameVsAi :: Race -> A.Request
 requestJoinGameVsAi race = defMessage & #joinGame .~ mods defMessage
   where
     mods = setParticipation race . setOptions
 
-    setParticipation :: C.Race -> A.RequestJoinGame -> A.RequestJoinGame
+    setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
     setParticipation r = #race .~ r
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame

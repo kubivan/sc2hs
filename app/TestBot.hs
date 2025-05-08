@@ -8,10 +8,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
--- module TestBot (BotAgent (..), AgentDynamicState (..)) where
 module TestBot where
 
 import AbilityId
+import SC2.Proto.Data (Race(..))
+import SC2.Proto.Data qualified as Proto
 import Actions
 import Agent
 import BotDynamicState
@@ -49,7 +50,6 @@ import Utils (
     tilePos,
     triPartition,
  )
-
 import AgentBulidUtils
 import ArmyLogic
 
@@ -72,12 +72,7 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Data.Word (Word32)
 import Debug.Trace (traceM)
-import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import System.Random (newStdGen)
-
-import Proto.S2clientprotocol.Data as S (UnitTypeData)
-import Proto.S2clientprotocol.Common as C
 
 type BuildOrder = [UnitTypeId]
 
@@ -91,7 +86,7 @@ strBotPhase (Opening) = "Opening"
 strBotPhase (BuildOrderExecutor{}) = "BuildOrderExecutor"
 strBotPhase (BuildArmyAndWin _) = "BuildArmyAndWin Observation"
 
-unitsData :: [S.UnitTypeData] -> UnitTraits
+unitsData :: [Proto.UnitTypeData] -> UnitTraits
 unitsData raw =
     HashMap.fromList . runConduitPure $
         yieldMany raw
@@ -307,7 +302,7 @@ processQueue (a : as) (q', interrupted) = do
     case findAssignee obs a of
         Nothing -> processQueue as (q', interrupted ++ [a])
         Just u ->
-            if fromEnum (getCmd a) `elem` (u ^. #orders ^.. traverse . (A.abilityId . to fromIntegral))
+            if fromEnum (getCmd a) `elem` (u ^. #orders ^.. traverse . (Proto.abilityId . to fromIntegral))
                 then processQueue as (q' ++ [a], interrupted)
                 else processQueue as (q', interrupted)
 processQueue [] res = return res
@@ -389,7 +384,7 @@ makeDynamicState obs grid = do
     return $ BotDynamicState obs grid gen emptyArmy
 
 instance Agent BotAgent where
-    makeAgent :: BotAgent -> Word32 -> A.ResponseGameInfo -> A.ResponseData -> A.ResponseObservation -> IO BotAgent
+    makeAgent :: BotAgent -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO BotAgent
     makeAgent _ playerId gi gameDataResp obs0 = do
         let heightMap = gridFromImage $ gi ^. #startRaw . #terrainHeight
             obsRaw = obs0 ^. #observation
@@ -416,7 +411,7 @@ instance Agent BotAgent where
         traceM "created ds"
         return $ BotAgent Opening si dynamicState
 
-    agentRace _ = C.Protoss
+    agentRace _ = Protoss
 
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
     agentStep (BotAgent phase si ds) obs abilities =

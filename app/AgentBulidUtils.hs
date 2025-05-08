@@ -11,7 +11,6 @@ module AgentBulidUtils where
 
 import AbilityId
 import Actions
-import Agent
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
@@ -94,7 +93,7 @@ canAfford uid r = do
         cost = unitCost (unitTraits si) uid
     return (resources >= cost + r, cost) -- `Utils.dbg` ("minerals: " ++ show minerals)
 
-findBuilder :: Observation -> Maybe R.Unit
+findBuilder :: Observation -> Maybe Unit
 findBuilder obs =
     headMay $
         runC $

@@ -15,27 +15,20 @@ module Grid.Core (
     gridPixelSafe,
 )
 where
+import Footprint
+import Utils (TilePos)
+import UnitTypeId (UnitTypeId)
 
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.List (find, sort)
 import Data.Word (Word8)
 import qualified Data.Vector.Unboxed as VU
-
-import Data.Set qualified as Set
 import Lens.Micro ((^.))
 
 import Proto.S2clientprotocol.Common qualified as P
 import Proto.S2clientprotocol.Common_Fields qualified as P
 
-import Data.Foldable (toList)
-import Footprint
-import Utils (TilePos, dbg, distSquared, fromTuple)
-
-import Data.Sequence qualified as Seq
-import UnitTypeId (UnitTypeId)
-
-import Debug.Trace (trace, traceShow, traceShowId, traceM)
+import Debug.Trace (trace)
 
 type Grid = (Int, Int, VU.Vector Char)
 
