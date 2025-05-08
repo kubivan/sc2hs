@@ -10,6 +10,7 @@ import Observation
 import UnitTypeId
 import Units
 import Utils (TilePos, tilePos)
+import StepMonad
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.Set qualified as Set

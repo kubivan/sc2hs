@@ -19,7 +19,8 @@ module SC2.Client (
 ) where
 
 import AbilityId (AbilityId, toEnum)
-import Agent (UnitAbilities, UnitTraits)
+import StepMonad (UnitTraits)
+import UnitAbilities
 import Observation (Observation)
 import Proto qualified
 import UnitTypeId (UnitTypeId, toEnum)

@@ -8,33 +8,20 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module TestBot (TestBot (..), AgentDynamicState (..)) where
+-- module TestBot (BotAgent (..), AgentDynamicState (..)) where
+module TestBot where
 
 import AbilityId
 import Actions
-import Agent (
-    Agent (..),
-    AgentDynamicState (..),
-    MaybeStepMonad,
-    StaticInfo (expandsPos, gameInfo, heightMap, unitTraits),
-    StepMonad,
-    StepPlan,
-    UnitAbilities,
-    agentAbilities,
-    agentAsk,
-    agentChat,
-    agentGet,
-    agentObs,
-    agentPut,
-    agentStatic,
-    command,
-    debugTexts,
-    regionLookup,
- )
+import UnitAbilities
+import Agent
+import StepMonad
+import Grid.Algo
 import BotDynamicState
-import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
+import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|), yieldMany, sinkList)
 import Control.Applicative (Alternative (..))
 import Control.Monad
+import Data.List (sortOn)
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
@@ -64,18 +51,7 @@ import Grid.Grid (
  )
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
-import Observation (
-    Cost (Cost),
-    Observation,
-    addOrder,
-    addUnit,
-    buildingsSelfChanged,
-    findNexus,
-    getUnit,
-    gridUpdate,
-    obsUnitsC,
-    unitsSelf,
- )
+import Observation
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Raw qualified as R
 
@@ -112,21 +88,32 @@ import BotDynamicState
 
 import AgentBulidUtils
 import ArmyLogic
-import Debug.Trace (traceM)
+import Debug.Trace (traceM, trace)
+import qualified Proto.S2clientprotocol.Sc2api as A
+import Data.Word (Word32)
+
+import Proto.S2clientprotocol.Data as S (UnitTypeData)
 
 type BuildOrder = [UnitTypeId]
 
--- Check if a tile has been visited
--- hasVisitedTile :: UnitTag -> TilePos -> TestArmy -> Bool
--- hasVisitedTile tag tile army =
---   case HashMap.lookup tag (armyUnits army) of
---     Just unitData -> Set.member tile (visitedTiles unitData)
---     Nothing       -> False
-
-data TestBot
+data BotPhase
     = Opening
     | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
     | BuildArmyAndWin Observation
+
+strBotPhase :: BotPhase -> String
+strBotPhase (Opening) = "Opening"
+strBotPhase (BuildOrderExecutor {}) = "BuildOrderExecutor"
+strBotPhase (BuildArmyAndWin _) = "BuildArmyAndWin Observation"
+
+
+unitsData :: [S.UnitTypeData] -> UnitTraits
+unitsData raw =
+    HashMap.fromList . runConduitPure $
+        yieldMany raw
+            .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
+            .| sinkList
+
 
 inBuildThechTree :: UnitTypeId -> StepMonad d Bool
 inBuildThechTree id = do
@@ -402,92 +389,150 @@ agentArmyControl :: StepMonad BotDynamicState ()
 agentArmyControl = {-# SCC "agentStep:agentArmyControl" #-} agentAssignIdleSquads >> agentUpdateSquads >> agentSquadsStep
 
 
-instance Agent TestBot BotDynamicState where
-    type DynamicState TestBot = BotDynamicState
-    makeDynamicState :: TestBot -> Observation -> Grid -> IO BotDynamicState
-    makeDynamicState _ obs grid = do
-        gen <- newStdGen -- Initialize a new random generator
-        return $ BotDynamicState obs grid gen emptyArmy
+data BotAgent = BotAgent
+  { botPhase       :: BotPhase
+  , botStaticInfo  :: StaticInfo
+  , botDynState    :: BotDynamicState
+  } | EmptyBotAgent
+
+makeDynamicState :: Observation -> Grid -> IO BotDynamicState
+makeDynamicState obs grid = do
+    gen <- newStdGen -- Initialize a new random generator
+    return $ BotDynamicState obs grid gen emptyArmy
+
+instance Agent BotAgent where
+    makeAgent :: BotAgent -> Word32 -> A.ResponseGameInfo -> A.ResponseData -> A.ResponseObservation -> IO BotAgent
+    makeAgent _ playerId gi gameDataResp obs0 = do
+        let heightMap = gridFromImage $ gi ^. #startRaw . #terrainHeight
+            obsRaw = obs0 ^. #observation
+            unitTraits = unitsData $ gameDataResp ^. #units
+            gridPlacement = gridFromImage $ gi ^. #startRaw . #placementGrid
+            gridPathing = gridFromImage $ gi ^. #startRaw . #pathingGrid
+            grid = gridMerge pixelIsRamp gridPlacement gridPathing
+            nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
+            -- TODO: sort expands based on region connectivity: closest is not always the next one
+            expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
+            enemyStart = tilePos $ enemyBaseLocation gi obsRaw
+
+            playerInfos = gi ^. #playerInfo
+            playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
+
+
+            (rays, gridChoked) = findAllChokePoints gridPathing
+            regions = gridSegment gridChoked
+            regionGraph = buildRegionGraph regions
+            regionLookup = buildRegionLookup regions
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (Map.fromList regions)
+
+        traceM "create ds"
+        dynamicState <- makeDynamicState obsRaw grid
+        traceM "created ds"
+        return $ BotAgent Opening si dynamicState
+
     agentRace _ = C.Protoss
-    agentStep Opening =  {-# SCC "agentStep:Opening" #-} do
-        si <- agentStatic
-        ds <- agentGet
 
-        let gi = gameInfo si
-            obs = getObs ds
-            grid = getGrid ds
-        agentPut $ setGrid (gridUpdate obs grid) ds
-        let nexus = findNexus obs
-            fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
-            expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
-
-        command [SelfCommand AbilityId.TrainProbe [nexus]]
-        return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
-    agentStep (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = {-# SCC "agentStep:BuildOrderExecutor" #-} do
-        debugUnitPos
-        reassignIdleProbes
-        trainProbes
-        si <- agentStatic
-        ds <- agentGet
-        let obs = getObs ds
-        abilities <- agentAbilities
-        when (buildingsSelfChanged obs obsPrev) $ do
-            -- abilities /= abilitiesPrev then do
-            -- agentChat "buildingsSelfChanged !!!: "
-            agentResetGrid
-        (queue', interruptedAbilities) <- processQueue queue ([], [])
-
-        -- add phantom building from the planner queue
-        agentUpdateGrid
-            ( \g ->
-                foldl
-                    (\ga (u, p) -> gridPlace ga u p)
-                    g
-                    [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
-            )
-        let reservedResources = actionsCost si queue'
-            interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
-        unless (null interruptedOrders) $
-            agentChat ("interrupted: " ++ show interruptedOrders)
-
-        (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
-        -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
-
-        unless (null affordableActions) $ do
-            agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
-
-        debugTexts
-            [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
-            | a <- affordableActions
-            ]
-        command affordableActions
-        if null orders'
-            then do
-                -- transit
-                return $ BuildArmyAndWin obs
-            else
-                return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
-    agentStep (BuildArmyAndWin obsPrev) = {-# SCC "agentStep:BuildArmyAndWin" #-} do
-        si <- agentStatic
-        obs <- agentObs
-        agentUpdateArmy obsPrev
-        debugSquads
-        when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
-        reassignIdleProbes
-        agentArmyControl
-        -- when (unitsChanged obs obsPrev) $ do
-        --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
+    agentStep EmptyBotAgent _ _ = error("agent FSM broken")
+    agentStep (BotAgent phase si ds) obs abilities =
+        let sm = agentStepPhase phase
+            (phase', plan, ds') = runStepM si abilities (setObs (obs ^. #observation ) ds) sm
+         in (BotAgent phase' si ds', plan)
 
 
-        res <- runMaybeT buildPylons
+agentStepPhase:: BotPhase -> StepMonad BotDynamicState BotPhase
+agentStepPhase Opening =  {-# SCC "agentStep:Opening" #-} do
+    si <- agentStatic
+    ds <- agentGet
 
-        let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
-            idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsfacility .| unitIdleC
-            gameLoop = obs ^. #gameLoop
-        command [SelfCommand TrainImmortal idleRobos]
-        command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]
+    let gi = gameInfo si
+        obs = getObs ds
+        grid = getGrid ds
+    agentPut $ setGrid (gridUpdate obs grid) ds
+    let nexus = findNexus obs
+        fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
+        expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
 
-        trainProbes
-        -- randomArmyFiddling
+    command [SelfCommand AbilityId.TrainProbe [nexus]]
+    return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
+agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) = {-# SCC "agentStep:BuildOrderExecutor" #-} do
+    debugUnitPos
+    reassignIdleProbes
+    trainProbes
+    si <- agentStatic
+    ds <- agentGet
+    let obs = getObs ds
+    abilities <- agentAbilities
+    when (buildingsSelfChanged obs obsPrev) $ do
+        -- abilities /= abilitiesPrev then do
+        -- agentChat "buildingsSelfChanged !!!: "
+        agentResetGrid
+    (queue', interruptedAbilities) <- processQueue queue ([], [])
 
-        return $ BuildArmyAndWin obs
+    -- add phantom building from the planner queue
+    agentUpdateGrid
+        ( \g ->
+            foldl
+                (\ga (u, p) -> gridPlace ga u p)
+                g
+                [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
+        )
+    let reservedResources = actionsCost si queue'
+        interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
+    unless (null interruptedOrders) $
+        agentChat ("interrupted: " ++ show interruptedOrders)
+
+    (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
+    -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
+
+    unless (null affordableActions) $ do
+        agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
+
+    debugTexts
+        [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
+        | a <- affordableActions
+        ]
+    command affordableActions
+    if null orders'
+        then do
+            -- transit
+            return $ BuildArmyAndWin obs
+        else
+            return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
+agentStepPhase (BuildArmyAndWin obsPrev) = {-# SCC "agentStep:BuildArmyAndWin" #-} do
+    si <- agentStatic
+    obs <- agentObs
+    agentUpdateArmy obsPrev
+    debugSquads
+    when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
+    reassignIdleProbes
+    agentArmyControl
+    -- when (unitsChanged obs obsPrev) $ do
+    --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
+
+
+    res <- runMaybeT buildPylons
+
+    let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
+        idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsfacility .| unitIdleC
+        gameLoop = obs ^. #gameLoop
+    command [SelfCommand TrainImmortal idleRobos]
+    command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]
+
+    trainProbes
+    -- randomArmyFiddling
+
+    return $ BuildArmyAndWin obs
+
+-- --------------------------------
+-- instance Agent TestBot BotDynamicState where
+--     type DynamicState TestBot = BotDynamicState
+
+
+
+--     agentStep :: a -> A.ResponseObservation -> UnitAbilities -> (a, StepPlan)
+
+--     makeDynamicState :: Observation -> Grid -> IO BotDynamicState
+--     makeDynamicState obs grid = do
+--         gen <- newStdGen -- Initialize a new random generator
+--         return $ BotDynamicState obs grid gen emptyArmy
+
+--     agentRace _ = C.Protoss

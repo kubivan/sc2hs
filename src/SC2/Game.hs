@@ -7,13 +7,18 @@
 
 module SC2.Game (playMatch, Proto.Participant (..)) where
 
-import Agent (
-    Agent (agentRace, agentStep, makeDynamicState),
-    AgentDynamicState (setObs),
-    StaticInfo (StaticInfo, siRegions),
-    StepPlan (StepPlan),
-    runStep,
- )
+-- import Agent (
+--     Agent (..),
+--     StepPlan (StepPlan),
+--     runStep,
+--  )
+
+-- import StepMonad(
+--     AgentDynamicState (setObs),
+--     StaticInfo (StaticInfo, siRegions)
+-- )
+import Agent
+import StepMonad
 import Observation (enemyBaseLocation, findExpands, unitsSelf)
 import Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi)
 import Proto qualified
@@ -40,7 +45,6 @@ import Control.Concurrent.Async (async, wait)
 import Control.Monad.Writer.Strict (MonadIO (liftIO))
 import Data.ByteString qualified as B
 import Data.Functor ((<&>))
-import Data.List (sortOn)
 import Data.Map qualified as Map
 import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
@@ -61,11 +65,7 @@ import Network.WebSockets as WS (
     runClient,
  )
 import Proto.S2clientprotocol.Common qualified as A
-import Proto.S2clientprotocol.Sc2api as S (
-    PlayerResult,
-    Request,
-    ResponseGameInfo,
- )
+import Proto.S2clientprotocol.Sc2api as S
 
 playMatch :: Proto.Participant -> Proto.Participant -> IO ()
 -- 1vs1
@@ -104,7 +104,7 @@ clientAppCreateGame conn participants signals = do
     print responseCreateGame
     signalGameCreated signals
 
-clientAppJoinGame :: Agent a d => Connection -> a -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
+clientAppJoinGame :: Agent a => Connection -> a -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
 clientAppJoinGame conn agent signals joinFunc = do
     responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
     print responseJoinGame
@@ -136,49 +136,30 @@ playClient (Proto.Player agent) signals joinFunc = do
   where
     clientApp conn = putStrLn "client joining game..." >> clientAppJoinGame conn agent signals joinFunc
 
-runGameLoop :: (Agent a d) => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
+runGameLoop :: (Agent a) => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
 runGameLoop conn signals agent playerId = do
     putStrLn $ "Player" ++ show playerId ++ "waiting for host to create the game..."
     waitAllClientsJoined signals
 
     putStrLn "getting game info..."
-    resp <- Proto.sendRequestSync conn Proto.requestGameInfo
-    let gi :: S.ResponseGameInfo = resp ^. #gameInfo
-        playerInfos = gi ^. #playerInfo
-        playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
+    respGameInfo <- Proto.sendRequestSync conn Proto.requestGameInfo
+    gameDataResp <- Proto.sendRequestSync conn Proto.requestData
+    let gi :: S.ResponseGameInfo = respGameInfo ^. #gameInfo
+        gd :: S.ResponseData = gameDataResp ^. #data'
+        --Just gd = gameDataResp ^. #maybe'data
         pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
     printGrid pathingGrid
     liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
-    gameDataResp <- Proto.sendRequestSync conn Proto.requestData
     obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 
-    let heightMap = gridFromImage $ gi ^. #startRaw . #terrainHeight
-        obsRaw = obs0 ^. #observation . #observation
-        unitTraits = unitsData $ gameDataResp ^. #data' . #units
-        gridPlacement = gridFromImage $ gi ^. #startRaw . #placementGrid
-        gridPathing = gridFromImage $ gi ^. #startRaw . #pathingGrid
-        grid = gridMerge pixelIsRamp gridPlacement gridPathing
-        nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
-        -- TODO: sort expands based on region connectivity: closest is not always the next one
-        expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
-        enemyStart = tilePos $ enemyBaseLocation gi obsRaw
+    agent' <- makeAgent agent playerId gi gd (obs0 ^. #observation)
 
-        (rays, gridChoked) = findAllChokePoints gridPathing
-        regions = gridSegment gridChoked
-        regionGraph = buildRegionGraph regions
-        regionLookup = buildRegionLookup regions
-        si = Agent.StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (Map.fromList regions)
+    gameStepLoop conn agent'
 
-    traceM "create ds"
-    dynamicState <- makeDynamicState agent obsRaw grid
-    traceM "created ds"
-
-    gameStepLoop conn si dynamicState agent
-
-gameStepLoop :: (Agent agent d) => Connection -> Agent.StaticInfo -> d -> agent -> IO [S.PlayerResult]
-gameStepLoop conn si ds agent = do
+gameStepLoop :: (Agent agent) => Connection -> agent -> IO [S.PlayerResult]
+gameStepLoop conn agent = do
     responseObs <- Proto.sendRequestSync conn Proto.requestObservation
     let gameOver = responseObs ^. #observation . #playerResult
 
@@ -189,11 +170,13 @@ gameStepLoop conn si ds agent = do
                 gameLoop = obs ^. #gameLoop
 
             abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
-            (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
+            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilities --UnitAbilities
+
+            -- (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
             -- liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") (getGrid ds')
             -- liftIO $ B.writeFile ("grids/obs" ++ show gameLoop) (encodeMessage obs)
             -- Prelude.putStrLn $ show gameLoop ++ " buildOrder " ++ show bo ++ " queue: " ++ show q
             _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestAction cmds chats
             _ <- liftIO . Proto.sendRequestSync conn . Proto.requestDebug $ dbgs
             _ <- liftIO . Proto.sendRequestSync conn $ Proto.requestStep
-            gameStepLoop conn si ds' agent'
+            gameStepLoop conn agent'

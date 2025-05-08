@@ -11,14 +11,8 @@ module AgentBulidUtils where
 
 import AbilityId
 import Actions
-import Agent (
-    AgentDynamicState (..),
-    StaticInfo (unitTraits),
-    StepMonad,
-    UnitTraits,
-    agentObs,
-    agentStatic,
- )
+import Agent
+import StepMonad
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
@@ -64,13 +58,13 @@ import Utils (
  )
 
 -- TODO: move to UnitTraits
-abilityToUnit :: Agent.UnitTraits -> AbilityId -> UnitTypeId
+abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
 abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
     Just t -> toEnum . fromIntegral $ t ^. #unitId
     Nothing -> error $ "abilityToUnit: invalid ability: " ++ show a
 
 -- TODO: move to UnitTraits
-unitToAbility :: Agent.UnitTraits -> UnitTypeId -> AbilityId
+unitToAbility :: UnitTraits -> UnitTypeId -> AbilityId
 unitToAbility traits uid = case traits HashMap.!? uid of
     Just t -> toEnum . fromIntegral $ t ^. #abilityId
     Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
@@ -78,21 +72,21 @@ unitToAbility traits uid = case traits HashMap.!? uid of
 findAssignee :: Observation -> Action -> Maybe Units.Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
 
-unitCost :: Agent.UnitTraits -> UnitTypeId -> Cost
+unitCost :: UnitTraits -> UnitTypeId -> Cost
 unitCost traits uid = case traits HashMap.!? uid of
     Just t -> Cost (fromIntegral $ t ^. #mineralCost) (fromIntegral $ t ^. #vespeneCost)
     Nothing -> Cost 0 0
 
-actionCost :: Agent.StaticInfo -> Action -> Cost
+actionCost :: StaticInfo -> Action -> Cost
 actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCmd
 
-actionsCost :: Agent.StaticInfo -> [Action] -> Cost
+actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-canAfford :: (Agent.AgentDynamicState d) => UnitTypeId -> Cost -> Agent.StepMonad d (Bool, Cost)
+canAfford :: (AgentDynamicState d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
 canAfford uid r = do
-    si <- Agent.agentStatic
-    obs <- Agent.agentObs
+    si <- agentStatic
+    obs <- agentObs
 
     let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals)
         vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)

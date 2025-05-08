@@ -13,6 +13,7 @@ import Observation
 import UnitTypeId
 import Units
 import Utils
+import StepMonad
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
