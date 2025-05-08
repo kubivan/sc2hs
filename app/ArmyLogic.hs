@@ -3,42 +3,37 @@
 
 module ArmyLogic where
 
-import Agent
 import BotDynamicState
 
 import AbilityId
 import Actions (Action (..), UnitTag)
 import Grid.Grid
 import Observation
+import StepMonad
 import UnitTypeId
 import Units
 import Utils
-import StepMonad
 
+import Conduit (filterC, mapC)
+import Control.Applicative ((<|>))
+import Control.Monad (filterM, void, when)
+import Data.Foldable qualified as Seq
+import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
 import Data.Map qualified as Map
-import Data.Sequence qualified as Seq
-import Data.Set qualified as Set
-
-import Control.Applicative ((<|>))
-import Control.Monad (filterM, void, when)
-
-import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, (.|))
-import Data.Foldable qualified as Seq
-import Data.Function (on)
-import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
 import Data.Ord (comparing)
-import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Data.Set qualified as Set
+import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
-import System.Random (Random, StdGen, newStdGen, randomR)
+import System.Random (StdGen, randomR)
 
 import Debug.Trace (traceM)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Raw qualified as R
-import Proto.S2clientprotocol.Raw_Fields (buildProgress)
 
 -- Define if a unit is considered an army unit
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
@@ -364,11 +359,10 @@ squadDoAttack squad target = return ()
 
 squadStep :: ArmySquad -> StepMonad BotDynamicState ()
 squadStep s =
-        case squadState s of
-            (StateExploreRegion rid region) -> squadExploreRegion s rid region
-            (StateAttack t) -> squadDoAttack s t
-            _ -> return ()
-
+    case squadState s of
+        (StateExploreRegion rid region) -> squadExploreRegion s rid region
+        (StateAttack t) -> squadDoAttack s t
+        _ -> return ()
 agentUpdateSquads :: StepMonad BotDynamicState ()
 agentUpdateSquads = do
     ds <- agentGet
@@ -413,6 +407,6 @@ squadUpdateStateExploreRegion s rid region
 
 squadUpdateState :: ArmySquad -> StepMonad BotDynamicState ()
 squadUpdateState s =
-        case squadState s of
-            (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region
-            _ -> return ()
+    case squadState s of
+        (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region
+        _ -> return ()

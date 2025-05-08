@@ -15,7 +15,6 @@ module SC2.Client (
     startStarCraft,
     unitAbilitiesRaw,
     unitAbilities,
-    unitsData,
 ) where
 
 import AbilityId (AbilityId, toEnum)
@@ -78,13 +77,6 @@ unitAbilities raw =
                         abilityIds = [AbilityId.toEnum . fromIntegral $ x ^. #abilityId :: AbilityId | x <- a ^. #abilities]
                      in (unit, abilityIds)
                 )
-            .| sinkList
-
-unitsData :: [S.UnitTypeData] -> UnitTraits
-unitsData raw =
-    HashMap.fromList . runConduitPure $
-        yieldMany raw
-            .| mapC (\a -> (UnitTypeId.toEnum . fromIntegral $ a ^. #unitId, a))
             .| sinkList
 
 startStarCraft :: Int32 -> IO ProcessHandle

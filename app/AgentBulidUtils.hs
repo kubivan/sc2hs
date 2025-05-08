@@ -12,7 +12,6 @@ module AgentBulidUtils where
 import AbilityId
 import Actions
 import Agent
-import StepMonad
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
@@ -36,6 +35,7 @@ import Observation (
     unitsSelf,
  )
 import Proto.S2clientprotocol.Raw qualified as R
+import StepMonad
 
 import Safe (headMay)
 import UnitTypeId

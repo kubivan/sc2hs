@@ -7,19 +7,7 @@
 
 module SC2.Game (playMatch, Proto.Participant (..)) where
 
--- import Agent (
---     Agent (..),
---     StepPlan (StepPlan),
---     runStep,
---  )
-
--- import StepMonad(
---     AgentDynamicState (setObs),
---     StaticInfo (StaticInfo, siRegions)
--- )
 import Agent
-import StepMonad
-import Observation (enemyBaseLocation, findExpands, unitsSelf)
 import Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi)
 import Proto qualified
 import SC2.Client (
@@ -30,40 +18,28 @@ import SC2.Client (
     startStarCraft,
     unitAbilities,
     unitAbilitiesRaw,
-    unitsData,
     waitAllClientsJoined,
     waitForGameCreation,
  )
 import SC2.Config
-import UnitTypeId
-import Units (runC, unitTypeC)
-import Utils (distSquared, tilePos)
 
-import Conduit ((.|))
 import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (async, wait)
 import Control.Monad.Writer.Strict (MonadIO (liftIO))
 import Data.ByteString qualified as B
 import Data.Functor ((<&>))
-import Data.Map qualified as Map
 import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
-import Debug.Trace (trace, traceM)
+import Debug.Trace (traceM)
 import GHC.Word (Word32)
-import Grid.Algo (
-    buildRegionGraph,
-    buildRegionLookup,
-    findAllChokePoints,
-    gridSegment,
- )
-import Grid.Core (gridFromImage, gridPixel)
-import Grid.Utils (gridMerge, pixelIsRamp, printGrid)
+import Grid.Core (gridFromImage)
+import Grid.Utils (printGrid)
 import Lens.Micro ((^.))
-import Lens.Micro.Extras (view)
 import Network.WebSockets as WS (
     Connection,
     runClient,
  )
+
 import Proto.S2clientprotocol.Common qualified as A
 import Proto.S2clientprotocol.Sc2api as S
 
@@ -104,7 +80,7 @@ clientAppCreateGame conn participants signals = do
     print responseCreateGame
     signalGameCreated signals
 
-clientAppJoinGame :: Agent a => Connection -> a -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
+clientAppJoinGame :: (Agent a) => Connection -> a -> GameSignals -> (A.Race -> Request) -> IO [PlayerResult]
 clientAppJoinGame conn agent signals joinFunc = do
     responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
     print responseJoinGame
@@ -146,7 +122,7 @@ runGameLoop conn signals agent playerId = do
     gameDataResp <- Proto.sendRequestSync conn Proto.requestData
     let gi :: S.ResponseGameInfo = respGameInfo ^. #gameInfo
         gd :: S.ResponseData = gameDataResp ^. #data'
-        --Just gd = gameDataResp ^. #maybe'data
+        -- Just gd = gameDataResp ^. #maybe'data
         pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
     printGrid pathingGrid
@@ -170,7 +146,7 @@ gameStepLoop conn agent = do
                 gameLoop = obs ^. #gameLoop
 
             abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
-            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilities --UnitAbilities
+            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilities -- UnitAbilities
 
             -- (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
             -- liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") (getGrid ds')

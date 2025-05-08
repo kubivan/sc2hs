@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
@@ -28,39 +27,28 @@ module StepMonad (
 )
 where
 
-import Agent
-import AbilityId qualified
 import Actions (Action, DebugCommand (..), getCmd, getExecutors)
-import Control.Monad
-import Control.Monad.Identity (Identity (..))
+import Agent
+import Grid.Grid
+import Observation
+import UnitAbilities
+import UnitTypeId
+import Utils
+
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (foldl')
 import Data.Map qualified as Map
-import Data.ProtoLens (defMessage)
 import Data.Set qualified as Set
-import Data.Text (Text, pack)
-import Debug.Trace
-import GHC.Word qualified
-import Grid.Grid
-import Lens.Micro ((&), (.~), (^.))
+import Data.Text (pack)
+import Lens.Micro ((^.))
+
 import Proto.S2clientprotocol.Common as C
-import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Data qualified as A
 import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-import UnitTypeId
-
-import Utils
-
-import Data.Kind (Type)
-import Observation
-import UnitAbilities
-
 
 type UnitTraits = HashMap.HashMap UnitTypeId A.UnitTypeData
 
@@ -131,7 +119,7 @@ agentGet = lift get
 agentPut :: dyn -> StepMonad dyn ()
 agentPut = lift . put
 
--- runStepM :: (Agent a, AgentDynamicState d) => StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
+runStepM :: StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
 runStepM staticInfo abilities dynamicState stepMonad =
     let writerRes = runWriterT stepMonad
         stateRes = runStateT writerRes dynamicState

@@ -1,22 +1,17 @@
 {-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE OverloadedLabels #-}
 
 module BotDynamicState where
 
 import Actions (UnitTag)
-import Agent
 import Grid.Grid
 import Observation
-import UnitTypeId
 import Units
-import Utils (TilePos, tilePos)
+import Utils (TilePos)
 import StepMonad
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.Set qualified as Set
-import Lens.Micro (to, (&), (.~), (^.), (^..))
-import Lens.Micro.Extras (view)
-import System.Random (Random, StdGen, newStdGen, randomR)
+import System.Random (Random, StdGen, randomR)
 
 data Target = TargetPos TilePos | TargetUnit UnitTag deriving (Eq, Show)
 
