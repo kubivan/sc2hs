@@ -65,7 +65,7 @@ canPlaceBuilding :: Grid -> Grid -> TilePos -> Footprint -> Bool
 canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
     all pixelOk pixels && sameHeight pixels
   where
-    pixelOk (x, y, _) = case gridPixelSafe grid (cx + x, cy + y) of
+    pixelOk (x, y, _) = case grid !? (cx + x, cy + y) of
         Nothing -> False
         Just p -> p == ' ' -- TODO: now . has multiple meanings, rework
     sameHeight pixels = all (== head pixelHeights) (tail pixelHeights)

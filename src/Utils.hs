@@ -42,6 +42,7 @@ class Pointable p where
 
   pointMinus :: p -> p -> p
   a `pointMinus` b = makePoint (getX a - getX b) (getY a - getY b)
+
 instance Num Point2D where
   (+) = pointPlus  -- Use the + operator from Pointable
   (-) = pointMinus  -- Use the - operator from Pointable

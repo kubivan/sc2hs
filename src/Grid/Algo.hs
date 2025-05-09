@@ -71,7 +71,7 @@ smartTransition grid transitions pos@(x, y) = filter passTransitions allAdjacent
     allAdjacent =
         [ (x + dx, y + dy)
         | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        , let pixel = gridPixelSafe grid (x + dx, y + dy)
+        , let pixel = grid !? (x + dx, y + dy)
         , isJust pixel
         ]
     passTransitions p = isJust $ find (canTransit p) transitions
@@ -85,7 +85,7 @@ getAllNeighbors grid (x, y) =
     | dx <- [-1, 0, 1]
     , dy <- [-1, 0, 1]
     , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , let pixel = grid !? (x + dx, y + dy)
     , isJust pixel -- pixel /= Just '#'
     ]
 
@@ -95,7 +95,7 @@ getAllNotSharpNeighbors grid (x, y) =
     | dx <- [-1, 0, 1]
     , dy <- [-1, 0, 1]
     , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , let pixel = grid !? (x + dx, y + dy)
     , pixel /= Just '#'
     ]
 
@@ -109,7 +109,7 @@ neighborsRay :: Grid -> TilePos -> [TilePos]
 neighborsRay grid (x, y) =
     filter isValid [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
   where
-    isValid (nx, ny) = case gridPixelSafe grid (nx, ny) of
+    isValid (nx, ny) = case grid !? (nx, ny) of
         Just '#' -> False -- Only move on empty spaces
         Just '*' -> False -- Only move on empty spaces
         Nothing -> False
@@ -123,8 +123,8 @@ gridRaycastTile grid origin (dx, dy) =
     find isObstacle $ takeWhile inBounds $ iterate step [origin]
   where
     step ray@((px, py) : _) = (px + dx, py + dy) : ray
-    inBounds ray = isJust $ gridPixelSafe grid (head ray)
-    isObstacle ray = case gridPixelSafe grid (head ray) of
+    inBounds ray = isJust $ grid !? head ray
+    isObstacle ray = case grid !? head ray of
         Just '*' -> True
         Just '#' -> True
         Nothing -> True
@@ -138,7 +138,7 @@ findChokePoint grid threshold start =
     zipRays (forward, backward) = sort $ forward ++ (drop 1 . reverse $ backward) -- `Utils.dbg` ("zipping rays " ++ show (forward, backward))
     raycast = gridRaycastTile grid start
     rayDoesntCross2Rays :: Ray -> Bool
-    rayDoesntCross2Rays ray = not $ gridPixelSafe grid (head ray) == Just '*' || gridPixelSafe grid (last ray) == Just '*'
+    rayDoesntCross2Rays ray = not $ grid !? head ray == Just '*' || grid !? last ray == Just '*'
     rayShortEnough :: Ray -> Bool
     rayShortEnough ray =
         threshold * threshold

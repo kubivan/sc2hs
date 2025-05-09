@@ -13,6 +13,8 @@ module Grid.Core (
     gridSetPixel,
     gridPixel,
     gridPixelSafe,
+    (!?),
+    (!)
 )
 where
 import Footprint
@@ -31,6 +33,12 @@ import Proto.S2clientprotocol.Common_Fields qualified as P
 import Debug.Trace (trace)
 
 type Grid = (Int, Int, VU.Vector Char)
+
+(!?) :: Grid -> TilePos -> Maybe Char
+(!?) = gridPixelSafe
+
+(!) :: Grid -> TilePos -> Char
+(!) = gridPixel
 
 gridH :: Grid -> Int
 gridH (_, h, _)= h

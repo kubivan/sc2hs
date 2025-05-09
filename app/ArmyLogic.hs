@@ -247,7 +247,7 @@ neighbors p@(x, y) grid =
     | dx <- [-1, 0, 1]
     , dy <- [-1, 0, 1]
     , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-    , let pixel = gridPixelSafe grid (x + dx, y + dy)
+    , let pixel = grid !? (x + dx, y + dy)
     , pixel /= Just '#' && isJust pixel
     ]
 
