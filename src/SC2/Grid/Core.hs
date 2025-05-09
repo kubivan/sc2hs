@@ -1,6 +1,4 @@
 {-# OPTIONS -Wall #-}
-
--- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
 module SC2.Grid.Core (
@@ -14,17 +12,18 @@ module SC2.Grid.Core (
     gridPixel,
     gridPixelSafe,
     (!?),
-    (!)
+    (!),
 )
 where
+
 import Footprint
 import SC2.Grid.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
 
 import Data.Bits
 import Data.ByteString qualified as BS
+import Data.Vector.Unboxed qualified as VU
 import Data.Word (Word8)
-import qualified Data.Vector.Unboxed as VU
 import Lens.Micro ((^.))
 
 import Proto.S2clientprotocol.Common qualified as P
@@ -41,10 +40,10 @@ type Grid = (Int, Int, VU.Vector Char)
 (!) = gridPixel
 
 gridH :: Grid -> Int
-gridH (_, h, _)= h
+gridH (_, h, _) = h
 
 gridW :: Grid -> Int
-gridW (w, _, _)= w
+gridW (w, _, _) = w
 
 gridPixel :: Grid -> TilePos -> Char
 gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
@@ -53,20 +52,20 @@ gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++
 
 gridPixelSafe :: Grid -> TilePos -> Maybe Char
 gridPixelSafe (w, h, g) (x, y)
-  | x < 0 || x >= w = Nothing
-  | y < 0 || y >= h = Nothing
-  | otherwise = g VU.!? index
+    | x < 0 || x >= w = Nothing
+    | y < 0 || y >= h = Nothing
+    | otherwise = g VU.!? index
   where
     index = x + y * w
-
 
 -- Update a cell in the Grid
 gridSetPixel :: Grid -> TilePos -> Char -> Grid
 gridSetPixel grid@(w, h, g) (x, y) value
-  | gridPixel grid (x, y) == '#' = grid
-  | otherwise= (w, h, g VU.// [(index, value)]) where --`Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
-      index = x + y * w
-
+    | gridPixel grid (x, y) == '#' = grid
+    | otherwise = (w, h, g VU.// [(index, value)])
+  where
+    -- `Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
+    index = x + y * w
 
 gridFromImage :: P.ImageData -> Grid
 gridFromImage image = trace ("gridFromImage " ++ show (width, height, bpp, BS.length bs)) $ decodeImageData width height bpp bs
@@ -78,9 +77,9 @@ gridFromImage image = trace ("gridFromImage " ++ show (width, height, bpp, BS.le
 
     decodeImageData :: Int -> Int -> Int -> BS.ByteString -> Grid
     decodeImageData idw idh idbpp bytes
-       | idbpp == 8 = (idw, idh, VU.fromList $ map (\w -> if w == 0 then '#' else ' ' ) (BS.unpack bytes))
-       | idbpp == 1 = (idw, idh, (\b -> if b then ' ' else '#') `VU.map` unpackBits bytes )
-       | otherwise = error "Not implemented"
+        | idbpp == 8 = (idw, idh, VU.fromList $ map (\w -> if w == 0 then '#' else ' ') (BS.unpack bytes))
+        | idbpp == 1 = (idw, idh, (\b -> if b then ' ' else '#') `VU.map` unpackBits bytes)
+        | otherwise = error "Not implemented"
 
     -- Unpack bits from ByteString into Vector Bool
     unpackBits :: BS.ByteString -> VU.Vector Bool

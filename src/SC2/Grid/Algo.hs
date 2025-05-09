@@ -23,21 +23,22 @@ module SC2.Grid.Algo (
 )
 where
 
-import SC2.Grid.Core
 import SC2.Geometry (distSquared)
+import SC2.Grid.Core
+import SC2.Grid.TilePos (TilePos)
 import Utils (dbg)
-import SC2.Grid.TilePos(TilePos)
+
 import Control.Monad (guard)
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sort)
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes, isJust)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Debug.Trace (trace, traceM)
-import Data.Map qualified as Map
-import Data.HashMap.Strict(HashMap)
-import Data.HashMap.Strict qualified as HashMap
 
 type TilePath = [TilePos]
 

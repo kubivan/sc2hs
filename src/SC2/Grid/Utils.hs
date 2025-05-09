@@ -14,30 +14,28 @@ module SC2.Grid.Utils (
 )
 where
 
-import SC2.Grid.Algo (GridBfsRes (..), gridBfs, getAllNeighbors)
+import Footprint
+import SC2.Geometry
+import SC2.Grid.Algo (GridBfsRes (..), getAllNeighbors, gridBfs)
 import SC2.Grid.Core
 import SC2.Grid.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
-import SC2.Geometry
 
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.List (find, sort)
+import Data.Sequence qualified as Seq
+import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
 import Data.Word (Word8)
-
-import Data.Set qualified as Set
+import Debug.Trace (trace)
 import Lens.Micro ((^.))
-
-import Proto.S2clientprotocol.Common qualified as P
-import Proto.S2clientprotocol.Common_Fields qualified as P
 
 import Data.Foldable (toList)
 import Data.Maybe (isJust)
-import Footprint
 
-import Data.Sequence qualified as Seq
-import Debug.Trace (trace)
+import Proto.S2clientprotocol.Common qualified as P
+import Proto.S2clientprotocol.Common_Fields qualified as P
 
 gridFromLines :: [String] -> Grid
 gridFromLines rows =

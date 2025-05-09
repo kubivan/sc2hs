@@ -1,12 +1,12 @@
 module SC2.Army.SquadFSM where
 
 import Actions (Action (..), UnitTag)
+import Observation
 import SC2.Army.Army
 import SC2.Army.Class
 import SC2.Army.Utils
-import SC2.Grid
 import SC2.Geometry
-import Observation
+import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point, Point2D)
@@ -20,15 +20,15 @@ import Control.Applicative ((<|>))
 import Control.Monad (filterM, void, when)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
-import Data.List (minimumBy, partition)
-import Data.List.Split (chunksOf)
-import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.Set(Set)
-import Data.Set qualified as Set
+import Data.List (minimumBy, partition)
+import Data.List.Split (chunksOf)
 import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
 import Data.Ord (comparing)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
@@ -36,7 +36,7 @@ import System.Random (StdGen, randomR)
 
 import Debug.Trace (traceM)
 
-isSquadFull :: HasArmy d => ArmySquad -> StepMonad d Bool
+isSquadFull :: (HasArmy d) => ArmySquad -> StepMonad d Bool
 isSquadFull squad = do
     ds <- agentGet
     let unitMap = armyUnits $ getArmy ds
@@ -70,7 +70,7 @@ squadAssign s = do
             traceM $ "   assigded squads': " ++ show squad'
             agentPut $ setArmy army' ds
 
-agentAssignIdleSquads :: HasArmy d => StepMonad d ()
+agentAssignIdleSquads :: (HasArmy d) => StepMonad d ()
 agentAssignIdleSquads = do
     ds <- agentGet
     let army = getArmy ds
@@ -119,7 +119,7 @@ squadStep s =
         (StateAttack t) -> squadDoAttack s t
         _ -> return ()
 
-agentUpdateSquads :: HasArmy d => StepMonad d ()
+agentUpdateSquads :: (HasArmy d) => StepMonad d ()
 agentUpdateSquads = do
     ds <- agentGet
     let army = getArmy ds
@@ -127,18 +127,18 @@ agentUpdateSquads = do
 
     mapM_ squadUpdateState squads
 
-squadSwitchIdle :: HasArmy d => ArmySquad -> StepMonad d ()
+squadSwitchIdle :: (HasArmy d) => ArmySquad -> StepMonad d ()
 squadSwitchIdle s = do
     traceM "switch to idle"
     ds <- agentGet
     let squad' = s{squadState = StateSquadIdle}
         army = getArmy ds
         squads' = replaceSquad squad' (armySquads army)
-        army'   = army { armySquads = squads' }
+        army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
 -- data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StackEvade deriving (Eq, Show)
-squadUpdateStateExploreRegion :: HasArmy d => ArmySquad -> RegionId -> Region -> StepMonad d ()
+squadUpdateStateExploreRegion :: (HasArmy d) => ArmySquad -> RegionId -> Region -> StepMonad d ()
 squadUpdateStateExploreRegion s rid region
     | Set.size region == 0 = squadSwitchIdle s
     | otherwise = do
@@ -162,7 +162,7 @@ squadUpdateStateExploreRegion s rid region
             else
                 agentPut $ setArmy army' ds
 
-squadUpdateState :: HasArmy d => ArmySquad -> StepMonad d ()
+squadUpdateState :: (HasArmy d) => ArmySquad -> StepMonad d ()
 squadUpdateState s =
     case squadState s of
         (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region

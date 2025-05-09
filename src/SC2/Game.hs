@@ -8,10 +8,9 @@
 module SC2.Game (playMatch) where
 
 import Agent
+
 -- import SC2.Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi, Race, Request)
-import SC2.Proto.Requests
-import SC2.Proto.Data qualified as Proto
-import SC2.Proto.Requests qualified as Proto
+
 import SC2.Client (
     GameSignals,
     newGameSignals,
@@ -24,8 +23,13 @@ import SC2.Client (
     waitForGameCreation,
  )
 import SC2.Config
+import SC2.Grid.Core (gridFromImage)
+import SC2.Grid.Utils (printGrid)
 import SC2.Participant
 import SC2.Proto.Data
+import SC2.Proto.Data qualified as Proto
+import SC2.Proto.Requests
+import SC2.Proto.Requests qualified as Proto
 
 import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (async, wait)
@@ -36,8 +40,6 @@ import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (traceM)
 import GHC.Word (Word32)
-import SC2.Grid.Core (gridFromImage)
-import SC2.Grid.Utils (printGrid)
 import Lens.Micro ((^.))
 import Network.WebSockets as WS (
     Connection,

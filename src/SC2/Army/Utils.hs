@@ -1,10 +1,9 @@
-
 module SC2.Army.Utils where
-import SC2.Ids.UnitTypeId
-import SC2.Grid
-import SC2.Geometry
+
 import Actions (Action (..), UnitTag)
 import Observation
+import SC2.Geometry
+import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point, Point2D)
@@ -13,29 +12,24 @@ import StepMonad
 import Units
 import Utils
 
-import Units
-import Lens.Micro ((^.))
-import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
-import Control.Applicative ((<|>))
 import Conduit (filterC, mapC)
 import Control.Applicative ((<|>))
 import Control.Monad (filterM, void, when)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
-import Data.List (minimumBy, partition)
-import Data.List.Split (chunksOf)
-import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.Set(Set)
-import Data.Set qualified as Set
+import Data.List (minimumBy, partition)
+import Data.List.Split (chunksOf)
 import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
 import Data.Ord (comparing)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
 import System.Random (StdGen, randomR)
-
 
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
 isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)

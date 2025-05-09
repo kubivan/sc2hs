@@ -1,4 +1,3 @@
-
 module SC2.Army.Army where
 
 import Actions (Action (..), UnitTag)
@@ -45,7 +44,7 @@ data ArmyUnitState
 data ArmySquad = ArmySquad
     { squadUnits :: [UnitTag]
     , squadState :: SquadState
-    --, squadUnitStates :: HashMap UnitTag SquadState
+    -- , squadUnitStates :: HashMap UnitTag SquadState
     }
     deriving (Eq, Show)
 
