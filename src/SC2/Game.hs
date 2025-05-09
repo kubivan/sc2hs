@@ -36,8 +36,8 @@ import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (traceM)
 import GHC.Word (Word32)
-import Grid.Core (gridFromImage)
-import Grid.Utils (printGrid)
+import SC2.Grid.Core (gridFromImage)
+import SC2.Grid.Utils (printGrid)
 import Lens.Micro ((^.))
 import Network.WebSockets as WS (
     Connection,

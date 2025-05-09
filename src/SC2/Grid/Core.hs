@@ -3,7 +3,7 @@
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module Grid.Core (
+module SC2.Grid.Core (
     Grid,
     gridFromImage,
     gridW,
@@ -18,7 +18,7 @@ module Grid.Core (
 )
 where
 import Footprint
-import Utils (TilePos)
+import SC2.Grid.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
 
 import Data.Bits

@@ -1,8 +1,9 @@
 
-module Army where
+module SC2.Army.Army where
 
 import Actions (Action (..), UnitTag)
-import Grid.Algo
+import SC2.Grid.Algo
+import SC2.Grid.TilePos
 import Units
 import Utils
 
@@ -18,7 +19,7 @@ data Target
     deriving (Eq, Show)
 
 data SquadState
-    = StateIdle
+    = StateSquadIdle
     | StateExplore Target
     | StateExploreRegion RegionId Region
     | StateAttack Target
@@ -26,18 +27,25 @@ data SquadState
     deriving (Eq, Show)
 
 armyUnitStateStr :: SquadState -> String
-armyUnitStateStr (StateIdle) = "Idle"
+armyUnitStateStr (StateSquadIdle) = "Idle"
 armyUnitStateStr (StateExplore t) = "Explore: " ++ show t
 armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r)
 armyUnitStateStr (StateAttack t) = "Attack: " ++ show t
 armyUnitStateStr (StateEvade) = "Evade"
+
+data ArmyUnitState
+    = StateUnitIdle
+    | StateUnitAttack
+    | StateUnitMove
+    | StateUnitEvade
+    deriving (Eq, Show)
 
 -- data ProtossUnit = Stalker Unit ArmyUnitState | Zealot Unit ArmyUnitState
 
 data ArmySquad = ArmySquad
     { squadUnits :: [UnitTag]
     , squadState :: SquadState
-    , squadUnitStates :: HashMap UnitTag SquadState
+    --, squadUnitStates :: HashMap UnitTag SquadState
     }
     deriving (Eq, Show)
 
@@ -46,7 +54,7 @@ squadId s = head $ squadUnits s
 
 isSquadIdle :: ArmySquad -> Bool
 isSquadIdle s = case squadState s of
-    StateIdle -> True
+    StateSquadIdle -> True
     _ -> False
 
 data ArmyUnitData = ArmyUnitData
@@ -63,3 +71,6 @@ data Army = Army
 
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
+
+replaceSquad :: ArmySquad -> [ArmySquad] -> [ArmySquad]
+replaceSquad new = map (\s -> if squadId s == squadId new then new else s)

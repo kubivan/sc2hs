@@ -2,7 +2,7 @@
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module Grid.Algo (
+module SC2.Grid.Algo (
     gridBfs,
     GridBfsRes (..),
     smartTransition,
@@ -23,9 +23,10 @@ module Grid.Algo (
 )
 where
 
-import Grid.Core
-import Utils (TilePos, dbg, distSquared)
-
+import SC2.Grid.Core
+import SC2.Geometry (distSquared)
+import Utils (dbg)
+import SC2.Grid.TilePos(TilePos)
 import Control.Monad (guard)
 import Control.Monad.State
 import Control.Monad.Trans.Maybe

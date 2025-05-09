@@ -1,7 +1,7 @@
 {-# OPTIONS -Wall #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module Grid.Utils (
+module SC2.Grid.Utils (
     gridFromLines,
     gridToStr,
     findPlacementPoint,
@@ -14,8 +14,11 @@ module Grid.Utils (
 )
 where
 
-import Grid.Algo (GridBfsRes (..), gridBfs, getAllNeighbors)
-import Grid.Core
+import SC2.Grid.Algo (GridBfsRes (..), gridBfs, getAllNeighbors)
+import SC2.Grid.Core
+import SC2.Grid.TilePos
+import SC2.Ids.UnitTypeId (UnitTypeId)
+import SC2.Geometry
 
 import Data.Bits
 import Data.ByteString qualified as BS
@@ -32,11 +35,9 @@ import Proto.S2clientprotocol.Common_Fields qualified as P
 import Data.Foldable (toList)
 import Data.Maybe (isJust)
 import Footprint
-import Utils (TilePos, dbg, distSquared, fromTuple)
 
 import Data.Sequence qualified as Seq
 import Debug.Trace (trace)
-import SC2.Ids.UnitTypeId (UnitTypeId)
 
 gridFromLines :: [String] -> Grid
 gridFromLines rows =
