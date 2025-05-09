@@ -43,8 +43,6 @@ dependencies:
 - safe
 - split
 
-extensions: OverloadedStrings
-
 ghc-options:
 - -Wall
 - -Wcompat
@@ -58,6 +56,11 @@ ghc-options:
 
 library:
   source-dirs: src
+  default-extensions:
+  - OverloadedStrings
+  - OverloadedLabels
+  - ImportQualifiedPost
+
 
 executables:
 # profiling how to
@@ -75,6 +78,11 @@ executables:
     - transformers
     - safe
     - random
+    default-extensions:
+    - OverloadedStrings
+    - OverloadedLabels
+    - ImportQualifiedPost
+
 
 tests:
   sc2hs-test:
