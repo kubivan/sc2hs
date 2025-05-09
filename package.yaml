@@ -42,6 +42,7 @@ dependencies:
 - template-haskell
 - safe
 - split
+- random
 
 ghc-options:
 - -Wall

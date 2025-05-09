@@ -3,11 +3,12 @@
 module BotDynamicState where
 
 import Actions (UnitTag)
-import Grid.Grid
+import SC2.Grid
 import Observation
 import Units
-import Utils (TilePos)
 import StepMonad
+import SC2.Army.Army
+import SC2.Army.Class
 
 import System.Random (Random, StdGen, randomR)
 import Data.HashMap.Strict (HashMap)
@@ -15,7 +16,6 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Set(Set)
 import Data.Set qualified as Set
 
-import Army
 data BotDynamicState = BotDynamicState
     { observation :: Observation
     , grid :: Grid
@@ -31,6 +31,10 @@ instance AgentDynamicState BotDynamicState where
     setObs obs (BotDynamicState _ grid gen army) = BotDynamicState obs grid gen army
     setGrid grid (BotDynamicState obs _ gen army) = BotDynamicState obs grid gen army
     dsUpdate obs grid (BotDynamicState _ _ gen army) = BotDynamicState obs grid gen army
+
+instance HasArmy BotDynamicState where
+  getArmy = dsArmy
+  setArmy a st = st { dsArmy = a }
 
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
 setRandGen gen (BotDynamicState obs grid _ army) = BotDynamicState obs grid gen army

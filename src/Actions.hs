@@ -12,6 +12,7 @@ import SC2.Ids.AbilityId
 import Utils
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Data(Unit(..), Point(..), Point2D(..))
+import SC2.Geometry
 
 import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()

@@ -28,8 +28,10 @@ where
 
 import Actions (UnitTag)
 import Footprint
-import Grid.Algo
-import Grid.Grid
+import SC2.Geometry
+import SC2.Grid
+import SC2.Grid.Algo
+import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)

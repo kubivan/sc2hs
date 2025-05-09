@@ -12,21 +12,15 @@ module TestBot where
 
 import Actions
 import Agent
-import Army
+import SC2.Army.Army
+import SC2.Army.Utils
+import SC2.Army.SquadFSM
 import AgentBulidUtils
 import ArmyLogic
 import BotDynamicState
 import Footprint (getFootprint)
-import Grid.Algo
-import Grid.Grid (
-    Grid (..),
-    addMark,
-    findPlacementPoint,
-    gridFromImage,
-    gridMerge,
-    gridPlace,
-    pixelIsRamp,
- )
+import SC2.Grid
+import Utils
 import Observation
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
@@ -44,15 +38,7 @@ import Units (
     unitIdleC,
     unitTypeC,
  )
-import Utils (
-    Pointable,
-    dbg,
-    distManhattan,
-    distSquared,
-    fromTuple,
-    tilePos,
-    triPartition,
- )
+import SC2.Geometry
 
 import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, sinkList, yieldMany, (.|))
 import Control.Applicative (Alternative (..))

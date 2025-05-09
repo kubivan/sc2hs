@@ -3,7 +3,8 @@
 
 import Conduit
 import Footprint
-import Grid.Grid
+import SC2.Grid
+import SC2.Geometry
 import SC2.Ids.UnitTypeId
 
 import qualified Data.ByteString as B
@@ -12,18 +13,20 @@ import Lens.Micro ((^.))
 import Observation
 import Test.Hspec
 import Units
+import Utils
 
 import Debug.Trace (trace, traceShow, traceShowId, traceM)
 
 import Data.Function
 import Data.List (find, sort, foldl', groupBy, minimumBy, sortOn)
 import qualified Data.Map as Map
+import Data.HashMap.Strict(HashMap)
+import qualified Data.HashMap.Strict as HashMap
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 
 import Data.Maybe (fromJust, fromMaybe, isJust)
 import Lens.Micro.Extras (view)
-import Utils (TilePos, dbg, distManhattan, distSquared, tilePos)
 
 import Data.Monoid
 import Proto.S2clientprotocol.Debug_Fields (unitType)
@@ -173,7 +176,7 @@ spec =
                         regionLookup = buildRegionLookup regions
                         regionGraph = buildRegionGraph regions
 
-                        nexusRegion = Map.lookup nexusPos regionLookup
+                        nexusRegion = HashMap.lookup nexusPos regionLookup
 
                     -- print $ "enemy start " ++ show enemyPos ++ " " ++ show (Map.lookup enemyPos regionLookup)
                     print $ "player start " ++ show nexusPos ++ " " ++ show nexusRegion

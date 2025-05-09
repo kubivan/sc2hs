@@ -33,6 +33,8 @@ module Units (
 where
 
 import Data.Maybe (isJust)
+import SC2.Geometry
+import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Unit, UnitOrder)
@@ -41,7 +43,7 @@ import UnitsTh
 import Conduit
 import Data.Function (on)
 import Data.List (maximumBy, minimumBy)
-import qualified Data.Map as Map
+import Data.Map qualified as Map
 import Data.Ord ()
 import GHC.Word (Word32)
 import Lens.Micro
@@ -51,7 +53,7 @@ import Utils
 import Proto.S2clientprotocol.Common_Fields as C
 
 -- import qualified Proto.S2clientprotocol.Raw as PR
-import qualified Proto.S2clientprotocol.Raw_Fields as PR
+import Proto.S2clientprotocol.Raw_Fields qualified as PR
 
 toEnum' :: (Enum e) => GHC.Word.Word32 -> e
 toEnum' = toEnum . fromIntegral

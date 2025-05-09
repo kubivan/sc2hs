@@ -29,7 +29,7 @@ where
 
 import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Agent
-import Grid.Grid
+import SC2.Grid
 import Observation
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)

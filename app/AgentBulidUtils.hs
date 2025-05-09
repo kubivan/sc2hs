@@ -10,11 +10,13 @@
 module AgentBulidUtils where
 
 import Actions
-import Grid.Grid (
+import SC2.Grid(
     Grid (..),
     canPlaceBuilding,
     findPlacementPoint,
     findPlacementPointInRadius,
+    TilePos,
+    tilePos
  )
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
@@ -40,11 +42,9 @@ import Units (
     toEnum',
     unitTypeC,
  )
-import Utils (
-    TilePos,
+import SC2.Geometry (
     distManhattan,
     distSquared,
-    tilePos,
  )
 
 import Conduit (filterC, mapC, (.|))

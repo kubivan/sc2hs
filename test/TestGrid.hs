@@ -1,7 +1,7 @@
 module TestGrid (gridUnitTests) where
 
 import Footprint
-import Grid.Grid
+import SC2.Grid
 import SC2.Ids.UnitTypeId
 import Test.Hspec
 import Data.List (sort)
