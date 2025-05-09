@@ -41,8 +41,8 @@ import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
+import Data.HashMap.Strict(HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
@@ -84,9 +84,9 @@ data StaticInfo = StaticInfo
     , heightMap :: Grid
     , expandsPos :: [TilePos]
     , enemyStartLocation :: TilePos
-    , regionGraph :: !(Map.Map RegionId (Set.Set RegionId))
-    , regionLookup :: !(Map.Map TilePos RegionId)
-    , siRegions :: !(Map.Map RegionId Region)
+    , regionGraph :: !(HashMap RegionId (Set.Set RegionId))
+    , regionLookup :: !(HashMap TilePos RegionId)
+    , siRegions :: !(HashMap RegionId Region)
     }
 
 class AgentDynamicState dyn where

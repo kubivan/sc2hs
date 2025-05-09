@@ -68,7 +68,7 @@ unitToAbility traits uid = case traits HashMap.!? uid of
     Just t -> toEnum . fromIntegral $ t ^. #abilityId
     Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
 
-findAssignee :: Observation -> Action -> Maybe Units.Unit
+findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
 
 unitCost :: UnitTraits -> UnitTypeId -> Cost

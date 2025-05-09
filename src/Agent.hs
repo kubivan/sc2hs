@@ -10,11 +10,10 @@ module Agent (
 where
 
 import Actions (Action, DebugCommand (..))
-import Data.Text (Text)
 import SC2.Proto.Data qualified as Proto
-
-
 import UnitAbilities
+
+import Data.Text (Text)
 import Data.Word (Word32)
 
 data StepPlan = StepPlan

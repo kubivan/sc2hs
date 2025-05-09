@@ -34,9 +34,9 @@ import Data.Maybe (catMaybes, isJust)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Debug.Trace (trace, traceM)
-
---
 import Data.Map qualified as Map
+import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict qualified as HashMap
 
 type TilePath = [TilePos]
 
@@ -291,8 +291,8 @@ gridSegment grid =
 
 type RegionId = Int
 type Region = Set.Set TilePos
-type RegionGraph = Map.Map RegionId (Set.Set RegionId)
-type RegionLookup = Map.Map TilePos RegionId
+type RegionGraph = HashMap RegionId (Set.Set RegionId)
+type RegionLookup = HashMap TilePos RegionId
 
 -- Get 4-connected neighbors (no diagonals)
 adjacent4 :: TilePos -> [TilePos]
@@ -300,18 +300,18 @@ adjacent4 (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
 buildRegionLookup :: [(RegionId, Region)] -> RegionLookup
 buildRegionLookup regions =
-    Map.fromList
+    HashMap.fromList
         [(pos, rid) | (rid, region) <- regions, pos <- Set.toList region]
 
 buildRegionGraph :: [(RegionId, Region)] -> RegionGraph
 buildRegionGraph regions =
-    Map.fromListWith
+    HashMap.fromListWith
         Set.union
         [ (rid, Set.singleton rid')
         | (rid, region) <- regions
         , pos <- Set.toList region
         , neighbor <- adjacent4 pos
-        , Just rid' <- [Map.lookup neighbor regionLookup]
+        , Just rid' <- [HashMap.lookup neighbor regionLookup]
         , rid /= rid' -- skip self
         ]
   where

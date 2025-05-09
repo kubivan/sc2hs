@@ -12,6 +12,7 @@ module TestBot where
 
 import Actions
 import Agent
+import Army
 import AgentBulidUtils
 import ArmyLogic
 import BotDynamicState
@@ -64,7 +65,8 @@ import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (partition, sortOn)
-import Data.Map qualified as Map
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
@@ -344,7 +346,7 @@ debugSquads = do
         squadLeaderTags :: [UnitTag]
         squadLeaderTags = head . squadUnits <$> squads
         squadLeaders = getUnits squadLeaderTags hashArmy
-    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (Map.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
+    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
 agentResetGrid =
@@ -404,7 +406,7 @@ instance Agent BotAgent where
             regions = gridSegment gridChoked
             regionGraph = buildRegionGraph regions
             regionLookup = buildRegionLookup regions
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (Map.fromList regions)
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions)
 
         traceM "create ds"
         dynamicState <- makeDynamicState obsRaw grid

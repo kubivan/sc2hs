@@ -5,29 +5,32 @@ module ArmyLogic where
 
 import BotDynamicState
 
-import SC2.Ids.AbilityId
 import Actions (Action (..), UnitTag)
+import Army
 import Grid.Grid
 import Observation
-import StepMonad
+import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (Alliance (..), Point, Point2D)
+import SC2.Proto.Data qualified as Proto
+import StepMonad
 import Units
 import Utils
-import SC2.Proto.Data (Point, Point2D, Alliance(..))
-import SC2.Proto.Data qualified as Proto
 
 import Conduit (filterC, mapC)
 import Control.Applicative ((<|>))
 import Control.Monad (filterM, void, when)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
-import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
-import Data.Map qualified as Map
+import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict qualified as HashMap
+import Data.HashSet qualified as HashSet
+import Data.Set(Set)
+import Data.Set qualified as Set
 import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
 import Data.Ord (comparing)
-import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
@@ -298,10 +301,10 @@ squadAssign :: ArmySquad -> StepMonad BotDynamicState ()
 squadAssign s = do
     ds <- agentGet
     (si, _) <- agentAsk
-    let regionById rid = siRegions si Map.! rid
-        allRegions = Map.keysSet $ siRegions si
-        usedRegions = Set.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
-        availableRegionIds = Set.toList $ allRegions Set.\\ usedRegions
+    let regionById rid = siRegions si HashMap.! rid
+        allRegions = HashMap.keysSet $ siRegions si
+        usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
+        availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
     traceM $ "assigning: all regions " ++ show (allRegions)
     traceM $ "assigning: used regions " ++ show (usedRegions)
     traceM $ "assigning: availableRegionIds " ++ show (availableRegionIds)

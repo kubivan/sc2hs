@@ -9,52 +9,13 @@ import Units
 import Utils (TilePos)
 import StepMonad
 
-import Data.HashMap.Strict qualified as HashMap
-import Data.Set qualified as Set
 import System.Random (Random, StdGen, randomR)
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
+import Data.Set(Set)
+import Data.Set qualified as Set
 
-data Target = TargetPos TilePos | TargetUnit UnitTag deriving (Eq, Show)
-
-data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StateEvade deriving (Eq, Show)
-
-armyUnitStateStr :: ArmyUnitState -> String
-armyUnitStateStr (StateIdle) = "Idle"
-armyUnitStateStr (StateExplore t) = "Explore: " ++ show t
-armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r)
-armyUnitStateStr (StateAttack t) = "Attack: " ++ show t
-armyUnitStateStr (StateEvade) = "Evade"
-
-data ProtossUnit = Stalker Unit ArmyUnitState | Zealot Unit ArmyUnitState
-
-data ArmySquad = ArmySquad
-    { squadUnits :: [UnitTag]
-    , squadState :: ArmyUnitState
-    }
-    deriving (Eq, Show)
-
-squadId :: ArmySquad -> UnitTag
-squadId s = head $ squadUnits s
-
-isSquadIdle :: ArmySquad -> Bool
-isSquadIdle s = case squadState s of
-    StateIdle -> True
-    _ -> False
-
-data ArmyUnitData = ArmyUnitData
-    { auVisitedTiles :: Set.Set TilePos
-    , auUnvisitedEdge :: Set.Set TilePos
-    }
-
-data Army = Army
-    { armyUnitsData :: HashMap.HashMap UnitTag ArmyUnitData
-    , armyUnits :: HashMap.HashMap UnitTag Unit
-    , armyUnitsPos :: Set.Set TilePos
-    , armySquads :: [ArmySquad]
-    }
-
-emptyArmy :: Army
-emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
-
+import Army
 data BotDynamicState = BotDynamicState
     { observation :: Observation
     , grid :: Grid
