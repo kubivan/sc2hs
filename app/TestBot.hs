@@ -57,7 +57,7 @@ import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
 import Data.Word (Word32)
-import Debug.Trace (traceM)
+import Debug.Trace (traceM, trace)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import System.Random (newStdGen)
@@ -403,9 +403,17 @@ instance Agent BotAgent where
 
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
     agentStep (BotAgent phase si ds) obs abilities =
+
         let sm = agentStepPhase phase
             (phase', plan, ds') = runStepM si abilities (setObs (obs ^. #observation) ds) sm
-         in (BotAgent phase' si ds', plan)
+            actions = obs ^. #actions
+            errors = obs ^. #actionErrors
+            tracedResult =
+                if not (null actions) || not (null errors)
+                then trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
+                    (BotAgent phase' si ds', plan)
+                else (BotAgent phase' si ds', plan)
+        in tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
 agentStepPhase Opening =
