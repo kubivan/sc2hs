@@ -16,6 +16,7 @@ module StepMonad (
     agentStatic,
     agentGet,
     agentObs,
+    agentModify,
     agentAbilities,
     agentPut,
     UnitAbilities,
@@ -115,6 +116,9 @@ agentGet = lift get
 
 agentPut :: dyn -> StepMonad dyn ()
 agentPut = lift . put
+
+agentModify :: (d -> d) -> StepMonad d ()
+agentModify f = agentGet >>= agentPut . f
 
 runStepM :: StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
 runStepM staticInfo abilities dynamicState stepMonad =
