@@ -8,6 +8,7 @@ module SC2.Grid.Core (
     gridH,
     gridPlace,
     addMark,
+    removeMark,
     gridSetPixel,
     gridPixel,
     gridPixelSafe,
@@ -93,7 +94,12 @@ addMark :: Grid -> Footprint -> TilePos -> Grid
 addMark grid (Footprint pixels) (cx, cy) =
     foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
 
+removeMark :: Grid -> Footprint -> TilePos -> Grid
+removeMark grid (Footprint pixels) (cx, cy) =
+    foldl' (\accGrid (x, y, _) -> gridSetPixel accGrid (cx + x, cy + y) ' ') grid pixels
+
 gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
-gridPlace g u (cx, cy) = trace ("gridPlace " ++ show u) $ foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
-  where
-    ptrn = pixels (getFootprint u)
+gridPlace g u (cx, cy) = -- trace ("gridPlace " ++ show u) $
+  foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
+    where
+      ptrn = pixels (getFootprint u)
