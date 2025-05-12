@@ -89,7 +89,7 @@ agentUpdateDsArmy = do
         (refilledSquads, restUnits) = fillSquads squadsNotFull freeArmyUnitTags
 
         newSquadUnits = chunksOf 5 restUnits
-        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = StateSquadIdle}]) newSquadUnits
+        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = StateSquadForming Nothing}]) newSquadUnits
 
         army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
 

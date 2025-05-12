@@ -12,12 +12,14 @@ import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point, Point2D)
 import SC2.Proto.Data qualified as Proto
 import StepMonad
+import StepMonadUtils
 import Units
 import Utils
 
 import Conduit (filterC, mapC)
 import Control.Applicative ((<|>))
 import Control.Monad (filterM, void, when)
+import Data.Char (isDigit)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
 import Data.HashMap.Strict (HashMap)
@@ -35,14 +37,17 @@ import Safe (headMay, minimumByMay)
 import System.Random (StdGen, randomR)
 
 import Debug.Trace (traceM)
+import Footprint
+import SC2.Proto.Data qualified as Proto
 
 isSquadFull :: (HasArmy d) => ArmySquad -> StepMonad d Bool
 isSquadFull squad = do
     ds <- agentGet
     let unitMap = armyUnits $ getArmy ds
         tags = squadUnits squad
-        squadSize = length tags
-    return $ length tags == squadSize && all (`HashMap.member` unitMap) tags
+        -- TODO: magic number
+        squadSize = 5
+    return $ length tags == squadSize && all (`HashMap.member` unitMap) tags && all (\t -> let Just u = HashMap.lookup t unitMap in (1.0 :: Float) == u ^. #buildProgress) tags
 
 squadAssignedRegion :: ArmySquad -> Maybe RegionId
 squadAssignedRegion squad = case squadState squad of
@@ -112,14 +117,40 @@ squadExploreRegion s rid region =
 squadDoAttack :: ArmySquad -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
 
+squadForm :: (HasArmy d, AgentDynamicState d) => ArmySquad -> SquadState -> StepMonad d ()
+squadForm squad (StateSquadForming Nothing) = do
+    isFull <- isSquadFull squad
+    when isFull $ do
+        traceM "squadForm: squadIsFull"
+        ds <- agentGet
+        let army = getArmy ds
+            formation = squadFormationFootprint
+            unitByTag t = HashMap.lookup t (armyUnits army)
+            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+            leader = head units
+            leaderTpos = tilePos $ leader ^. #pos
+        -- TODO: magic number: consider implement findplacementinregion
+        gatherPlace <- findPlacementPointInRadiusSM formation leaderTpos 10
+        case gatherPlace of
+            -- Nothing -> traceM ("[err] cannot gather for some reason: move separately") $ squadTransitionToExploreMove squad
+            Nothing -> squadTransitionToIdle squad
+            (Just fcenter) -> squadMoveToFormation squad fcenter formation >> squadTransitionToGatherToFormation squad fcenter formation
+squadForm squad (StateSquadForming (Just (cpos, formation))) = do
+    traceM "squadForm: moving to the formation"
+    isComplete <- squadMoveToFormation squad cpos formation
+    when isComplete $ removeMarkSM formation cpos >> squadTransitionToIdle squad
+squadForm _ s = error ("squadForm: invalid state: " ++ show s)
+
 squadStep :: (HasArmy d, AgentDynamicState d) => ArmySquad -> StepMonad d ()
 squadStep s =
     case squadState s of
-        (StateExploreRegion rid region) -> squadExploreRegion s rid region
+        state@(StateSquadForming{}) -> squadForm s state
+        state@(StateExploreRegion rid region) -> squadExploreRegion s rid region
         (StateAttack t) -> squadDoAttack s t
         _ -> return ()
 
-agentUpdateSquads :: (HasArmy d) => StepMonad d ()
+agentUpdateSquads :: (HasArmy d, AgentDynamicState d) => StepMonad d ()
 agentUpdateSquads = do
     ds <- agentGet
     let army = getArmy ds
@@ -127,43 +158,85 @@ agentUpdateSquads = do
 
     mapM_ squadUpdateState squads
 
-squadSwitchIdle :: (HasArmy d) => ArmySquad -> StepMonad d ()
-squadSwitchIdle s = do
-    traceM "switch to idle"
+squadTransitionTo :: (HasArmy d) => ArmySquad -> SquadState -> StepMonad d ()
+squadTransitionTo squad state' = do
+    traceM $ "squad " ++ show (squadId squad) ++ "switching to " ++ armyUnitStateStr state'
+    agentModify $ \ds ->
+        let squad' = squad{squadState = state'}
+            army = getArmy ds
+            army' = army{armySquads = replaceSquad squad' (armySquads army)}
+         in setArmy army' ds
+
+squadTransitionToIdle :: (HasArmy d) => ArmySquad -> StepMonad d ()
+squadTransitionToIdle s = squadTransitionTo s StateSquadIdle
+
+squadTransitionToGatherToFormation :: (HasArmy d) => ArmySquad -> TilePos -> Footprint -> StepMonad d ()
+squadTransitionToGatherToFormation squad fcenter formation = do
+    traceM "switch to squadTransitionToGatherToFormation"
     ds <- agentGet
-    let squad' = s{squadState = StateSquadIdle}
+    let
+        state' = StateSquadForming (Just (fcenter, formation))
+        squad' = squad{squadState = state'}
         army = getArmy ds
         squads' = replaceSquad squad' (armySquads army)
         army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
 -- data ArmyUnitState = StateIdle | StateExplore Target | StateExploreRegion RegionId Region | StateAttack Target | StackEvade deriving (Eq, Show)
-squadUpdateStateExploreRegion :: (HasArmy d) => ArmySquad -> RegionId -> Region -> StepMonad d ()
-squadUpdateStateExploreRegion s rid region
-    | Set.size region == 0 = squadSwitchIdle s
+-- squadUpdateStateExploreRegion :: (HasArmy d) => ArmySquad -> RegionId -> Region -> StepMonad d ()
+squadUpdateStateExploreRegion :: (HasArmy d) => ArmySquad -> SquadState -> StepMonad d ()
+squadUpdateStateExploreRegion squad state@(StateExploreRegion rid region)
+    | Set.size region == 0 = squadTransitionToIdle squad
     | otherwise = do
         ds <- agentGet
         let army = getArmy ds
             unitByTag t = HashMap.lookup t (armyUnits army)
             -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-            units = catMaybes $ [unitByTag t | t <- squadUnits s]
+            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
 
             -- TODO: correct radius
             -- TODO: intersect 2 sets instead
             pixelsToRemove = concatMap (tilesInRadius 5) (tilePos . view #pos <$> units)
             region' = foldl' (flip Set.delete) region pixelsToRemove
 
-            squad' = s{squadState = StateExploreRegion rid region'}
+            state' = StateExploreRegion rid region'
+            squad' = squad{squadState = state'}
             updateSquads = replaceSquad squad' (armySquads (getArmy ds))
             army' = (getArmy ds){armySquads = updateSquads}
         if Set.size region' == 0
             then
-                squadSwitchIdle s
+                squadTransitionToIdle squad
             else
                 agentPut $ setArmy army' ds
+squadUpdateStateExploreRegion _ s = error ("squadUpdateStateExploreRegion: invalid state " ++ show s)
 
-squadUpdateState :: (HasArmy d) => ArmySquad -> StepMonad d ()
+-- command to move units to formawiton. returns true when complete
+squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => ArmySquad -> TilePos -> Footprint -> StepMonad d Bool
+squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
+    ds <- agentGet
+    let army = getArmy ds
+        unitByTag t = HashMap.lookup t (armyUnits army)
+        -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+        (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
+        -- filter out leader 'c' : leader goes to center
+        unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) formation
+
+        unitsWithPos = take (length units) unitsFormationPos `zip` units
+
+    -- if all (\(p, u) -> p == (tilePos . view #pos $ u) ) unitsWithPos
+    if all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+        then return True
+        else do
+            command [PointCommand AttackAttack [leader] (toPoint2D center)]
+            command [PointCommand AttackAttack [u] (toPoint2D p) | (p, u) <- unitsWithPos]
+            return False
+
+squadUpdateState :: (HasArmy d, AgentDynamicState d) => ArmySquad -> StepMonad d ()
 squadUpdateState s =
     case squadState s of
-        (StateExploreRegion rid region) -> squadUpdateStateExploreRegion s rid region
+        forming@(StateSquadForming{}) -> squadForm s forming
+        explore@(StateExploreRegion{}) -> squadUpdateStateExploreRegion s explore
         _ -> return ()
+
+squadFormationFootprint :: Footprint
+squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]

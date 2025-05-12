@@ -5,30 +5,36 @@ import SC2.Grid.Algo
 import SC2.Grid.TilePos
 import Units
 import Utils
+import Footprint
 
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Maybe
 import System.Random (Random, StdGen, randomR)
+
+data Event = UnitInRange
 
 data Target
     = TargetPos TilePos
     | TargetUnit UnitTag
     deriving (Eq, Show)
 
+data StateExploreRegionState = SquadGather | SquadMove deriving (Eq, Show)
+
 data SquadState
     = StateSquadIdle
-    | StateExplore Target
-    | StateExploreRegion RegionId Region
+    | StateSquadForming (Maybe (TilePos, Footprint))
+    | StateExploreRegion RegionId Region --StateExploreRegionState
     | StateAttack Target
     | StateEvade
     deriving (Eq, Show)
 
 armyUnitStateStr :: SquadState -> String
 armyUnitStateStr (StateSquadIdle) = "Idle"
-armyUnitStateStr (StateExplore t) = "Explore: " ++ show t
-armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r)
+armyUnitStateStr (StateSquadForming j) = "Forming: " ++ show (isJust j)
+armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r) -- ++ " " ++ show (sub)
 armyUnitStateStr (StateAttack t) = "Attack: " ++ show t
 armyUnitStateStr (StateEvade) = "Evade"
 
