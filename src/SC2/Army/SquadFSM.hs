@@ -210,7 +210,7 @@ squadUpdateStateExploreRegion squad state@(StateExploreRegion rid region)
                 agentPut $ setArmy army' ds
 squadUpdateStateExploreRegion _ s = error ("squadUpdateStateExploreRegion: invalid state " ++ show s)
 
--- command to move units to formawiton. returns true when complete
+-- command to move units to formation. returns true when complete
 squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => ArmySquad -> TilePos -> Footprint -> StepMonad d Bool
 squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
     ds <- agentGet
