@@ -40,15 +40,6 @@ import Debug.Trace (traceM)
 import Footprint
 import SC2.Proto.Data qualified as Proto
 
-isSquadFull :: (HasArmy d) => ArmySquad -> StepMonad d Bool
-isSquadFull squad = do
-    ds <- agentGet
-    let unitMap = armyUnits $ getArmy ds
-        tags = squadUnits squad
-        -- TODO: magic number
-        squadSize = 5
-    return $ length tags == squadSize && all (`HashMap.member` unitMap) tags && all (\t -> let Just u = HashMap.lookup t unitMap in (1.0 :: Float) == u ^. #buildProgress) tags
-
 squadAssignedRegion :: ArmySquad -> Maybe RegionId
 squadAssignedRegion squad = case squadState squad of
     StateExploreRegion rid _ -> Just rid
@@ -237,6 +228,3 @@ squadUpdateState s =
         forming@(StateSquadForming{}) -> squadForm s forming
         explore@(StateExploreRegion{}) -> squadUpdateStateExploreRegion s explore
         _ -> return ()
-
-squadFormationFootprint :: Footprint
-squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]

@@ -1,7 +1,10 @@
 module SC2.Army.Utils where
 
 import Actions (Action (..), UnitTag)
+import Footprint
 import Observation
+import SC2.Army.Army
+import SC2.Army.Class
 import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
@@ -30,6 +33,18 @@ import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
 import System.Random (StdGen, randomR)
+
+squadFormationFootprint :: Footprint
+squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
+
+isSquadFull :: (HasArmy d) => ArmySquad -> StepMonad d Bool
+isSquadFull squad = do
+    ds <- agentGet
+    let unitMap = armyUnits $ getArmy ds
+        tags = squadUnits squad
+        -- TODO: magic number
+        squadSize = 5
+    return $ length tags == squadSize && all (`HashMap.member` unitMap) tags && all (\t -> let Just u = HashMap.lookup t unitMap in (1.0 :: Float) == u ^. #buildProgress) tags
 
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
 isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
