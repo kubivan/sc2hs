@@ -168,7 +168,7 @@ instance SquadFS FSExploreRegion where
 
                 state' = FSExploreRegion rid region'
 
-            return (False, state')
+            return (Set.size region' == 0, state')
     fsOnEnter s _ = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
     fsOnExit  s _ = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
 
