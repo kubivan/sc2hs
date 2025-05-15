@@ -5,6 +5,7 @@ import Footprint
 import Observation
 import SC2.Army.Army
 import SC2.Army.Class
+import SC2.Army.Squad
 import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
@@ -37,10 +38,10 @@ import System.Random (StdGen, randomR)
 squadFormationFootprint :: Footprint
 squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
 
-isSquadFull :: (HasArmy d) => ArmySquad -> StepMonad d Bool
+isSquadFull :: (HasArmy d) => Squad -> StepMonad d Bool
 isSquadFull squad = do
     ds <- agentGet
-    let unitMap = armyUnits $ getArmy ds
+    let unitMap = getUnitMap ds
         tags = squadUnits squad
         -- TODO: magic number
         squadSize = 5

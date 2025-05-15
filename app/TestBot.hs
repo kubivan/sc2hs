@@ -13,6 +13,8 @@ module TestBot where
 import Actions
 import Agent
 import SC2.Army.Army
+import SC2.Army.Squad
+import SC2.Army.SquadFSM
 import SC2.Army.Utils
 import SC2.Army.SquadFSM
 import AgentBulidUtils
@@ -49,8 +51,9 @@ import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
-import Data.HashMap.Strict qualified as HashMap
+import Data.HashSet qualified as HashSet
 import Data.List (partition, sortOn)
+import Data.Maybe (mapMaybe)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (catMaybes, fromJust, isJust)
@@ -332,7 +335,8 @@ debugSquads = do
         squadLeaderTags :: [UnitTag]
         squadLeaderTags = head . squadUnits <$> squads
         squadLeaders = getUnits squadLeaderTags hashArmy
-    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
+    -- debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
+    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
 agentResetGrid =
@@ -355,8 +359,48 @@ agentUpdateGrid f =
         ds <- agentGet
         agentPut $ setGrid (f (getGrid ds)) ds
 
+
+setArmy a st = st { dsArmy = a }
+
+squadAssign :: Squad -> StepMonad BotDynamicState ()
+squadAssign s = do
+    ds <- agentGet
+    (si, _) <- agentAsk
+    let regionById rid = siRegions si HashMap.! rid
+        allRegions = HashMap.keysSet $ siRegions si
+        usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
+        availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
+    traceM $ "assigning: all regions " ++ show (allRegions)
+    traceM $ "assigning: used regions " ++ show (usedRegions)
+    traceM $ "assigning: availableRegionIds " ++ show (availableRegionIds)
+    case availableRegionIds of
+        [] -> return () -- no unassigned regions left
+        (rid : _) -> do
+            -- Assign squad to region
+            let squad' = s{squadState = AnyFS (FSExploreRegion rid (regionById rid))}
+                squads' = replaceSquad squad' (armySquads (dsArmy ds))
+                army' = (dsArmy ds){armySquads = squads'}
+            -- traceM $ "   assigded squads': " ++ show squad'
+            agentPut $ setArmy army' ds
+
+agentAssignIdleSquads ::  StepMonad BotDynamicState ()
+agentAssignIdleSquads = do
+    ds <- agentGet
+    let army = dsArmy ds
+        squads = armySquads army
+
+    fullIdleSquads <- filter isSquadIdle <$> filterM isSquadFull squads
+    mapM_ squadAssign fullIdleSquads
+
 agentArmyControl :: StepMonad BotDynamicState ()
-agentArmyControl = {-# SCC "agentStep:agentArmyControl" #-} agentAssignIdleSquads >> agentUpdateSquads >> agentSquadsStep
+agentArmyControl = do
+    agentAssignIdleSquads
+    ds <- agentGet
+    let army = dsArmy ds
+        squads = armySquads army
+    squads' <- mapM processSquad squads
+    let army' = army{armySquads=squads'}
+    agentPut $ setArmy army' ds
 
 data BotAgent
     = BotAgent

@@ -6,6 +6,8 @@ import SC2.Grid.TilePos
 import Units
 import Utils
 import Footprint
+import SC2.Army.Squad
+import StepMonad
 
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
@@ -14,53 +16,14 @@ import Data.Set qualified as Set
 import Data.Maybe
 import System.Random (Random, StdGen, randomR)
 
-data Event = UnitInRange
+-- class HasArmy d where
+--   getArmy :: d -> Army
+--   setArmy :: Army -> d -> d
 
 data Target
     = TargetPos TilePos
     | TargetUnit UnitTag
     deriving (Eq, Show)
-
-data StateExploreRegionState = SquadGather | SquadMove deriving (Eq, Show)
-
-data SquadState
-    = StateSquadIdle
-    | StateSquadForming (Maybe (TilePos, Footprint))
-    | StateExploreRegion RegionId Region --StateExploreRegionState
-    | StateAttack Target
-    | StateEvade
-    deriving (Eq, Show)
-
-armyUnitStateStr :: SquadState -> String
-armyUnitStateStr (StateSquadIdle) = "Idle"
-armyUnitStateStr (StateSquadForming j) = "Forming: " ++ show (isJust j)
-armyUnitStateStr (StateExploreRegion rid r) = "ExploreRegion: " ++ show rid ++ " size" ++ show (length r) -- ++ " " ++ show (sub)
-armyUnitStateStr (StateAttack t) = "Attack: " ++ show t
-armyUnitStateStr (StateEvade) = "Evade"
-
-data ArmyUnitState
-    = StateUnitIdle
-    | StateUnitAttack
-    | StateUnitMove
-    | StateUnitEvade
-    deriving (Eq, Show)
-
--- data ProtossUnit = Stalker Unit ArmyUnitState | Zealot Unit ArmyUnitState
-
-data ArmySquad = ArmySquad
-    { squadUnits :: [UnitTag]
-    , squadState :: SquadState
-    -- , squadUnitStates :: HashMap UnitTag SquadState
-    }
-    deriving (Eq, Show)
-
-squadId :: ArmySquad -> UnitTag
-squadId s = head $ squadUnits s
-
-isSquadIdle :: ArmySquad -> Bool
-isSquadIdle s = case squadState s of
-    StateSquadIdle -> True
-    _ -> False
 
 data ArmyUnitData = ArmyUnitData
     { auVisitedTiles :: Set TilePos
@@ -71,11 +34,10 @@ data Army = Army
     { armyUnitsData :: HashMap UnitTag ArmyUnitData
     , armyUnits :: HashMap UnitTag Unit
     , armyUnitsPos :: Set TilePos
-    , armySquads :: [ArmySquad]
+    , armySquads :: [Squad]
     }
 
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
 
-replaceSquad :: ArmySquad -> [ArmySquad] -> [ArmySquad]
-replaceSquad new = map (\s -> if squadId s == squadId new then new else s)
+

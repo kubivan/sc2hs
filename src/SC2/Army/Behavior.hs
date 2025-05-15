@@ -2,9 +2,10 @@ module SC2.Army.Behavior where
 
 import Actions (Action (..), UnitTag)
 import Observation
-import SC2.Army.Army
+-- import SC2.Army.Army
 import SC2.Army.Class
 import SC2.Army.Utils
+import SC2.Army.Squad
 import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
@@ -39,19 +40,16 @@ import System.Random (StdGen, randomR)
 import Debug.Trace (traceM)
 import Footprint
 import SC2.Proto.Data qualified as Proto
-import SC2.Army.Army (ArmySquad)
-
 
 --TODO: implement
-wanderAround :: Int -> StepMonad d ()
-wanderAround radius = pure()
+--wanderAround :: FS s => s Int -> StepMonad d s
+wanderAround s radius = pure ()
 
 -- command to move units to formation. returns true when complete
-squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => ArmySquad -> TilePos -> Footprint -> StepMonad d Bool
+squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => Squad -> TilePos -> Footprint -> StepMonad d Bool
 squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
     ds <- agentGet
-    let army = getArmy ds
-        unitByTag t = HashMap.lookup t (armyUnits army)
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
         -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
         (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
         -- filter out leader 'c' : leader goes to center
@@ -67,12 +65,11 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
             command [PointCommand AttackAttack [u] (toPoint2D p) | (p, u) <- unitsWithPos]
             return False
 
-squadExploreRegion :: (HasArmy d, AgentDynamicState d) => ArmySquad -> Region -> StepMonad d ()
+squadExploreRegion :: (HasArmy d, AgentDynamicState d) => Squad -> Region -> StepMonad d ()
 squadExploreRegion s region =
     do
         ds <- agentGet
-        let army = getArmy ds
-            unitByTag t = fromJust $ HashMap.lookup t (armyUnits army)
+        let unitByTag t = fromJust $ HashMap.lookup t (getUnitMap ds)
             grid = getGrid ds
             targetPos = head $ Set.toList region
             unitTags@(squadLeaderTag : squadsRest) = squadUnits s
@@ -86,5 +83,17 @@ squadExploreRegion s region =
             else do
                 command [PointCommand AttackAttack [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
 
-squadDoAttack :: ArmySquad -> Target -> StepMonad d ()
+squadDoAttack :: Squad -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
+
+isSquadFormed :: (HasArmy d, AgentDynamicState d) => Squad -> TilePos -> Footprint -> StepMonad d Bool
+isSquadFormed squad center formation = do
+        ds <- agentGet
+        let unitByTag t = HashMap.lookup t (getUnitMap ds)
+            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+            (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
+            -- filter out leader 'c' : leader goes to center
+            unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) (pixels formation)
+
+            unitsWithPos = take (length units) unitsFormationPos `zip` units
+        return $ all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos

@@ -33,8 +33,10 @@ instance AgentDynamicState BotDynamicState where
     dsUpdate obs grid (BotDynamicState _ _ gen army) = BotDynamicState obs grid gen army
 
 instance HasArmy BotDynamicState where
-  getArmy = dsArmy
-  setArmy a st = st { dsArmy = a }
+  --getArmy = dsArmy
+  --getUnitMap :: d -> HashMap UnitTag Unit
+  getUnitMap bds = armyUnits $ dsArmy bds
+  --setArmy a st = st { dsArmy = a }
 
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
 setRandGen gen (BotDynamicState obs grid _ army) = BotDynamicState obs grid gen army

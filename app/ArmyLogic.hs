@@ -7,6 +7,8 @@ import BotDynamicState
 
 import Actions (Action (..), UnitTag)
 import SC2.Army.Army
+import SC2.Army.Squad
+import SC2.Army.SquadFSM
 import SC2.Army.Utils
 import SC2.Grid
 import SC2.Geometry
@@ -63,7 +65,7 @@ agentUpdateDsArmy = do
         -- remove dead units
         squads = concatMap (\s -> let su = squadUnits s in [s{squadUnits = filter (`HashMap.member` armyHashMap) su}]) (armySquads $ dsArmy ds)
 
-        fillSquads :: [ArmySquad] -> [UnitTag] -> ([ArmySquad], [UnitTag])
+        fillSquads :: [Squad] -> [UnitTag] -> ([Squad], [UnitTag])
         fillSquads [] rest = ([], rest)
         fillSquads squads [] = (squads, [])
         fillSquads (s : rest) rookies =
@@ -74,10 +76,10 @@ agentUpdateDsArmy = do
                 (filledRest, leftover) = fillSquads rest remaining
              in (s' : filledRest, leftover)
 
-        isSquadFull :: ArmySquad -> Bool
+        isSquadFull :: Squad -> Bool
         isSquadFull squad = all (`HashMap.member` armyHashMap) (squadUnits squad) && (squadSize == length (squadUnits squad))
 
-        isSquadEmpty :: ArmySquad -> Bool
+        isSquadEmpty ::Squad -> Bool
         isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
 
         (squadsFull, squadsToCheck) = partition isSquadFull squads
@@ -89,13 +91,13 @@ agentUpdateDsArmy = do
         (refilledSquads, restUnits) = fillSquads squadsNotFull freeArmyUnitTags
 
         newSquadUnits = chunksOf 5 restUnits
-        newSquads = concatMap (\us -> [ArmySquad{squadUnits = us, squadState = StateSquadForming Nothing}]) newSquadUnits
+        newSquads = concatMap (\us -> [Squad{squadUnits = us, squadState = AnyFS (FSSquadForming Nothing)}]) newSquadUnits
 
         army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
 
-    _ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
-    _ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
-    _ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
+    --_ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
+    --_ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
+    --_ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
     agentPut $ ds{dsArmy = army'}
 
 -- Update the visited tiles for a unit in the army
