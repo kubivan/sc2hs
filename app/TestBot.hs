@@ -377,7 +377,7 @@ squadAssign s = do
         [] -> return () -- no unassigned regions left
         (rid : _) -> do
             -- Assign squad to region
-            let squad' = s{squadState = AnyFS (FSExploreRegion rid (regionById rid))}
+            let squad' = s{squadState = wrapState (FSExploreRegion rid (regionById rid))}
                 squads' = replaceSquad squad' (armySquads (dsArmy ds))
                 army' = (dsArmy ds){armySquads = squads'}
             -- traceM $ "   assigded squads': " ++ show squad'

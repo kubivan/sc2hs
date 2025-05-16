@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes #-}
 {-# LANGUAGE GADTs, ConstraintKinds, TypeApplications #-}
 
@@ -27,33 +28,11 @@ import Lens.Micro.Extras (view)
 import Data.Char (isDigit)
 import Data.Typeable
 
-data AnyFS where
-  --AnyFS :: SquadFS s => s -> AnyFS
-  AnyFS :: (SquadFS s, Typeable s) => s -> AnyFS
 
 
-class SquadFS s where
-    --type Owner s
 
-    fsStep :: (HasArmy d, AgentDynamicState d) => Squad -> s -> StepMonad d ()
-    fsUpdate :: (HasArmy d, AgentDynamicState d) => Squad -> s -> StepMonad d (Bool, s)
-
-    fsOnEnter :: (HasArmy d, AgentDynamicState d) => Squad -> s -> StepMonad d ()
-    fsOnExit :: (HasArmy d, AgentDynamicState d) => Squad -> s -> StepMonad d ()
-
-data Squad = Squad
-  {
-    squadUnits  :: [UnitTag]
-  , squadState  :: AnyFS
-  } --deriving (Eq, Show)
-
-squadId :: Squad -> UnitTag
-squadId s = head $ squadUnits s
-
-data Target
-    = TargetPos TilePos
-    | TargetUnit UnitTag
-    deriving (Eq, Show)
-
-replaceSquad :: Squad -> [Squad] -> [Squad]
-replaceSquad new = map (\s -> if squadId s == squadId new then new else s)
+-- data Squad = Squad
+--   {
+--     squadUnits  :: [UnitTag]
+--   , squadState  :: AnyFS
+--   } --deriving (Eq, Show)

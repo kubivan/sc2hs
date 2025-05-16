@@ -7,6 +7,7 @@ import Units
 import Utils
 import Footprint
 import SC2.Army.Squad
+import SC2.Army.SquadFSM
 import StepMonad
 
 import Data.HashMap.Strict (HashMap)
