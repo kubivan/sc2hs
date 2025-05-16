@@ -1,4 +1,4 @@
-module SC2.Army.Utils where
+module SC2.Utils where
 
 import Actions (Action (..), UnitTag)
 import Footprint

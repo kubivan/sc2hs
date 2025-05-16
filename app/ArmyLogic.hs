@@ -7,9 +7,12 @@ import BotDynamicState
 
 import Actions (Action (..), UnitTag)
 import SC2.Army.Army
-import SC2.Army.Squad
-import SC2.Army.SquadFSM
-import SC2.Army.Utils
+import SC2.Squad.Types
+import SC2.Squad.State
+import SC2.Squad.FSSquadForming
+import SC2.Squad.FSM
+import SC2.Squad.Squad
+import SC2.Utils
 import SC2.Grid
 import SC2.Geometry
 import Observation
@@ -65,7 +68,7 @@ agentUpdateDsArmy = do
         -- remove dead units
         squads = concatMap (\s -> let su = squadUnits s in [s{squadUnits = filter (`HashMap.member` armyHashMap) su}]) (armySquads $ dsArmy ds)
 
-        fillSquads :: [Squad] -> [UnitTag] -> ([Squad], [UnitTag])
+        fillSquads :: [Squad SquadState] -> [UnitTag] -> ([Squad SquadState], [UnitTag])
         fillSquads [] rest = ([], rest)
         fillSquads squads [] = (squads, [])
         fillSquads (s : rest) rookies =
@@ -76,10 +79,10 @@ agentUpdateDsArmy = do
                 (filledRest, leftover) = fillSquads rest remaining
              in (s' : filledRest, leftover)
 
-        isSquadFull :: Squad -> Bool
+        isSquadFull :: Squad SquadState -> Bool
         isSquadFull squad = all (`HashMap.member` armyHashMap) (squadUnits squad) && (squadSize == length (squadUnits squad))
 
-        isSquadEmpty ::Squad -> Bool
+        isSquadEmpty :: Squad SquadState -> Bool
         isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
 
         (squadsFull, squadsToCheck) = partition isSquadFull squads

@@ -5,10 +5,11 @@
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes #-}
 {-# LANGUAGE GADTs, ConstraintKinds, TypeApplications #-}
 
-module SC2.Army.Squad where
+module SC2.Squad.Types(Squad(..), squadId) where
 
 import Actions (Action (..), UnitTag)
 import SC2.Grid.Algo
+-- import SC2.Squad.State
 import SC2.Grid.TilePos
 import SC2.Army.Class
 import Units
@@ -29,10 +30,11 @@ import Data.Char (isDigit)
 import Data.Typeable
 
 
+data Squad s = Squad
+  { --squadId     :: Int
+    squadUnits  :: [UnitTag]
+  , squadState  :: s --SquadState
+  } --deriving (Eq, Show)
 
-
--- data Squad = Squad
---   {
---     squadUnits  :: [UnitTag]
---   , squadState  :: AnyFS
---   } --deriving (Eq, Show)
+-- squadId :: Squad -> UnitTag
+squadId s = head $ squadUnits s
