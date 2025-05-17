@@ -4,7 +4,7 @@
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes, ConstraintKinds #-}
 {-# LANGUAGE GADTs, ConstraintKinds #-}
 
-module SC2.Squad.Squad(Squad(..), squadId, SquadFS(..), Target(..), replaceSquad) where
+module SC2.Squad.Squad(FSMSquad(..), squadId, SquadFS(..), Target(..), replaceSquad) where
 
 import Actions (UnitTag)
 import SC2.Grid.TilePos
@@ -14,18 +14,18 @@ import StepMonad
 
 class SquadFS st where
 
-    fsStep :: (HasArmy d, AgentDynamicState d) => Squad a-> st -> StepMonad d ()
-    fsUpdate :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d (Bool, st)
+    fsStep :: (HasArmy d, AgentDynamicState d) => FSMSquad a-> st -> StepMonad d ()
+    fsUpdate :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d (Bool, st)
 
-    fsOnEnter :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d ()
-    fsOnExit :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d ()
+    fsOnEnter :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d ()
+    fsOnExit :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d ()
 
-data Squad s = Squad
+data FSMSquad s = Squad
     { squadUnits :: [UnitTag]
     , squadState :: s -- SquadState
     }
 
-squadId :: Squad s -> UnitTag
+squadId :: FSMSquad s -> UnitTag
 squadId s = head $ squadUnits s
 
 data Target
@@ -33,5 +33,5 @@ data Target
     | TargetUnit UnitTag
     deriving (Eq, Show)
 
-replaceSquad :: Squad s -> [Squad s] -> [Squad s]
+replaceSquad :: FSMSquad s -> [FSMSquad s] -> [FSMSquad s]
 replaceSquad new = map (\s -> if squadId s == squadId new then new else s)

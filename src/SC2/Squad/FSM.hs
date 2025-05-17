@@ -37,40 +37,40 @@ import Data.Char (isDigit)
 data SomeFS where
   SomeFS :: (SquadFS st, IsSquadFS st) => st -> SomeFS
 
-isSquadIdle :: Squad SquadState -> Bool
+isSquadIdle :: FSMSquad SquadState -> Bool
 isSquadIdle s = case unwrapState (squadState s) of
     Just (FSSquadIdle) -> True
     Nothing -> False
 
-squadAssignedRegion :: Squad SquadState -> Maybe RegionId
+squadAssignedRegion :: FSMSquad SquadState -> Maybe RegionId
 squadAssignedRegion squad = case unwrapState(squadState squad) of
     Just (FSExploreRegion rid _) -> Just rid
     Nothing -> Nothing
 
 dispatchUpdate
   :: (HasArmy d, AgentDynamicState d)
-  => Squad SquadState -> SquadState -> StepMonad d (Bool, SquadState)
+  => FSMSquad SquadState -> SquadState -> StepMonad d (Bool, SquadState)
 dispatchUpdate squad state = case matchState state of
   Just (SomeFS st) -> do
     (done, newSt) <- fsUpdate squad st
     pure (done, wrapState newSt)
   Nothing -> error "Unknown SquadState in dispatchUpdate"
 
-dispatchStep :: (HasArmy d, AgentDynamicState d) => Squad SquadState -> SquadState -> StepMonad d ()
+dispatchStep :: (HasArmy d, AgentDynamicState d) => FSMSquad SquadState -> SquadState -> StepMonad d ()
 dispatchStep squad state = case matchState state of
   Just (SomeFS st) -> fsStep squad st
   Nothing -> error "Unknown SquadState in dispatchStep"
 
 dispatchOnEnter
   :: forall d. (HasArmy d, AgentDynamicState d)
-  => Squad SquadState -> SquadState -> StepMonad d ()
+  => FSMSquad SquadState -> SquadState -> StepMonad d ()
 dispatchOnEnter squad st = case matchState st of
   Just (SomeFS st) -> fsOnEnter squad st
   Nothing -> error "Unknown SquadState in dispatchStep"
 
 dispatchOnExit
   :: forall d. (HasArmy d, AgentDynamicState d)
-  => Squad SquadState -> SquadState -> StepMonad d ()
+  => FSMSquad SquadState -> SquadState -> StepMonad d ()
 dispatchOnExit squad st = case matchState st of
   Just (SomeFS st) -> fsOnExit squad st
   Nothing -> error "Unknown SquadState in dispatchStep"
@@ -82,7 +82,7 @@ matchState (SquadFormingState st) = Just (SomeFS st)
 matchState (SquadExploreState st) = Just (SomeFS st)
 
 
-processSquad ::(HasArmy d, AgentDynamicState d) => Squad SquadState -> StepMonad d (Squad SquadState)
+processSquad ::(HasArmy d, AgentDynamicState d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
 processSquad squad = do
       (done, state') <- dispatchUpdate squad (squadState squad)
       if done
@@ -91,7 +91,7 @@ processSquad squad = do
           dispatchStep squad state'
           return squad { squadState = state' }
 
-squadTransitionFrom :: (HasArmy d, AgentDynamicState d) => Squad SquadState -> SquadState -> StepMonad d (Squad SquadState)
+squadTransitionFrom :: (HasArmy d, AgentDynamicState d) => FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
 squadTransitionFrom squad oldState = do
   dispatchOnExit squad oldState
 

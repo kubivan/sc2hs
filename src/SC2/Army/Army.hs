@@ -6,9 +6,7 @@ import SC2.Grid.TilePos
 import Units
 import Utils
 import Footprint
-import SC2.Squad.Squad
-import SC2.Squad.State
-import SC2.Squad.FSM
+import SC2.Squad
 import StepMonad
 
 import Data.HashMap.Strict (HashMap)
@@ -36,7 +34,7 @@ data Army = Army
     { armyUnitsData :: HashMap UnitTag ArmyUnitData
     , armyUnits :: HashMap UnitTag Unit
     , armyUnitsPos :: Set TilePos
-    , armySquads :: [Squad SquadState]
+    , armySquads :: [Squad]
     }
 
 emptyArmy :: Army

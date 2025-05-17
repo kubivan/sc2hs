@@ -13,9 +13,8 @@ module TestBot where
 import Actions
 import Agent
 import SC2.Army.Army
-import SC2.Squad.FSM
+import SC2.Squad
 import SC2.Squad.State
-import SC2.Squad.Squad
 import SC2.Squad.Behavior
 import SC2.Squad.FSExploreRegion
 import SC2.Utils
@@ -364,7 +363,7 @@ agentUpdateGrid f =
 
 setArmy a st = st { dsArmy = a }
 
-squadAssign :: Squad a -> StepMonad BotDynamicState ()
+squadAssign :: Squad -> StepMonad BotDynamicState ()
 squadAssign s = do
     ds <- agentGet
     (si, _) <- agentAsk

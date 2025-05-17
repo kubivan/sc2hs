@@ -33,7 +33,7 @@ import Data.Typeable
 import Debug.Trace
 import Control.Monad (filterM, void, when)
 
-isSquadFull :: (HasArmy d) => Squad a -> StepMonad d Bool
+isSquadFull :: (HasArmy d) => FSMSquad a -> StepMonad d Bool
 isSquadFull squad = do
     ds <- agentGet
     let unitMap = getUnitMap ds
@@ -46,7 +46,7 @@ isSquadFull squad = do
 wanderAround s radius = pure ()
 
 -- command to move units to formation. returns true when complete
-squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => Squad a -> TilePos -> Footprint -> StepMonad d Bool
+squadMoveToFormation :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> TilePos -> Footprint -> StepMonad d Bool
 squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)
@@ -65,7 +65,7 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
             command [PointCommand AttackAttack [u] (toPoint2D p) | (p, u) <- unitsWithPos]
             return False
 
-squadExploreRegion :: (HasArmy d, AgentDynamicState d) => Squad a -> Region -> StepMonad d ()
+squadExploreRegion :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> Region -> StepMonad d ()
 squadExploreRegion s region =
     do
         ds <- agentGet
@@ -83,10 +83,10 @@ squadExploreRegion s region =
             else do
                 command [PointCommand AttackAttack [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
 
-squadDoAttack :: Squad a -> Target -> StepMonad d ()
+squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
 
-isSquadFormed :: (HasArmy d, AgentDynamicState d) => Squad a -> TilePos -> Footprint -> StepMonad d Bool
+isSquadFormed :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> TilePos -> Footprint -> StepMonad d Bool
 isSquadFormed squad center formation = do
         ds <- agentGet
         let unitByTag t = HashMap.lookup t (getUnitMap ds)
