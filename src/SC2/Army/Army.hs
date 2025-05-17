@@ -6,7 +6,7 @@ import SC2.Grid.TilePos
 import Units
 import Utils
 import Footprint
-import SC2.Squad.Types
+import SC2.Squad.Squad
 import SC2.Squad.State
 import SC2.Squad.FSM
 import StepMonad

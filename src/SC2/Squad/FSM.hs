@@ -12,7 +12,7 @@ import SC2.Squad.FSExploreRegion
 
 -- import SC2.Army.Army
 import SC2.Utils
-import SC2.Squad.Types hiding (SquadState(..))
+import SC2.Squad.Squad hiding (SquadState(..))
 import SC2.Squad.Class
 import SC2.Squad.State
 import SC2.Grid
@@ -33,6 +33,9 @@ import Debug.Trace (traceM)
 import Footprint
 
 import Data.Char (isDigit)
+
+data SomeFS where
+  SomeFS :: (SquadFS st, IsSquadFS st) => st -> SomeFS
 
 isSquadIdle :: Squad SquadState -> Bool
 isSquadIdle s = case unwrapState (squadState s) of
@@ -72,8 +75,6 @@ dispatchOnExit squad st = case matchState st of
   Just (SomeFS st) -> fsOnExit squad st
   Nothing -> error "Unknown SquadState in dispatchStep"
 
-data SomeFS where
-  SomeFS :: (SquadFS st, IsSquadFS st) => st -> SomeFS
 
 matchState :: SquadState -> Maybe SomeFS
 matchState (SquadIdleState st)    = Just (SomeFS st)

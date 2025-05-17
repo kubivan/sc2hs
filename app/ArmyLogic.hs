@@ -7,7 +7,6 @@ import BotDynamicState
 
 import Actions (Action (..), UnitTag)
 import SC2.Army.Army
-import SC2.Squad.Types
 import SC2.Squad.State
 import SC2.Squad.FSSquadForming
 import SC2.Squad.FSM

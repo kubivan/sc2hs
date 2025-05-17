@@ -11,7 +11,6 @@ import Actions (Action (..), UnitTag)
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
 import SC2.Squad.Class
-import SC2.Squad.Types
 import Units
 import Utils
 import Footprint
@@ -32,6 +31,21 @@ import Data.Char (isDigit)
 import Data.Typeable
 import Debug.Trace
 import Control.Monad (filterM, void, when)
+class SquadFS st where
+
+    fsStep :: (HasArmy d, AgentDynamicState d) => Squad a-> st -> StepMonad d ()
+    fsUpdate :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d (Bool, st)
+
+    fsOnEnter :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d ()
+    fsOnExit :: (HasArmy d, AgentDynamicState d) => Squad a -> st -> StepMonad d ()
+
+data Squad s = Squad
+    { squadUnits :: [UnitTag]
+    , squadState :: s -- SquadState
+    }
+
+squadId :: Squad s -> UnitTag
+squadId s = head $ squadUnits s
 
 isSquadFull :: (HasArmy d) => Squad a -> StepMonad d Bool
 isSquadFull squad = do

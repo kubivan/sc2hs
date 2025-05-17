@@ -12,7 +12,6 @@ import SC2.Squad.FSExploreRegion
 import SC2.Squad.FSSquadForming
 import SC2.Squad.FSSquadIdle
 
-import SC2.Squad.Types
 
 data SquadState where
   SquadIdleState      :: FSSquadIdle         -> SquadState

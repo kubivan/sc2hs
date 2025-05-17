@@ -2,7 +2,6 @@
 module SC2.Squad.FSSquadIdle where
 
 import SC2.Squad.Class
-import SC2.Squad.Types
 import SC2.Utils
 import SC2.Army.Class
 import SC2.Squad.Squad

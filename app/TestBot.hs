@@ -13,7 +13,6 @@ module TestBot where
 import Actions
 import Agent
 import SC2.Army.Army
-import SC2.Squad.Types
 import SC2.Squad.FSM
 import SC2.Squad.State
 import SC2.Squad.Squad
