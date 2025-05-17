@@ -4,6 +4,7 @@ module SC2.Squad.FSSquadForming where
 import SC2.Squad.Class
 
 import SC2.Squad.Squad
+import SC2.Squad.Behavior
 import SC2.Utils
 import SC2.Grid
 import SC2.Geometry
