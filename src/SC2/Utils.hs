@@ -1,37 +1,19 @@
 module SC2.Utils where
 
-import Actions (Action (..), UnitTag)
 import Footprint
 import Observation
-import SC2.Army.Class
 import SC2.Geometry
 import SC2.Grid
-import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (Alliance (..), Point, Point2D)
-import SC2.Proto.Data qualified as Proto
-import StepMonad
+import SC2.Proto.Data (Alliance (..), Point2D)
 import Units
-import Utils
 
-import Conduit (filterC, mapC)
+import Conduit (filterC)
 import Control.Applicative ((<|>))
-import Control.Monad (filterM, void, when)
-import Data.Foldable qualified as Seq
-import Data.Function (on)
-import Data.HashMap.Strict (HashMap)
-import Data.HashMap.Strict qualified as HashMap
-import Data.HashSet qualified as HashSet
-import Data.List (minimumBy, partition)
-import Data.List.Split (chunksOf)
-import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
+import Data.Maybe (isJust)
 import Data.Ord (comparing)
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Lens.Micro ((^.))
-import Lens.Micro.Extras (view)
 import Safe (headMay, minimumByMay)
-import System.Random (StdGen, randomR)
 
 squadFormationFootprint :: Footprint
 squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
