@@ -80,6 +80,7 @@ matchState :: SquadState -> Maybe SomeFS
 matchState (SquadIdleState st)    = Just (SomeFS st)
 matchState (SquadFormingState st) = Just (SomeFS st)
 matchState (SquadExploreState st) = Just (SomeFS st)
+matchState (SquadEngageEnemy st) = Just (SomeFS st)
 
 
 processSquad ::(HasArmy d, AgentDynamicState d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)

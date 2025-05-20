@@ -17,6 +17,7 @@ import SC2.Squad
 import SC2.Squad.State
 import SC2.Squad.Behavior
 import SC2.Squad.FSExploreRegion
+import SC2.Squad.FSEngage
 import SC2.Utils
 import AgentBulidUtils
 import ArmyLogic
@@ -65,6 +66,7 @@ import Debug.Trace (traceM, trace)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import System.Random (newStdGen)
+import Proto.S2clientprotocol.Raw_Fields (facing)
 
 type BuildOrder = [UnitTypeId]
 
@@ -337,7 +339,7 @@ debugSquads = do
         squadLeaderTags = head . squadUnits <$> squads
         squadLeaders = getUnits squadLeaderTags hashArmy
     -- debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
-    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
+    debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " " ++ show (u ^. #facing), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 
 agentResetGrid :: (AgentDynamicState d) => StepMonad d ()
 agentResetGrid =
@@ -363,8 +365,38 @@ agentUpdateGrid f =
 
 setArmy a st = st { dsArmy = a }
 
-squadAssign :: Squad -> StepMonad BotDynamicState ()
+squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
+    canSeek <- squadSeek s
+    canExplore <- squadAssignToExplore s
+    return $ canSeek || canExplore
+
+
+squadSeek :: Squad -> StepMonad BotDynamicState Bool
+squadSeek squad = case unwrapState (squadState squad) of
+    Just (FSSeek _) -> return True
+    _ -> do
+        ds <- agentGet
+        obs <- agentObs
+        let unitByTag t = HashMap.lookup t (armyUnits (dsArmy ds))
+            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+            leader = head $ units
+            closestEnemy = runConduitPure $ obsUnitsC obs .| filterC isEnemy .| closestC leader
+        case closestEnemy of
+            Nothing -> return False
+            (Just enemy) -> do
+                -- Assign squad to region
+                let squad' = squad{squadState = wrapState (FSSeek (enemy ^. #tag))}
+                    squads' = replaceSquad squad' (armySquads (dsArmy ds))
+                    army' = (dsArmy ds){armySquads = squads'}
+                -- traceM $ "   assigded squads': " ++ show squad'
+                agentPut $ setArmy army' ds
+                return True
+
+
+
+squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
+squadAssignToExplore s = do
     ds <- agentGet
     (si, _) <- agentAsk
     let regionById rid = siRegions si HashMap.! rid
@@ -375,7 +407,7 @@ squadAssign s = do
     traceM $ "assigning: used regions " ++ show (usedRegions)
     traceM $ "assigning: availableRegionIds " ++ show (availableRegionIds)
     case availableRegionIds of
-        [] -> return () -- no unassigned regions left
+        [] -> return False -- no unassigned regions left
         (rid : _) -> do
             -- Assign squad to region
             let squad' = s{squadState = wrapState (FSExploreRegion rid (regionById rid))}
@@ -383,6 +415,7 @@ squadAssign s = do
                 army' = (dsArmy ds){armySquads = squads'}
             -- traceM $ "   assigded squads': " ++ show squad'
             agentPut $ setArmy army' ds
+            return True
 
 agentAssignIdleSquads ::  StepMonad BotDynamicState ()
 agentAssignIdleSquads = do
@@ -393,9 +426,18 @@ agentAssignIdleSquads = do
     fullIdleSquads <- filter isSquadIdle <$> filterM isSquadFull squads
     mapM_ squadAssign fullIdleSquads
 
+agentTryEngage ::  StepMonad BotDynamicState ()
+agentTryEngage = do
+    ds <- agentGet
+    let army = dsArmy ds
+        squads = armySquads army
+
+    mapM_ squadSeek squads
+
 agentArmyControl :: StepMonad BotDynamicState ()
 agentArmyControl = do
     agentAssignIdleSquads
+    agentTryEngage
     ds <- agentGet
     let army = dsArmy ds
         squads = armySquads army

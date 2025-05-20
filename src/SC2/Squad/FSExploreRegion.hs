@@ -29,7 +29,8 @@ data FSExploreRegion = FSExploreRegion RegionId Region
 instance SquadFS FSExploreRegion where
 
     fsStep s (FSExploreRegion rid region) = do
-        traceM ("[step] FSExploreRegion " ++ show (squadId s)) >> squadExploreRegion s region
+        -- traceM ("[step] FSExploreRegion " ++ show (squadId s))
+        squadExploreRegion s region
     fsUpdate squad st@(FSExploreRegion rid region)
         | Set.size region == 0 = return (True, st)
         | otherwise = do
