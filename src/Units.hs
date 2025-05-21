@@ -29,6 +29,7 @@ module Units (
     toEnum',
     fromEnum',
     unitsBoundingBox,
+    unitVelocityVec
 )
 where
 
@@ -37,7 +38,7 @@ import SC2.Geometry
 import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (Unit, UnitOrder)
+import SC2.Proto.Data (Unit, UnitOrder, Point2D)
 import UnitsTh
 
 import Conduit
@@ -49,6 +50,7 @@ import GHC.Word (Word32)
 import Lens.Micro
 import Lens.Micro.Extras (view)
 import Utils
+import Data.ProtoLens (defMessage, Message (defMessage))
 
 import Proto.S2clientprotocol.Common_Fields as C
 
@@ -180,3 +182,12 @@ dbscan eps minPts points = foldl' dbscan' Map.empty points -- `Utils.dbg` ("poin
             Just v -> labels -- `Utils.dbg` ("dsbscan: point is processed " ++ show v)
 
 countCluster clusters n = Map.foldlWithKey (\count _ label -> if label == Cluster n then count + 1 else count) 0 clusters
+
+unitVelocityVec  :: Unit -> Point2D
+unitVelocityVec unit =
+    let rotation = unit ^. #facing
+        speed = 4.13 -- TODO: remove hardcoded stalkers value
+        vx = speed * cos rotation
+        vy = speed * sin rotation
+    in
+        defMessage & x .~ vx & y .~ vy
