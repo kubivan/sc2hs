@@ -8,7 +8,10 @@ import Lens.Micro((&), (.~), (^.))
 import Lens.Micro.Extras ( view )
 
 toPoint2D :: Pointable a => a -> Point2D
-toPoint2D p = defMessage & x .~ (0.5 + getX p) & y .~ (0.5 + getY p)
+toPoint2D p = defMessage & x .~ getX p & y .~ getY p
+
+toPoint3D :: Pointable a => a -> Point
+toPoint3D p = defMessage & x .~ getX p & y .~ getY p & z .~ 0
 
 class Pointable p where
   getX :: p -> Float
@@ -31,8 +34,8 @@ instance Num Point2D where
   negate p = makePoint (negate $ getX p) (negate $ getY p)
 
 instance Num Point where
-  (+) = pointPlus  -- Use the + operator from Pointable
-  (-) = pointMinus  -- Use the - operator from Pointable
+  (+) a b = defMessage & x .~ (a ^. x + b ^. x) & y .~ (a ^. y + b ^. y) & z .~ (a ^. z + b ^. z)
+  (-) a b = defMessage & x .~ (a ^. x - b ^. x) & y .~ (a ^. y - b ^. y) & z .~ (a ^. z - b ^. z)
   (*) = undefined  -- Multiplication may not make sense, so leave it undefined or customize it
   abs p = makePoint (abs $ getX p) (abs $ getY p)
   signum p = makePoint (signum $ getX p) (signum $ getY p)
