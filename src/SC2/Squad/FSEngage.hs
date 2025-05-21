@@ -2,6 +2,7 @@
 module SC2.Squad.FSEngage where
 
 import SC2.Utils
+import Actions
 import Units
 import SC2.Grid
 import SC2.Squad.Class
@@ -36,27 +37,16 @@ import Observation (getUnit)
 data FSEngage = FSSeek UnitTag
 
 --unitSeek :: HasArmy d => Unit -> Unit -> StepMonad d ()
-unitVelocityVec  :: Unit -> Point2D
-unitVelocityVec unit =
-    let rotation = unit ^. #facing
-        speed = 4.13 -- TODO: remove hardcoded stalkers value
-        vx = speed * cos rotation
-        vy = speed * sin rotation
-    in
-        defMessage & x .~ vx & y .~ vy
 
-vecNormalize :: Point2D -> Point2D
-vecNormalize v =
-    let (vx, vy) = (v ^. #x , v ^. #y)
-        vlen = sqrt $ vx*vx + vy*vy
-    in defMessage & x .~ (vx / vlen) & y .~ (vy / vlen)
 
 unitSeek  :: Unit -> Unit -> Point2D
 unitSeek unit enemy =
     let enemyPos2D = toPoint2D $ enemy ^. #pos
-        desiredVelocity = vecNormalize $ enemyPos2D - toPoint2D (unit ^. #pos)
+        speed = 4.13 -- TODO: remove hardcoded stalkers value
+        desiredVelocity = vecScale speed $ vecNormalize $ enemyPos2D - toPoint2D (unit ^. #pos)
         unitVelocity = unitVelocityVec unit
     in trace ("egaging: " ++ show (desiredVelocity - unitVelocity)) desiredVelocity - unitVelocity
+
 
 instance SquadFS FSEngage where
 

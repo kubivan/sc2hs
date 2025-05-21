@@ -74,3 +74,15 @@ instance Pointable Point where
   getX = view x
   getY = view y
   makePoint px py = defMessage & x .~ px & y .~ py & z .~ 0
+
+
+vecNormalize :: Point2D -> Point2D
+vecNormalize v =
+    let (vx, vy) = (v ^. x , v ^. y)
+        vlen = sqrt $ vx*vx + vy*vy
+    in defMessage & x .~ (vx / vlen) & y .~ (vy / vlen)
+
+vecScale :: Float -> Point2D -> Point2D
+vecScale s v =
+    let (vx, vy) = (v ^. x , v ^. y)
+    in defMessage & x .~ (vx * s) & y .~ (vy * s)
