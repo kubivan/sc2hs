@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Actions (Action (..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand (..), getCmd, getTarget, getExecutors) where
+module Actions (Action (..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand (..), getCmd, getTarget, getExecutors, D.Color, D.Line) where
 
 import SC2.Ids.AbilityId
 import SC2.Proto.Data qualified as Proto
@@ -19,6 +19,7 @@ import GHC.Word (Word64)
 import Lens.Micro ((&), (.~), (^.))
 
 import Proto.S2clientprotocol.Debug qualified as D
+import Proto.S2clientprotocol.Debug_Fields
 
 type UnitTag = Word64
 type ChatMsg = Text
@@ -55,7 +56,13 @@ getTarget (UnitCommand _ _ t) = toPoint2D (tPos)
 --   optional Point world_pos = 4;     // Position in the world.
 --   optional uint32 size = 5;         // Pixel height of the text. Defaults to 8px.
 -- }
-data DebugCommand = DebugText Text Point
+
+-- message DebugLine {
+--   optional Color color = 1;
+--   optional Line line = 2;           // World space line.
+-- }
+
+data DebugCommand = DebugText Text Point | DebugLine [(D.Color, D.Line)]
 
 toDebug :: DebugCommand -> D.DebugCommand
 toDebug (DebugText t p) = defMessage & #draw .~ drawMsg
@@ -64,6 +71,13 @@ toDebug (DebugText t p) = defMessage & #draw .~ drawMsg
     drawMsg = defMessage & #text .~ [textMsg]
     textMsg :: D.DebugText
     textMsg = defMessage & #text .~ t & #worldPos .~ p
+
+toDebug (DebugLine cls) = defMessage & #draw .~ drawMsg
+  where
+    drawMsg :: D.DebugDraw
+    drawMsg = defMessage & #lines .~ [lineMsg c l | (c, l) <- cls]
+    lineMsg :: D.Color -> D.Line -> D.DebugLine
+    lineMsg c l= defMessage & #color .~ c & #line .~ l
 
 toChatAction :: ChatMsg -> Proto.Action
 toChatAction msg = defMessage & #actionChat .~ chat
