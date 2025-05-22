@@ -338,6 +338,7 @@ debugSquads = do
         squadLeaderTags :: [UnitTag]
         squadLeaderTags = head . squadUnits <$> squads
         squadLeaders = getUnits squadLeaderTags hashArmy
+    mapM_ debugSquad squads
     -- debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
     debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " " ++ show (u ^. #facing), u ^. #pos) | (u, s) <- zip squadLeaders squads]
 

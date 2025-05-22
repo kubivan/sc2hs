@@ -13,6 +13,7 @@ import StepMonad
 import StepMonadUtils
 import Actions (Action (..), UnitTag)
 import SC2.Ids.AbilityId
+import SC2.Ids.UnitTypeId
 import Observation
 
 import Control.Monad (void)
@@ -33,19 +34,25 @@ import Footprint
 import Proto.S2clientprotocol.Common ( Point, Point2D )
 import Proto.S2clientprotocol.Common_Fields ( x, y, z )
 import Observation (getUnit)
+import SC2.Geometry (toPoint2D)
+import SC2.Squad.Class (HasArmy)
+import Proto.S2clientprotocol.Data (UnitTypeData)
 
 data FSEngage = FSSeek UnitTag
 
 --unitSeek :: HasArmy d => Unit -> Unit -> StepMonad d ()
 
+enemyStr :: Unit -> String
+enemyStr u = show (u ^. #tag) ++ ", " ++ show ((toEnum' (u ^. #unitType)) :: UnitTypeId) ++ " " ++ show (tilePos (u ^. #pos))
 
-unitSeek  :: Unit -> Unit -> Point2D
+unitSeek :: Unit -> Unit -> Point2D
 unitSeek unit enemy =
     let enemyPos2D = toPoint2D $ enemy ^. #pos
         speed = 4.13 -- TODO: remove hardcoded stalkers value
         desiredVelocity = vecScale speed $ vecNormalize $ enemyPos2D - toPoint2D (unit ^. #pos)
         unitVelocity = unitVelocityVec unit
-    in trace ("egaging: " ++ show (desiredVelocity - unitVelocity)) desiredVelocity - unitVelocity
+    in trace (show (unit ^. #tag) ++ " egaging: " ++ enemyStr enemy ++ ": " ++ show (desiredVelocity - unitVelocity))
+        desiredVelocity - unitVelocity
 
 
 instance SquadFS FSEngage where
@@ -59,7 +66,8 @@ instance SquadFS FSEngage where
             -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
             units = catMaybes $ [unitByTag t | t <- squadUnits squad]
 
-        command [PointCommand AttackAttack [u] (unitSeek u enemy) | u <- units]
+        debugUnit enemy
+        mapM_ (\u -> debugUnitVec u (unitSeek u enemy)) units
 
     fsUpdate squad st@(FSSeek enemyTag) =
         do

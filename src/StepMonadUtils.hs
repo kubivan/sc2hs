@@ -8,17 +8,20 @@ module StepMonadUtils (
     findPlacementPointInRadiusSM,
     addMarkSM,
     removeMarkSM,
+    debugUnit,
+    debugUnitVec,
 )
 where
 
-import Actions (Action, DebugCommand (..), getCmd, getExecutors)
+import Actions (Action, DebugCommand (..), getCmd, getExecutors, Line)
 import Agent
 import SC2.Grid
 import Observation
 import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)
+import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData, Point2D)
 import UnitAbilities
 import Utils
+import Units
 import StepMonad
 import Footprint
 
@@ -32,6 +35,17 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
+
+import SC2.Geometry
+import Data.ProtoLens (defMessage)
+import Proto.S2clientprotocol.Common as C
+import Proto.S2clientprotocol.Common_Fields as C
+import Proto.S2clientprotocol.Raw_Fields qualified as PR
+
+import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Lens.Micro.Extras(view)
+import Debug.Trace
+import SC2.Proto.Data qualified as D
 
 
 -- findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
@@ -56,3 +70,39 @@ removeMarkSM fprint cpos = do
     let obs = getObs ds
         grid = getGrid ds
     return $ removeMark grid fprint cpos
+
+--debugUnit :: AgentDynamicState d => Unit -> StepMonad d ()
+debugUnit unit = do
+    ds <- agentGet
+    let unitPos :: Point
+        unitPos = unit ^. PR.pos
+        unitZ = unitPos ^. #z
+        zLevel :: Point
+        zLevel = defMessage & C.x .~ 0 & C.y .~ 0 & C.z .~ (1 + unitZ)
+        p0 :: Point
+        p0 = unit ^. PR.pos
+        p1 :: Point
+        p1 = zLevel + toPoint3D (toPoint2D p0 + unitVelocityVec unit)
+        colorGreen = defMessage & #r .~ 0 & #g .~ 1 & #b .~ 0
+        line :: Line
+        line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
+    StepMonad.debug [DebugLine [(colorGreen, line)] ]
+
+debugUnitVec :: AgentDynamicState d => Unit -> Point2D -> StepMonad d ()
+debugUnitVec unit vec2d = do
+    ds <- agentGet
+    let unitPos :: Point
+        unitPos = unit ^. PR.pos
+        unitZ = unitPos ^. #z
+        zLevel :: Point
+        zLevel = defMessage & C.x .~ 0 & C.y .~ 0 & C.z .~ (1 + unitZ)
+        p0 :: Point
+        p0 = unit ^. PR.pos
+        p1 :: Point
+        p1 = zLevel + toPoint3D (toPoint2D p0 + vec2d)
+        colorGreen = defMessage & #r .~ 0 & #g .~ 255 & #b .~ 0
+        line :: Line
+        line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
+    StepMonad.debug [DebugLine [(colorGreen, line)] ]
