@@ -10,6 +10,9 @@ module StepMonadUtils (
     removeMarkSM,
     debugUnit,
     debugUnitVec,
+    siUnitData,
+    siUnitRange,
+    siUnitSightRange
 )
 where
 
@@ -46,6 +49,7 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras(view)
 import Debug.Trace
 import SC2.Proto.Data qualified as D
+import Proto.S2clientprotocol.Data_Fields (sightRange)
 
 
 -- findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
@@ -85,8 +89,8 @@ debugUnit unit = do
         p1 = zLevel + toPoint3D (toPoint2D p0 + unitVelocityVec unit)
         colorGreen = defMessage & #r .~ 0 & #g .~ 1 & #b .~ 0
         line :: Line
-        line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
-        -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
+        --line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        line = defMessage & #p0 .~ p0 & #p1 .~ p1
     StepMonad.debug [DebugLine [(colorGreen, line)] ]
 
 debugUnitVec :: AgentDynamicState d => Unit -> Point2D -> StepMonad d ()
@@ -103,6 +107,26 @@ debugUnitVec unit vec2d = do
         p1 = zLevel + toPoint3D (toPoint2D p0 + vec2d)
         colorGreen = defMessage & #r .~ 0 & #g .~ 255 & #b .~ 0
         line :: Line
-        line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        --line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        line = defMessage & #p0 .~ p0 & #p1 .~ p1
         -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
     StepMonad.debug [DebugLine [(colorGreen, line)] ]
+
+siUnitData :: AgentDynamicState d => Unit -> StepMonad d UnitTypeData
+siUnitData u = do
+    si <- agentStatic
+    let traits = unitTraits si
+        udata = (HashMap.!) traits . toEnum' . view #unitType $ u
+    return udata
+
+siUnitRange :: AgentDynamicState d => Unit -> Unit -> StepMonad d Float
+siUnitRange u e = do -- TODO: take into account different data.weapons: air/ground etc
+    udata <- siUnitData u
+    let range = view #range $ head $ udata ^. #weapons
+    return range
+
+siUnitSightRange :: AgentDynamicState d => Unit -> StepMonad d Float
+siUnitSightRange u = do
+    udata <- siUnitData u
+    let range = view #sightRange udata
+    return range

@@ -12,9 +12,9 @@ import StepMonadUtils
 import Actions (Action (..), UnitTag)
 import SC2.Ids.AbilityId
 
-import Control.Monad (void)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
+import Control.Monad
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
@@ -39,11 +39,12 @@ instance SquadFS FSExploreRegion where
                 -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
                 units = catMaybes $ [unitByTag t | t <- squadUnits squad]
 
-                -- TODO: correct radius
-                -- TODO: intersect 2 sets instead
-                pixelsToRemove = concatMap (tilesInRadius 5) (tilePos . view #pos <$> units)
-                region' = foldl' (flip Set.delete) region pixelsToRemove
+            pixelsToRemove <- fmap concat $ forM units $ \u -> do
+                sightRange <- siUnitSightRange u
+                return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
 
+                -- TODO: intersect 2 sets instead
+            let region' = foldl' (flip Set.delete) region pixelsToRemove
                 state' = FSExploreRegion rid region'
 
             return (Set.size region' == 0, state')

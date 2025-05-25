@@ -22,22 +22,9 @@ import Lens.Micro.Extras (view)
 import Debug.Trace
 
 import Proto.S2clientprotocol.Common ( Point2D )
-import Proto.S2clientprotocol.Data (UnitTypeData)
 
 data FSEngage = FSSeek UnitTag
 
-siUnitData :: AgentDynamicState d => Unit -> StepMonad d UnitTypeData
-siUnitData u = do
-    si <- agentStatic
-    let traits = unitTraits si
-        udata = (HashMap.!) traits . toEnum' . view #unitType $ u
-    return udata
-
-siUnitRange :: AgentDynamicState d => Unit -> Unit -> StepMonad d Float
-siUnitRange u e = do -- TODO: take into account different data.weapons: air/ground etc
-    udata <- siUnitData u
-    let range = view #range $ head $ udata ^. #weapons
-    return range
 
 isWeaponReady :: Unit -> Bool
 isWeaponReady u = (u ^. #weaponCooldown) == 0
