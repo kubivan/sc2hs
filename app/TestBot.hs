@@ -67,6 +67,7 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import System.Random (newStdGen)
 import Proto.S2clientprotocol.Raw_Fields (facing)
+import SC2.Squad.FSEngage (FSEngage(FSEngageClose, FSEngageFar))
 
 type BuildOrder = [UnitTypeId]
 
@@ -375,7 +376,8 @@ squadAssign s = do
 
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
 squadSeek squad = case unwrapState (squadState squad) of
-    Just (FSSeek _) -> return True
+    Just (FSEngageClose _) -> return True
+    Just (FSEngageFar _) -> return True
     _ -> do
         ds <- agentGet
         obs <- agentObs
@@ -386,11 +388,9 @@ squadSeek squad = case unwrapState (squadState squad) of
         case closestEnemy of
             Nothing -> return False
             (Just enemy) -> do
-                -- Assign squad to region
-                let squad' = squad{squadState = wrapState (FSSeek (enemy ^. #tag))}
+                let squad' = squad{squadState = wrapState (FSEngageFar (enemy ^. #tag))}
                     squads' = replaceSquad squad' (armySquads (dsArmy ds))
                     army' = (dsArmy ds){armySquads = squads'}
-                -- traceM $ "   assigded squads': " ++ show squad'
                 agentPut $ setArmy army' ds
                 return True
 
@@ -498,7 +498,7 @@ instance Agent BotAgent where
             errors = obs ^. #actionErrors
             tracedResult =
                 if not (null actions) || not (null errors)
-                then trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
+                then --trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
                     (BotAgent phase' si ds', plan)
                 else (BotAgent phase' si ds', plan)
         in tracedResult

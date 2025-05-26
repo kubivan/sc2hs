@@ -15,6 +15,7 @@ import Observation
 
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
+import Control.Monad
 
 import Lens.Micro
 import Lens.Micro.Extras (view)
@@ -23,7 +24,7 @@ import Debug.Trace
 
 import Proto.S2clientprotocol.Common ( Point2D )
 
-data FSEngage = FSSeek UnitTag
+data FSEngage = FSEngageFar UnitTag | FSEngageClose UnitTag
 
 
 isWeaponReady :: Unit -> Bool
@@ -39,12 +40,13 @@ canAttack u e = do
     inRange <- isEnemyInRange e u
     return $ isWeaponReady u && inRange
 
+-- when (null . view #orders $ u) $
 stepForwardOrBack ::AgentDynamicState d =>  Unit -> Unit -> StepMonad d ()
 stepForwardOrBack u e = do
     range <- siUnitRange u e
     let distSq = distSquared (u ^. #pos) (e ^. #pos)
         upos = toPoint2D $ u ^. #pos
-    if (distSq / 2 >= (range / 2) * (range / 2)) then do
+    if distSq / 2 >= (range / 2) * (range / 2) then do
         stepForward <- u `stepToward` e
         command [PointCommand Move [u] (upos + stepForward)] -- TODO: 1 stepForward vec
     else do
@@ -100,7 +102,17 @@ unitSeek unit enemy =
 
 instance SquadFS FSEngage where
 
-    fsStep squad (FSSeek enemyTag) = do
+    fsStep squad (FSEngageFar enemyTag) = do
+        ds <- agentGet
+        obs <- agentObs
+        let unitByTag t = HashMap.lookup t (getUnitMap ds)
+            enemy = fromJust $ getUnit obs enemyTag
+            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+        traceM ("[step] FSEngageFar " ++ show (squadId squad))
+        command [UnitCommand AttackAttack units enemy]
+
+    fsStep squad (FSEngageClose enemyTag) = do
         ds <- agentGet
         obs <- agentObs
         traceM ("[step] FSSeek " ++ show (squadId squad))
@@ -114,17 +126,33 @@ instance SquadFS FSEngage where
         mapM_ (`unitEngageBehaviorTree` enemy) units
 
 
-    fsUpdate squad st@(FSSeek enemyTag) =
+    fsUpdate squad st@(FSEngageClose enemyTag) =
+        do
+            ds <- agentGet
+            obs <- agentObs
+            case getUnit obs enemyTag of
+                Nothing -> do
+                    traceM ("no more unit with tag " ++ show enemyTag)
+                    return (True, st)
+
+                _ -> return (False, FSEngageClose enemyTag)
+
+    fsUpdate squad st@(FSEngageFar enemyTag) =
         do
             ds <- agentGet
             obs <- agentObs
             let unitByTag t = HashMap.lookup t (getUnitMap ds)
-            case getUnit obs enemyTag of
+                enemy = getUnit obs enemyTag
+                leader = fromJust $ unitByTag . head . squadUnits $ squad
+            --TODO: need more fine control, squad leader may not be able to focus target
+            inRange <- isEnemyInRange (fromJust enemy) leader
+
+            case enemy of
                 Nothing -> do
-                    traceM  ("no more unit with tag " ++ show enemyTag)
+                    traceM ("no more unit with tag " ++ show enemyTag)
                     return (True, st)
 
-                _ -> return (False, FSSeek enemyTag)
+                _ -> return (False, if inRange then FSEngageClose enemyTag else st)
 
     fsOnEnter s _ = traceM $ "[enter] FSEngage " ++ show (squadId s)
     fsOnExit  s _ = traceM $ "[exit] FSEngage " ++ show (squadId s)
