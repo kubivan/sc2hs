@@ -94,7 +94,7 @@ clientAppJoinGame conn agent signals joinFunc = do
     runGameLoop conn signals agent playerId
 
 playHost :: Participant -> [Participant] -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
-playHost (Computer _) _ _ _ = Prelude.error "computer cannot be the host"
+playHost (Computer _ _) _ _ _ = Prelude.error "computer cannot be the host"
 playHost (Player agent) participants signals joinFunc = do
     traceM "starting sc2 host"
     _ <- startStarCraft portHost
@@ -104,7 +104,7 @@ playHost (Player agent) participants signals joinFunc = do
     clientApp conn = putStrLn "creating game..." >> clientAppCreateGame conn participants signals >> putStrLn "Host joining game..." >> clientAppJoinGame conn agent signals joinFunc
 
 playClient :: Participant -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
-playClient (Computer _) _ _ = Prelude.error "Computer cannot be host"
+playClient (Computer _ _) _ _ = Prelude.error "Computer cannot be host"
 playClient (Player agent) signals joinFunc = do
     traceM "starting sc2 for second player"
     threadId <- myThreadId
