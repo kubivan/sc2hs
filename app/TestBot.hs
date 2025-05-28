@@ -478,8 +478,8 @@ instance Agent BotAgent where
 
             (rays, gridChoked) = findAllChokePoints gridPathing
             regions = gridSegment gridChoked
-            regionGraph = buildRegionGraph regions
             regionLookup = buildRegionLookup regions
+            regionGraph = buildRegionGraph regions regionLookup
             si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions)
 
         traceM "create ds"

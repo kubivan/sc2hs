@@ -20,6 +20,8 @@ module SC2.Grid.Algo (
     RegionId,
     Region,
     RegionGraph,
+    regionGraphBfs,
+    complementRegionLookup
 )
 where
 
@@ -35,7 +37,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sort)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Debug.Trace (trace, traceM)
@@ -300,21 +302,64 @@ type RegionLookup = HashMap TilePos RegionId
 adjacent4 :: TilePos -> [TilePos]
 adjacent4 (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
+adjacent8 (x, y) =
+  [ (x + dx, y + dy)
+  | dx <- [-1, 0, 1]
+  , dy <- [-1, 0, 1]
+  , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+  --, isJust pixel -- pixel /= Just '#'
+  ]
+
+tilesInRadius :: Int -> TilePos -> [TilePos]
+tilesInRadius r (x, y) =
+    [ (x + dx, y + dy)
+    | dx <- [-r .. r]
+    , dy <- [-r .. r]
+    , dx * dx + dy * dy <= r * r -- circular mask
+    -- , (dx, dy) /= (0, 0)          -- exclude center
+    ]
+
 buildRegionLookup :: [(RegionId, Region)] -> RegionLookup
 buildRegionLookup regions =
     HashMap.fromList
         [(pos, rid) | (rid, region) <- regions, pos <- Set.toList region]
 
-buildRegionGraph :: [(RegionId, Region)] -> RegionGraph
-buildRegionGraph regions =
+complementRegionLookup :: RegionLookup -> [TilePos] -> RegionLookup
+complementRegionLookup lkp tiles = foldl' go lkp tiles where
+  go acc pos
+    | pos `HashMap.member` lkp = acc
+    | otherwise = let
+        ns = tilesInRadius 3 pos
+        -- variants = catMaybes $ concatMap (\x -> x HashMap.!? lkp) ns
+        variants = catMaybes $ map (lkp HashMap.!?) ns
+        minNeighborRid = minimum variants
+        in
+          if null variants then acc else HashMap.insert pos minNeighborRid acc
+
+buildRegionGraph :: [(RegionId, Region)] -> RegionLookup -> RegionGraph
+buildRegionGraph regions regionLookup =
     HashMap.fromListWith
         Set.union
         [ (rid, Set.singleton rid')
         | (rid, region) <- regions
         , pos <- Set.toList region
-        , neighbor <- adjacent4 pos
+        , neighbor <- adjacent8 pos
         , Just rid' <- [HashMap.lookup neighbor regionLookup]
         , rid /= rid' -- skip self
         ]
-  where
-    regionLookup = buildRegionLookup regions
+
+regionGraphBfs :: RegionGraph -> RegionId -> RegionId -> [RegionId]
+regionGraphBfs rg start end =
+  bfs (Seq.singleton (start, [start])) (Set.singleton start) where
+    bfs Seq.Empty _ = []
+    bfs ((top, path) Seq.:<| queue) visited
+        | top == end = reverse path
+        | otherwise = bfs queue' visited' `Utils.dbg` ("bfs to" ++ show end ++ " top: " ++ show (reverse path) ++ "neighbors " ++ show neighbors ++ " vis" ++ show visited)
+      where
+        neighbors = HashMap.lookupDefault Set.empty top rg
+        neighbors' = Set.difference neighbors visited
+
+        visited' = Set.union visited neighbors'
+
+        queue' :: Seq.Seq (RegionId, [RegionId])
+        queue' = queue Seq.>< Seq.fromList ( [(n, n : path) | n <- Set.toList neighbors'])
