@@ -151,14 +151,28 @@ spec =
                         grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
                         (rays, grid') = findAllChokePoints grid
 
+                        openCells =
+                            Set.fromList
+                                [ (x, y)
+                                | y <- [0 .. gridH grid - 1]
+                                , x <- [0 .. gridW grid - 1]
+                                , gridPixel grid (x, y) == ' '
+                                ]
+
                         res = gridSegment grid'
                         charLabels :: [Char]
                         charLabels = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
+
+                        openCellsFromRegions = foldl (\acc (rid, cellsSet) -> acc `Set.union` cellsSet) Set.empty res
+                        raysSet = foldl (\a r -> a `Set.union` Set.fromList r ) Set.empty rays
+                        unsegmentedTiles = Set.difference openCells (openCellsFromRegions `Set.union` raysSet)
+                        --unsegmentedTilesGrid = foldl (\gridAcc pos -> gridSetPixel gridAcc pos '%' ) grid (Set.toList hm)
 
                         resWithCharId = zip charLabels (map snd res)
 
                         grid'' = foldl (\gridAcc (id, region) -> foldl'(\ga p -> gridSetPixel ga p id ) gridAcc (Set.toList region) ) grid' resWithCharId
 
+                    unsegmentedTiles  `shouldBe` Set.empty
                     print $ "nexusPos pixel: " ++ show nexusPos ++ " " ++ show (gridPixel grid nexusPos)
                     print $ "grid segmented into " ++ show (length res)
                     print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a ) [] res)
