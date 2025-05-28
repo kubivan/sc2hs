@@ -10,6 +10,7 @@ module SC2.Grid.Core (
     addMark,
     removeMark,
     gridSetPixel,
+    gridSetPixelForce,
     gridPixel,
     gridPixelSafe,
     (!?),
@@ -68,6 +69,13 @@ gridSetPixel grid@(w, h, g) (x, y) value
     -- `Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
     index = x + y * w
 
+gridSetPixelForce :: Grid -> TilePos -> Char -> Grid
+gridSetPixelForce grid@(w, h, g) (x, y) value
+    = (w, h, g VU.// [(index, value)])
+  where
+    -- `Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
+    index = x + y * w
+
 gridFromImage :: P.ImageData -> Grid
 gridFromImage image = trace ("gridFromImage " ++ show (width, height, bpp, BS.length bs)) $ decodeImageData width height bpp bs
   where
@@ -96,7 +104,7 @@ addMark grid (Footprint pixels) (cx, cy) =
 
 removeMark :: Grid -> Footprint -> TilePos -> Grid
 removeMark grid (Footprint pixels) (cx, cy) =
-    foldl' (\accGrid (x, y, _) -> gridSetPixel accGrid (cx + x, cy + y) ' ') grid pixels
+    foldl' (\accGrid (x, y, _) -> gridSetPixelForce accGrid (cx + x, cy + y) ' ') grid pixels
 
 gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
 gridPlace g u (cx, cy) = -- trace ("gridPlace " ++ show u) $
