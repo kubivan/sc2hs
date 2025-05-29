@@ -54,7 +54,8 @@ import Control.Monad.Writer.Strict
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
 import Data.HashSet qualified as HashSet
-import Data.List (partition, sortOn)
+import Data.List (partition, sortOn, find)
+import Data.Set qualified as Set
 import Data.Maybe (mapMaybe)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
@@ -68,6 +69,8 @@ import Lens.Micro.Extras (view)
 import System.Random (newStdGen)
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Squad.FSEngage (FSEngage(FSEngageClose, FSEngageFar))
+import SC2.Grid.Algo (regionGraphBfs)
+import StepMonad (StaticInfo(siRegionPathToEnemy))
 
 type BuildOrder = [UnitTypeId]
 
@@ -401,7 +404,7 @@ squadAssignToExplore s = do
     ds <- agentGet
     (si, _) <- agentAsk
     let regionById rid = siRegions si HashMap.! rid
-        allRegions = HashMap.keysSet $ siRegions si
+        allRegions = HashSet.fromList $ siRegionPathToEnemy si
         usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
         availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
     traceM $ "assigning: all regions " ++ show (allRegions)
@@ -467,6 +470,7 @@ instance Agent BotAgent where
             unitTraits = unitsData $ gameDataResp ^. #units
             gridPlacement = gridFromImage $ gi ^. #startRaw . #placementGrid
             gridPathing = gridFromImage $ gi ^. #startRaw . #pathingGrid
+            gridPathingClean = removeMark gridPathing (getFootprint ProtossNexus) (tilePos nexusPos)
             grid = gridMerge pixelIsRamp gridPlacement gridPathing
             nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
             -- TODO: sort expands based on region connectivity: closest is not always the next one
@@ -476,11 +480,17 @@ instance Agent BotAgent where
             playerInfos = gi ^. #playerInfo
             playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
 
-            (rays, gridChoked) = findAllChokePoints gridPathing
+            (rays, gridChoked) = findAllChokePoints gridPathingClean
             regions = gridSegment gridChoked
-            regionLookup = buildRegionLookup regions
+
+            regionLookup = complementRegionLookup (buildRegionLookup regions) (foldl' (++) [] rays)
             regionGraph = buildRegionGraph regions regionLookup
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions)
+            startRegion = regionLookup HashMap.! tilePos nexusPos
+            enemyRegion = regionLookup HashMap.! enemyStart
+            pathToEnemy = regionGraphBfs regionGraph startRegion enemyRegion
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy
+
+        print pathToEnemy
 
         traceM "create ds"
         dynamicState <- makeDynamicState obsRaw grid
