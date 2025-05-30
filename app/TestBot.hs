@@ -538,6 +538,7 @@ instance Agent BotAgent where
         print pathToEnemy
 
         traceM "create ds"
+        saveDeps "tech_deps.json" techTree
         dynamicState <- makeDynamicState obsRaw grid
         traceM "created ds"
         return $ BotAgent Opening si dynamicState

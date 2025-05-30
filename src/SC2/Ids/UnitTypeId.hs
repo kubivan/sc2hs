@@ -2,6 +2,7 @@
 module SC2.Ids.UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
 import Data.Hashable
+import Data.Aeson (ToJSON(..), FromJSON(..))
 
 data UnitTypeId =
    Invalid  -- 0
@@ -661,3 +662,9 @@ instance Enum UnitTypeId where
 instance Hashable UnitTypeId where
   hash = fromEnum
   hashWithSalt s val = fromEnum val + s
+
+instance ToJSON UnitTypeId where
+  toJSON = toJSON . fromEnum
+
+instance FromJSON UnitTypeId where
+  parseJSON v = toEnum <$> parseJSON v

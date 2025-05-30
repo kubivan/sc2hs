@@ -1,4 +1,7 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
+--TODO: export list
 module SC2.TechTree where
 
 import SC2.Ids.AbilityId
@@ -19,10 +22,20 @@ import Data.Set qualified as Set
 import Units (fromEnum')
 import Debug.Trace
 
+import Data.Aeson
+import qualified Data.Aeson as Aeson
+import Data.Aeson.Types (Parser)
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.ByteString.Lazy as B
+import Data.Text (Text, pack, unpack)
+import GHC.Generics (Generic)
+
 type UnitTraits = HashMap.HashMap UnitTypeId UnitTypeData
 
 data Tech = TechUnit UnitTypeId
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+
+  -- deriving (Show, Eq, Ord)
 
 instance Hashable Tech where
   hashWithSalt s (TechUnit uid) = hashWithSalt s . fromEnum' $ uid
@@ -61,3 +74,10 @@ pathToTech traits tech = go tech [] where
 
 buildTechDeps :: UnitTraits -> TechDeps
 buildTechDeps traits = HashMap.fromListWith (++) [(tech, pathToTech traits tech) | tech <- TechUnit <$> HashMap.keys traits ]
+
+
+saveDeps :: FilePath -> TechDeps -> IO ()
+saveDeps path deps = B.writeFile path (Aeson.encode deps)
+
+loadDeps :: FilePath -> IO (Maybe TechDeps)
+loadDeps path = Aeson.decode <$> B.readFile path

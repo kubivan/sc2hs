@@ -43,6 +43,7 @@ dependencies:
 - safe
 - split
 - random
+- aeson
 
 ghc-options:
 - -Wall
