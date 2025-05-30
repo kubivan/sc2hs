@@ -146,7 +146,7 @@ requestUnitAbilities :: A.Observation -> A.Request
 requestUnitAbilities obs = defMessage & #query .~ requestQueryAbilities obs
   where
     requestQueryAbilities :: A.Observation -> A.RequestQuery
-    requestQueryAbilities obs = defMessage & #abilities .~ unitTags obs
+    requestQueryAbilities obs = defMessage & #abilities .~ unitTags obs & #ignoreResourceRequirements .~ True
     units :: A.Observation -> [A.Unit]
     units obs = obs ^. (#rawData . #units)
     toRequest :: Word64 -> A.RequestQueryAvailableAbilities
