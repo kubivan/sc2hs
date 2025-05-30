@@ -18,6 +18,7 @@ import SC2.Grid(
     TilePos,
     tilePos
  )
+import SC2.TechTree
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Observation (
@@ -56,17 +57,6 @@ import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
 
--- TODO: move to UnitTraits
-abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
-abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
-    Just t -> toEnum . fromIntegral $ t ^. #unitId
-    Nothing -> error $ "abilityToUnit: invalid ability: " ++ show a
-
--- TODO: move to UnitTraits
-unitToAbility :: UnitTraits -> UnitTypeId -> AbilityId
-unitToAbility traits uid = case traits HashMap.!? uid of
-    Just t -> toEnum . fromIntegral $ t ^. #abilityId
-    Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
@@ -81,6 +71,11 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
+
+canAffordTech :: (AgentDynamicState d) => Tech -> StepMonad d (Bool, Cost)
+canAffordTech (TechUnit u) = canAfford u (Cost 0 0)
+canAffordTech _ = error "not implemented"
+
 
 canAfford :: (AgentDynamicState d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
 canAfford uid r = do

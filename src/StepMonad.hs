@@ -31,6 +31,7 @@ where
 import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Agent
 import SC2.Grid
+import SC2.TechTree
 import Observation
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)
@@ -48,7 +49,6 @@ import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
 
-type UnitTraits = HashMap.HashMap UnitTypeId UnitTypeData
 
 obsApplyAction :: Action -> Observation -> Observation
 obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) obs units
@@ -88,7 +88,8 @@ data StaticInfo = StaticInfo
     , regionGraph :: !(HashMap RegionId (Set.Set RegionId))
     , regionLookup :: !(HashMap TilePos RegionId)
     , siRegions :: !(HashMap RegionId Region)
-    , siRegionPathToEnemy :: !([RegionId])
+    , siRegionPathToEnemy :: ![RegionId]
+    , siTechDeps :: !TechDeps
     }
 
 class AgentDynamicState dyn where

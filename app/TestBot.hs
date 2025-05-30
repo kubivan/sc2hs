@@ -12,24 +12,25 @@ module TestBot where
 
 import Actions
 import Agent
-import SC2.Army.Army
-import SC2.Squad
-import SC2.Squad.State
-import SC2.Squad.Behavior
-import SC2.Squad.FSExploreRegion
-import SC2.Squad.FSEngage
-import SC2.Utils
 import AgentBulidUtils
 import ArmyLogic
 import BotDynamicState
 import Footprint (getFootprint)
-import SC2.Grid
-import Utils
 import Observation
-import SC2.Proto.Data (Race (..))
-import SC2.Proto.Data qualified as Proto
+import SC2.Army.Army
+import SC2.Geometry
+import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (Race (..))
+import SC2.Proto.Data qualified as Proto
+import SC2.Squad
+import SC2.Squad.Behavior
+import SC2.Squad.FSEngage
+import SC2.Squad.FSExploreRegion
+import SC2.Squad.State
+import SC2.TechTree
+import SC2.Utils
 import StepMonad
 import Units (
     Unit,
@@ -42,9 +43,9 @@ import Units (
     unitIdleC,
     unitTypeC,
  )
-import SC2.Geometry
+import Utils
 
-import Conduit (filterC, findC, headC, lengthC, mapC, runConduitPure, sinkList, yieldMany, (.|))
+import Conduit (concatC, filterC, findC, headC, lengthC, mapC, runConduitPure, sinkList, yieldMany, (.|))
 import Control.Applicative (Alternative (..))
 import Control.Monad
 import Control.Monad.Trans.Maybe
@@ -53,36 +54,83 @@ import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
-import Data.HashSet qualified as HashSet
-import Data.List (partition, sortOn, find)
-import Data.Set qualified as Set
-import Data.Maybe (mapMaybe)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe (catMaybes, fromJust, isJust)
+import Data.HashSet qualified as HashSet
+import Data.List (find, partition, sortOn)
+import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe)
+
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
+import Data.Set qualified as Set
 import Data.Word (Word32)
-import Debug.Trace (traceM, trace)
+import Debug.Trace (trace, traceM)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
-import System.Random (newStdGen)
 import Proto.S2clientprotocol.Raw_Fields (facing)
-import SC2.Squad.FSEngage (FSEngage(FSEngageClose, FSEngageFar))
 import SC2.Grid.Algo (regionGraphBfs)
-import StepMonad (StaticInfo(siRegionPathToEnemy))
+import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
+import StepMonad (StaticInfo (siRegionPathToEnemy))
+import System.Random (newStdGen)
+
+-- type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId]
+
+deathBall :: [Tech]
+deathBall = [TechUnit ProtossCarrier, TechUnit ProtossDarktemplar]
+
+stepTowardsTechGoal :: (AgentDynamicState d) => [Tech] -> StepMonad d ()
+stepTowardsTechGoal goal = do
+    (si, abilities) <- agentAsk
+
+    obs <- agentObs
+    let techDeps = siTechDeps si
+        currentTechs =
+            Set.fromList $
+                runC $
+                    unitsSelf obs
+                        .| mapC (view #unitType)
+                        .| mapC (TechUnit . toEnum')
+        inProgress =
+            Set.fromList $
+                runC $
+                    unitsSelf obs
+                        .| mapC (view #orders)
+                        .| concatC
+                        .| mapC (view #abilityId)
+                        .| CL.mapMaybe (fmap TechUnit . abilityToUnitSafe traits . toEnum')
+
+        goal' = Set.fromList $ foldl' (\acc x -> acc ++ techDeps HashMap.! x) [] goal
+        traits = unitTraits si
+
+        availTechs = Set.fromList $ map TechUnit $ catMaybes $ (abilityToUnitSafe traits) <$> HashMap.foldl' (++) [] abilities
+
+        needToBuild = goal' `Set.difference` (currentTechs `Set.union` inProgress)
+        pathTobuild = Set.toList $ availTechs `Set.intersection` needToBuild
+    traceM $ "goal'" ++ show goal'
+    traceM $ "needToBuild" ++ show needToBuild
+    traceM $ "currentTechs" ++ show currentTechs
+    traceM $ "availTech" ++ show availTechs
+    traceM $ "Path towards goal" ++ show pathTobuild
+    when (not . null $ pathTobuild) $ do
+        ds <- agentGet
+        let toBuild@(TechUnit b) = head pathTobuild
+            grid = getGrid ds
+        cres <- tryCreate grid (Cost 0 0) b
+        case cres of
+            Just (action, cost, grid') -> command [action]
+            _ -> return ()
 
 type BuildOrder = [UnitTypeId]
 
 data BotPhase
     = Opening
     | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
-    | BuildArmyAndWin Observation
+    | BuildArmyAndWin Observation [Tech]
 
 strBotPhase :: BotPhase -> String
 strBotPhase (Opening) = "Opening"
 strBotPhase (BuildOrderExecutor{}) = "BuildOrderExecutor"
-strBotPhase (BuildArmyAndWin _) = "BuildArmyAndWin Observation"
+strBotPhase (BuildArmyAndWin{}) = "BuildArmyAndWin Observation"
 
 unitsData :: [Proto.UnitTypeData] -> UnitTraits
 unitsData raw =
@@ -320,8 +368,8 @@ splitAffordable bo reserved = agentGet >>= (\ds -> go bo Data.Sequence.empty (ge
             Nothing -> return (toList acc, bo)
     go [] acc _ _ = return (toList acc, [])
 
-    tryCreate :: (AgentDynamicState d) => Grid -> Cost -> UnitTypeId -> StepMonad d (Maybe (Action, Cost, Grid))
-    tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
+tryCreate :: (AgentDynamicState d) => Grid -> Cost -> UnitTypeId -> StepMonad d (Maybe (Action, Cost, Grid))
+tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
@@ -367,15 +415,13 @@ agentUpdateGrid f =
         ds <- agentGet
         agentPut $ setGrid (f (getGrid ds)) ds
 
-
-setArmy a st = st { dsArmy = a }
+setArmy a st = st{dsArmy = a}
 
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
     canSeek <- squadSeek s
     canExplore <- squadAssignToExplore s
     return $ canSeek || canExplore
-
 
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
 squadSeek squad = case unwrapState (squadState squad) of
@@ -396,8 +442,6 @@ squadSeek squad = case unwrapState (squadState squad) of
                     army' = (dsArmy ds){armySquads = squads'}
                 agentPut $ setArmy army' ds
                 return True
-
-
 
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
 squadAssignToExplore s = do
@@ -421,7 +465,7 @@ squadAssignToExplore s = do
             agentPut $ setArmy army' ds
             return True
 
-agentAssignIdleSquads ::  StepMonad BotDynamicState ()
+agentAssignIdleSquads :: StepMonad BotDynamicState ()
 agentAssignIdleSquads = do
     ds <- agentGet
     let army = dsArmy ds
@@ -430,7 +474,7 @@ agentAssignIdleSquads = do
     fullIdleSquads <- filter isSquadIdle <$> filterM isSquadFull squads
     mapM_ squadAssign fullIdleSquads
 
-agentTryEngage ::  StepMonad BotDynamicState ()
+agentTryEngage :: StepMonad BotDynamicState ()
 agentTryEngage = do
     ds <- agentGet
     let army = dsArmy ds
@@ -446,7 +490,7 @@ agentArmyControl = do
     let army = dsArmy ds
         squads = armySquads army
     squads' <- mapM processSquad squads
-    let army' = army{armySquads=squads'}
+    let army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
 data BotAgent
@@ -488,7 +532,8 @@ instance Agent BotAgent where
             startRegion = regionLookup HashMap.! tilePos nexusPos
             enemyRegion = regionLookup HashMap.! enemyStart
             pathToEnemy = regionGraphBfs regionGraph startRegion enemyRegion
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy
+            techTree = buildTechDeps unitTraits
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy techTree
 
         print pathToEnemy
 
@@ -501,17 +546,16 @@ instance Agent BotAgent where
 
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
     agentStep (BotAgent phase si ds) obs abilities =
-
         let sm = agentStepPhase phase
             (phase', plan, ds') = runStepM si abilities (setObs (obs ^. #observation) ds) sm
             actions = obs ^. #actions
             errors = obs ^. #actionErrors
             tracedResult =
                 if not (null actions) || not (null errors)
-                then --trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
-                    (BotAgent phase' si ds', plan)
-                else (BotAgent phase' si ds', plan)
-        in tracedResult
+                    then -- trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
+                        (BotAgent phase' si ds', plan)
+                    else (BotAgent phase' si ds', plan)
+         in tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
 agentStepPhase Opening =
@@ -526,7 +570,7 @@ agentStepPhase Opening =
         agentPut $ setGrid (gridUpdate obs grid) ds
         let nexus = findNexus obs
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
-            expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway]
+            expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
         command [SelfCommand TrainProbe [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
@@ -573,10 +617,10 @@ agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
         if null orders'
             then do
                 -- transit
-                return $ BuildArmyAndWin obs
+                return $ BuildArmyAndWin obs deathBall
             else
                 return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
-agentStepPhase (BuildArmyAndWin obsPrev) =
+agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     {-# SCC "agentStep:BuildArmyAndWin" #-}
     do
         si <- agentStatic
@@ -586,6 +630,7 @@ agentStepPhase (BuildArmyAndWin obsPrev) =
         when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
         reassignIdleProbes
         agentArmyControl
+        stepTowardsTechGoal deathBall
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 
@@ -598,9 +643,8 @@ agentStepPhase (BuildArmyAndWin obsPrev) =
         command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]
 
         trainProbes
-        -- randomArmyFiddling
 
-        return $ BuildArmyAndWin obs
+        return $ BuildArmyAndWin obs deathBall
 
 -- --------------------------------
 -- instance Agent TestBot BotDynamicState where
