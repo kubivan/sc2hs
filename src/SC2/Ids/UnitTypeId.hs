@@ -218,7 +218,7 @@ data UnitTypeId =
  | NeutralUtilitybot  -- 330
  | NeutralVespenegeyser  -- 342
  | NeutralXelnagatower  -- 149
- deriving (Show, Eq)
+ deriving (Show, Eq, Ord)
 
 instance Enum UnitTypeId where
 

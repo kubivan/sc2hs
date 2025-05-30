@@ -1,6 +1,8 @@
 
 module SC2.Ids.UpgradeId(UpgradeId(..)) where
 
+import Data.Hashable
+
 data UpgradeId =
    Invalid  -- 0
  | Carrierlaunchspeedupgrade  -- 1
@@ -93,6 +95,9 @@ data UpgradeId =
  | Rapidfirelaunchers  -- 291
  | Enhancedmunitions  -- 292
  deriving (Show, Eq)
+
+instance Hashable UpgradeId where
+  hashWithSalt s = hashWithSalt s . fromEnum
 
 instance Enum UpgradeId where
 
