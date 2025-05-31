@@ -2,7 +2,10 @@
 module SC2.Ids.UnitTypeId(UnitTypeId(..), toEnum, fromEnum) where
 
 import Data.Hashable
-import Data.Aeson (ToJSON(..), FromJSON(..))
+
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.Text (Text, unpack, pack)
+import Text.Read (readMaybe)
 
 data UnitTypeId =
    Invalid  -- 0
@@ -219,7 +222,7 @@ data UnitTypeId =
  | NeutralUtilitybot  -- 330
  | NeutralVespenegeyser  -- 342
  | NeutralXelnagatower  -- 149
- deriving (Show, Eq, Ord)
+ deriving (Show, Eq, Ord, Read)
 
 instance Enum UnitTypeId where
 
@@ -664,7 +667,10 @@ instance Hashable UnitTypeId where
   hashWithSalt s val = fromEnum val + s
 
 instance ToJSON UnitTypeId where
-  toJSON = toJSON . fromEnum
+  toJSON = toJSON . show
 
 instance FromJSON UnitTypeId where
-  parseJSON v = toEnum <$> parseJSON v
+  parseJSON = withText "UnitTypeId" $ \txt ->
+    case readMaybe (unpack txt) of
+      Just utid -> pure utid
+      Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt

@@ -3,6 +3,10 @@ module SC2.Ids.UpgradeId(UpgradeId(..)) where
 
 import Data.Hashable
 
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.Text (unpack)
+import Text.Read (readMaybe)
+
 data UpgradeId =
    Invalid  -- 0
  | Carrierlaunchspeedupgrade  -- 1
@@ -94,7 +98,7 @@ data UpgradeId =
  | Smartservos  -- 289
  | Rapidfirelaunchers  -- 291
  | Enhancedmunitions  -- 292
- deriving (Show, Eq)
+ deriving (Show, Eq, Ord, Read)
 
 instance Hashable UpgradeId where
   hashWithSalt s = hashWithSalt s . fromEnum
@@ -287,3 +291,12 @@ instance Enum UpgradeId where
     291 -> Rapidfirelaunchers
     292 -> Enhancedmunitions
     _ -> Invalid
+
+instance ToJSON UpgradeId where
+  toJSON = toJSON . show
+
+instance FromJSON UpgradeId where
+  parseJSON = withText "UpgradeId" $ \txt ->
+    case readMaybe (unpack txt) of
+      Just uid -> pure uid
+      Nothing -> fail $ "Invalid UpgradeId: " ++ unpack txt

@@ -51,6 +51,7 @@ import qualified Data.Set as Set
 import Control.Monad (msum)
 
 import TestGrid(gridUnitTests)
+import TestTechTree
 
 import Proto.S2clientprotocol.Raw_Fields (placementGrid, pathingGrid)
 import qualified Data.Vector.Unboxed as VU
@@ -301,4 +302,4 @@ spec =
                     print $ "found " ++ show (length rays) ++ " chokes"
 
 main :: IO ()
-main = hspec $ spec >> gridUnitTests
+main = hspec $ spec >> gridUnitTests >> techTreeUnitTests
