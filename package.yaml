@@ -45,6 +45,7 @@ dependencies:
 - random
 - aeson
 - aeson-pretty
+- lens-aeson
 
 ghc-options:
 - -Wall

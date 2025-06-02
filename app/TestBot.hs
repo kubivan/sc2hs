@@ -73,10 +73,8 @@ import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
 import StepMonad (StaticInfo (siRegionPathToEnemy))
 import System.Random (newStdGen)
 
--- type UnitAbilities = HashMap.HashMap UnitTypeId [AbilityId]
-
 deathBall :: [Tech]
-deathBall = [TechUnit ProtossCarrier, TechUnit ProtossDarktemplar]
+deathBall = [TechUnit ProtossDarkTemplar]
 
 stepTowardsTechGoal :: (AgentDynamicState d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
@@ -570,8 +568,8 @@ agentStepPhase Opening =
             grid = getGrid ds
         agentPut $ setGrid (gridUpdate obs grid) ds
         let nexus = findNexus obs
-            fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticscore, ProtossAssimilator, ProtossGateway]
-            expandBuild = [ProtossNexus, ProtossRoboticsfacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
+            fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticsCore, ProtossAssimilator, ProtossGateway]
+            expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
         command [SelfCommand TrainProbe [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
@@ -638,7 +636,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         res <- runMaybeT buildPylons
 
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
-            idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsfacility .| unitIdleC
+            idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
         command [SelfCommand TrainImmortal idleRobos]
         command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]

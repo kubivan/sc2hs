@@ -78,35 +78,36 @@ isBuilding = isBuildingType . toEnum' . view PR.unitType
 
 isMineral :: Unit -> Bool
 isMineral u =
-    utype == NeutralMineralfield
-        || utype == NeutralMineralfield750
-        || utype == NeutralLabmineralfield
-        || utype == NeutralLabmineralfield
-        || utype == NeutralLabmineralfield750
-        || utype == NeutralRichmineralfield
-        || utype == NeutralRichmineralfield750
-        || utype == NeutralPurifierrichmineralfield750
-        || utype == NeutralPurifierrichmineralfield
-        || utype == NeutralBattlestationmineralfield
-        || utype == NeutralBattlestationmineralfield750
+    utype == NeutralMineralField || utype == NeutralMineralField750
+    --TODO: add missing minerals
+        -- || utype == NeutralMineralField750
+        -- || utype == NeutralLabMineralField
+        -- || utype == NeutralLabMineralField
+        -- || utype == NeutralLabMineralField750
+        -- || utype == NeutralRichMineralField
+        -- || utype == NeutralRichMineralField750
+        -- || utype == NeutralPurifierrichMineralField750
+        -- || utype == NeutralPurifierrichMineralField
+        -- || utype == NeutralBattlestationMineralField
+        -- || utype == NeutralBattlestationMineralField750
   where
     utype = toEnum' $ u ^. PR.unitType
 
 isGeyser :: Unit -> Bool
 isGeyser u =
-    utype == NeutralVespenegeyser
-        || utype == NeutralRichvespenegeyser
-        || utype == NeutralProtossvespenegeyser
-        || utype == NeutralSpaceplatformgeyser
-        || utype == NeutralPurifiervespenegeyser
-        || utype == NeutralShakurasvespenegeyser
+    utype == NeutralVespeneGeyser
+        || utype == NeutralRichVespeneGeyser
+        -- || utype == NeutralProtossvespenegeyser
+        -- || utype == NeutralSpaceplatformGeyser
+        -- || utype == NeutralPurifierVespeneGeyser
+        -- || utype == NeutralShakurasVespeneGeyser
   where
     utype = toEnum' $ u ^. PR.unitType
 
 isAssimilator :: Unit -> Bool
 isAssimilator u =
     utype == ProtossAssimilator
-        || utype == ProtossAssimilatorrich
+        || utype == ProtossAssimilatorRich
   where
     utype = toEnum' $ u ^. PR.unitType
 

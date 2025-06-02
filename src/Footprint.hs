@@ -41,7 +41,7 @@ getFootprint id = case id of
     $ unlines [ "###"
               , "#c#"
               , "###"]
-  NeutralVespenegeyser -> createFootprint
+  NeutralVespeneGeyser -> createFootprint
     $ unlines [ " ....... "
               , "........."
               , "........."
@@ -52,7 +52,7 @@ getFootprint id = case id of
               , "........."
               , " ....... "
               ]
-  NeutralRichvespenegeyser -> createFootprint
+  NeutralRichVespeneGeyser -> createFootprint
     $ unlines [ " ....... "
               , "........."
               , "........."
@@ -68,13 +68,13 @@ getFootprint id = case id of
     $ unlines ["##"
               ,"#c"]
 
-  ProtossPhotoncannon -> createFootprint
+  ProtossPhotonCannon -> createFootprint
     $ unlines [ "...."
               , ".##."
               , ".#c."
               , "...."
               ]
-  NeutralMineralfield -> createFootprint
+  NeutralMineralField -> createFootprint
     $ unlines [ " ...... "
               , "........"
               , "........"
@@ -83,7 +83,7 @@ getFootprint id = case id of
               , "........"
               , " ...... "
               ]
-  NeutralMineralfield750 -> createFootprint "#c"
+  NeutralMineralField750 -> createFootprint "#c"
 
   _ -> createFootprint
     $ unlines [ "###"

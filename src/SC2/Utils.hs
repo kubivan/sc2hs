@@ -20,7 +20,7 @@ squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
 
 
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
-isArmyUnit u = ProtossProbe /= utype && (not . isBuildingType $ utype)
+isArmyUnit u = ProtossProbe /= utype && (not . isUnitStructure $ utype)
   where
     utype = toEnum' (u ^. #unitType)
 
