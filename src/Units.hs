@@ -65,8 +65,9 @@ fromEnum' = fromIntegral . fromEnum
 
 $(genBuildingMapping ''UnitTypeId ''AbilityId)
 
+-- | TODO: remove compatibility wrapper
 isBuildingType :: UnitTypeId -> Bool
-isBuildingType utype = isJust (lookup utype buildingMapping)
+isBuildingType = isUnitStructure
 
 -- isBuildingType :: UnitTypeId -> Bool
 -- isBuildingType utype = isJust (readMaybe =<< buildCmdStr :: Maybe AbilityId)

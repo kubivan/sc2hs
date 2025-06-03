@@ -81,8 +81,7 @@ stepTowardsTechGoal goal = do
     (si, abilities) <- agentAsk
 
     obs <- agentObs
-    let techDeps = siTechDeps si
-        currentTechs =
+    let currentTechs =
             Set.fromList $
                 runC $
                     unitsSelf obs
@@ -97,7 +96,7 @@ stepTowardsTechGoal goal = do
                         .| mapC (view #abilityId)
                         .| CL.mapMaybe (fmap TechUnit . abilityToUnitSafe traits . toEnum')
 
-        goal' = Set.fromList $ foldl' (\acc x -> acc ++ techDeps HashMap.! x) [] goal
+        goal' = Set.fromList $ foldl' (\acc x -> acc ++ techPath HashMap.! x) [] goal
         traits = unitTraits si
 
         availTechs = Set.fromList $ map TechUnit $ catMaybes $ (abilityToUnitSafe traits) <$> HashMap.foldl' (++) [] abilities
@@ -530,13 +529,11 @@ instance Agent BotAgent where
             startRegion = regionLookup HashMap.! tilePos nexusPos
             enemyRegion = regionLookup HashMap.! enemyStart
             pathToEnemy = regionGraphBfs regionGraph startRegion enemyRegion
-            techTree = buildTechDeps unitTraits
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy techTree
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy
 
         print pathToEnemy
 
         traceM "create ds"
-        saveDeps "tech_deps.json" techTree
         dynamicState <- makeDynamicState obsRaw grid
         traceM "created ds"
         return $ BotAgent Opening si dynamicState

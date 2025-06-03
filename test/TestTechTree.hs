@@ -7,35 +7,47 @@ import SC2.Ids.UpgradeId
 import SC2.TechTree
 import Test.Hspec
 
-loadTestData :: IO TechDeps
-loadTestData = do
-    techDeps <- loadDeps "test/data/tech_deps.json"
-
-    return $ fromJust techDeps
+printDeps :: IO ()
+printDeps = do
+    -- print trainDeps
+    -- print "=================================================================================="
+    -- print morphDeps
+    -- print "=================================================================================="
+    -- print buildDeps
+    -- print "=================================================================================="
+    -- print researchDeps
+    -- print "=================================================================================="
+    -- print unitAbilitiesDeps
+    -- print "=================================================================================="
+    -- print techDeps
+    -- print "=================================================================================="
+    print techPath
 
 techTreeUnitTests :: Spec
-techTreeUnitTests =
-    beforeAll loadTestData $ do
+techTreeUnitTests = do
         describe "TechTree" $ do
-            it "unit lookup" $ \techDeps -> do
-                let carrierDeps = techDeps HashMap.! TechUnit ProtossCarrier
-
+            it "unit lookup" $ do
+                let carrierDeps = techPath HashMap.! TechUnit ProtossCarrier
                 carrierDeps
                     `shouldBe` [ TechUnit ProtossNexus
+                               , TechUnit ProtossProbe
+                               , TechUnit ProtossPylon
                                , TechUnit ProtossGateway
-                               , TechUnit ProtossCyberneticscore
+                               , TechUnit ProtossCyberneticsCore
                                , TechUnit ProtossStargate
-                               , TechUnit ProtossFleetbeacon
+                               , TechUnit ProtossFleetBeacon
                                , TechUnit ProtossCarrier
                                ]
-            it "upgrade lookup" $ \techDeps -> do
-                testDeps
-                let blinkDeps = techDeps HashMap.! TechUpgrade Blinktech
+            it "upgrade lookup" $ do
+                printDeps
+                let blinkDeps = techPath HashMap.! TechUpgrade Blinktech
 
                 blinkDeps
                     `shouldBe` [ TechUnit ProtossNexus
+                               , TechUnit ProtossProbe
+                               , TechUnit ProtossPylon
                                , TechUnit ProtossGateway
-                               , TechUnit ProtossCyberneticscore
-                               , TechUnit ProtossTwilightcouncil
+                               , TechUnit ProtossCyberneticsCore
+                               , TechUnit ProtossTwilightCouncil
                                , TechUpgrade Blinktech
                                ]

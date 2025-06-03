@@ -89,7 +89,6 @@ data StaticInfo = StaticInfo
     , regionLookup :: !(HashMap TilePos RegionId)
     , siRegions :: !(HashMap RegionId Region)
     , siRegionPathToEnemy :: ![RegionId]
-    , siTechDeps :: !TechDeps
     }
 
 class AgentDynamicState dyn where

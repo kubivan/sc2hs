@@ -1,4 +1,6 @@
 
+ {-# LANGUAGE DeriveLift #-}
+
 module SC2.Ids.UpgradeId(UpgradeId(..)) where
 
 import Data.Hashable
@@ -6,6 +8,7 @@ import Data.Hashable
 import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Text (unpack)
 import Text.Read (readMaybe)
+import Language.Haskell.TH.Syntax (Lift)
 
 data UpgradeId =
    Invalid  -- 0
@@ -98,8 +101,7 @@ data UpgradeId =
  | Smartservos  -- 289
  | Rapidfirelaunchers  -- 291
  | Enhancedmunitions  -- 292
- deriving (Show, Eq, Ord, Read)
-
+ deriving (Show, Eq, Ord, Read, Lift)
 instance Hashable UpgradeId where
   hashWithSalt s = hashWithSalt s . fromEnum
 

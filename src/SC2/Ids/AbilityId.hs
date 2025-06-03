@@ -1,6 +1,16 @@
- module SC2.Ids.AbilityId (AbilityId(..), toEnum, fromEnum, isBuildAbility) where
+{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE DeriveAnyClass #-}
+
+module SC2.Ids.AbilityId (AbilityId(..), toEnum, fromEnum, isBuildAbility) where
+
+import Language.Haskell.TH.Syntax (Lift)
 
 import Data.List (isPrefixOf)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Text.Read (readMaybe)
+import Data.Text (unpack)
+
+import Data.Hashable
 
 data AbilityId =
    Invalid Int  -- 0
@@ -473,7 +483,11 @@ data AbilityId =
  | UnloadunitNydasnetwork  -- 1440,   Target: None.
  | UnloadunitOverlord  -- 1409,   Target: None.
  | UnloadunitWarpprism  -- 914,    Target: None.
- deriving (Show, Eq, Read)
+ deriving (Show, Eq, Read, Ord, Lift)
+
+instance Hashable AbilityId where
+  hash = fromEnum
+  hashWithSalt s val = fromEnum val + s
 
 instance Enum AbilityId where
 
@@ -1427,3 +1441,12 @@ instance Enum AbilityId where
 isBuildAbility:: AbilityId -> Bool
 isBuildAbility x = "Build" `isPrefixOf` show x
 
+
+instance ToJSON AbilityId where
+  toJSON = toJSON . show
+
+instance FromJSON AbilityId where
+  parseJSON = withText "AbilityId" $ \txt ->
+    case readMaybe (unpack txt) of
+      Just utid -> pure utid
+      Nothing -> fail $ "Invalid AbilityId: " ++ unpack txt

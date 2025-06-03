@@ -106,13 +106,13 @@ spec =
                 it "Units tests" $ \(obs, _) -> do
                     runC (obsUnitsC obs) `shouldSatisfy` (not . null)
 
-                    let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralfield
+                    let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralField
                     length mineralFields `shouldBe` 60
 
                     isBuildingType ProtossNexus `shouldBe` True
                     isBuildingType ProtossAssimilator `shouldBe` True
 
-                    isBuildingType ProtossCyberneticscore `shouldBe` True
+                    isBuildingType ProtossCyberneticsCore `shouldBe` True
 
                     isBuildingType ProtossStalker `shouldBe` False
 
