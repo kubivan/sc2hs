@@ -119,10 +119,14 @@ siUnitData u = do
         udata = (HashMap.!) traits . toEnum' . view #unitType $ u
     return udata
 
+headF :: String -> [a] -> a
+headF err []    = error err
+headF _   (x:_) = x
+
 siUnitRange :: AgentDynamicState d => Unit -> Unit -> StepMonad d Float
 siUnitRange u e = do -- TODO: take into account different data.weapons: air/ground etc
     udata <- siUnitData u
-    let range = view #range $ head $ udata ^. #weapons
+    let range = view #range $ headF ("no weapons in unit " ++ show u) $ udata ^. #weapons
     return range
 
 siUnitSightRange :: AgentDynamicState d => Unit -> StepMonad d Float
