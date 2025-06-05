@@ -56,6 +56,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
+import Utils
 
 
 findAssignee :: Observation -> Action -> Maybe Unit
@@ -86,7 +87,7 @@ canAfford uid r = do
         vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
         resources = Cost minerals vespene
         cost = unitCost (unitTraits si) uid
-    return (resources >= cost + r, cost) -- `Utils.dbg` ("minerals: " ++ show minerals)
+    return (resources >= cost + r, cost) --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
 
 findBuilder :: Observation -> Maybe Unit
 findBuilder obs =
@@ -99,7 +100,7 @@ findBuilder obs =
                 .| filterC
                     ( \x ->
                         Prelude.null (x ^. #orders)
-                            || (length (x ^. #orders) == 1 && HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders)) -- TODO: fix, add proper o
+                            || (length (x ^. #orders) == 1 && HARVESTGATHERPROBE `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders)) -- TODO: fix, add proper o
                     )
 
 pylonRadius :: Float
@@ -137,7 +138,7 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
 -- TODO: now we check length 1 to filter out the
 -- new assigned builder.
 unitIsHarvesting :: Units.Unit -> Bool
-unitIsHarvesting u = length orders == 1 && (HarvestGatherProbe `elem` orders || HarvestReturnProbe `elem` orders) -- `Utils.dbg` (show orders)
+unitIsHarvesting u = length orders == 1 && (HARVESTGATHERPROBE `elem` orders || HARVESTRETURNPROBE `elem` orders) -- `Utils.dbg` (show orders)
   where
     orders = toEnum' . view #abilityId <$> u ^. #orders
 
@@ -166,7 +167,7 @@ unitIsVespeneHarvester :: [Units.Unit] -> Units.Unit -> Bool
 unitIsVespeneHarvester assimilators u = unitIsAssignedToAny assimilators u || isReturnsVespene
   where
     orders = toEnum' . view #abilityId <$> u ^. #orders
-    isReturnsVespene = length orders == 1 && head orders == HarvestReturnProbe && u ^. #vespeneContents > 0
+    isReturnsVespene = length orders == 1 && head orders == HARVESTRETURNPROBE && u ^. #vespeneContents > 0
 
 getOverWorkersFrom :: [Units.Unit] -> [Units.Unit] -> [Units.Unit]
 getOverWorkersFrom buildings workers = concatMap getFrom buildings

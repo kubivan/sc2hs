@@ -151,7 +151,7 @@ buildAction ProtossAssimilator grid reservedRes = do
     builder <- MaybeT . return $ findBuilder obs
     geyser <- MaybeT . return $ findFreeGeyser obs
 
-    let res = UnitCommand BuildAssimilator [builder] geyser
+    let res = UnitCommand PROTOSSBUILDASSIMILATOR [builder] geyser
 
     return (res, cost, grid) -- `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")
 buildAction order grid reservedRes = do
@@ -203,9 +203,9 @@ pylonBuildAction grid reservedRes = do
     -- <|> findPylonPlacementPoint (const True)
 
     let grid' = addMark grid footprint pylonPos
-    let obs' = addOrder (builder ^. #tag) BuildPylon obs
+    let obs' = addOrder (builder ^. #tag) PROTOSSBUILDPYLON obs
     lift . agentPut $ dsUpdate obs' grid' ds
-    return (PointCommand BuildPylon [builder] (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
+    return (PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
 
 createAction :: (AgentDynamicState d) => Grid -> Cost -> UnitTypeId -> MaybeStepMonad d (Action, Cost, Grid)
 createAction grid reserved order = do
@@ -223,7 +223,7 @@ trainProbes = do
         nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1) .| unitIdleC
         nexusCount = length nexuses
         optimalCount = assimCount * 3 + nexusCount * 16
-    when (optimalCount - probeCount > 0) $ command [SelfCommand TrainProbe nexuses]
+    when (optimalCount - probeCount > 0) $ command [SelfCommand NEXUSTRAINPROBE nexuses]
 
 -- `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
 
@@ -242,8 +242,8 @@ reassignIdleProbes = do
         mineralField =
             runConduitPure $
                 probes
-                    .| filterC (\p -> HarvestGatherProbe `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
-                    .| mapC (\harvester -> head $ filter (\o -> HarvestGatherProbe == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
+                    .| filterC (\p -> HARVESTGATHERPROBE `elem` map (\o -> toEnum' (o ^. #abilityId)) (p ^. #orders))
+                    .| mapC (\harvester -> head $ filter (\o -> HARVESTGATHERPROBE == toEnum' (o ^. #abilityId)) (harvester ^. #orders))
                     .| mapC (\harvestOrder -> harvestOrder ^. #targetUnitTag)
                     .| mapC (getUnit obs)
                     .| filterC isJust
@@ -284,7 +284,7 @@ reassignIdleProbes = do
                         CL.sourceList mineralHarvesters
                             .| filterC (unitIsAssignedToAny (nexusesOver ++ nexusesIdeal)) -- TODO: use manhattan
             command
-                [ UnitCommand HarvestGatherProbe [harvester] assimilator
+                [ UnitCommand HARVESTGATHERPROBE [harvester] assimilator
                 | (assimilator, harvester) <- zip assimUnder probePool
                 ]
         else
@@ -301,14 +301,14 @@ reassignIdleProbes = do
                                 runConduitPure $
                                     obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
                     command
-                        [ UnitCommand HarvestGatherProbe [harvester] (closestMineralTo nexus)
+                        [ UnitCommand HARVESTGATHERPROBE [harvester] (closestMineralTo nexus)
                         | (nexus, harvester) <- zip nexusesUnder probePool
                         ]
                 else do
                     -- trace "staffing: just idle probes" (return ())
                     let closestMineral to = runConduitPure $ obsUnitsC obs .| filterC isMineral .| closestC to
                     -- TODO: obsolete, rewrite
-                    command [UnitCommand HarvestGatherProbe [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
+                    command [UnitCommand HARVESTGATHERPROBE [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
 buildPylons :: (AgentDynamicState d) => MaybeStepMonad d ()
 buildPylons = do
@@ -330,7 +330,7 @@ buildPylons = do
                 runC $
                     unitsSelf obs
                         .| unitTypeC ProtossProbe
-                        .| filterC (unitHasOrder BuildPylon)
+                        .| filterC (unitHasOrder PROTOSSBUILDPYLON)
 
         expectedFoodCap = 8 * incompletePylonsCount + 8 * orderedPylonsCount
 
@@ -568,7 +568,7 @@ agentStepPhase Opening =
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticsCore, ProtossAssimilator, ProtossGateway]
             expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
-        command [SelfCommand TrainProbe [nexus]]
+        command [SelfCommand NEXUSTRAINPROBE [nexus]]
         return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}
@@ -635,8 +635,8 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
-        command [SelfCommand TrainImmortal idleRobos]
-        command [SelfCommand (if (gameLoop `div` 5) == 0 then TrainZealot else TrainStalker) idleGates]
+        command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
+        command [SelfCommand (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER) idleGates]
 
         trainProbes
 

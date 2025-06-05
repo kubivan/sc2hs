@@ -63,7 +63,8 @@ toEnum' = toEnum . fromIntegral
 fromEnum' :: (Enum e) => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
 
-$(genBuildingMapping ''UnitTypeId ''AbilityId)
+--TODO: check and remove if not needed
+-- $(genBuildingMapping ''UnitTypeId ''AbilityId)
 
 -- | TODO: remove compatibility wrapper
 isBuildingType :: UnitTypeId -> Bool

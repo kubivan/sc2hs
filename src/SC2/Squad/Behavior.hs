@@ -61,8 +61,8 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
     if all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos
         then return True
         else do
-            command [PointCommand AttackAttack [leader] (toPoint2D center)]
-            command [PointCommand AttackAttack [u] (toPoint2D p) | (p, u) <- unitsWithPos]
+            command [PointCommand ATTACKATTACK [leader] (toPoint2D center)]
+            command [PointCommand ATTACKATTACK [u] (toPoint2D p) | (p, u) <- unitsWithPos]
             return False
 
 squadExploreRegion :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> Region -> StepMonad d ()
@@ -81,7 +81,7 @@ squadExploreRegion s region =
         if isNothing isFound
             then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
             else do
-                command [PointCommand AttackAttack [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
+                command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
 
 squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()

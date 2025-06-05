@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module SC2.Ids.UnitTypeGen (generateUnitTypeStuff) where
+module SC2.Ids.GenIdsTh (generateTechTypeStuff) where
 
 import Control.Monad
 import Data.Aeson
@@ -25,6 +25,19 @@ type Race = Text
 
 jsonDataFileName = "data/data.json"
 
+class TechEnum t where
+    techName :: t -> Name
+    techId :: t -> Int
+
+    -- TODO: there shoulde be better way: t is not needed, use typefamilies or smth
+    techTypeName :: t -> String
+    techInvalidTypeName :: t -> String
+
+data ParsedAbility = ParsedAbility
+    { abilityId :: Int
+    , abilityName :: UnitName
+    }
+
 data ParsedUnit = ParsedUnit
     { unitId :: UnitId
     , unitName :: UnitName
@@ -32,9 +45,33 @@ data ParsedUnit = ParsedUnit
     , traits :: HashMap String Bool
     }
 
+instance TechEnum ParsedAbility where
+    techName = abilityName
+    techId = abilityId
+    techTypeName _ = "AbilityId"
+    techInvalidTypeName _ = "InvalidAbilityId"
+
+instance TechEnum ParsedUnit where
+    techName = unitName
+    techId = unitId
+    techTypeName _ = "UnitTypeId"
+    techInvalidTypeName _ = "InvalidUnitTypeId"
+
+parseAbilities :: Value -> Q [ParsedAbility]
+parseAbilities val = do
+    let Just (Array abs) = val ^? key "Ability"
+    return $ catMaybes $ map parseAbiblity (V.toList abs)
+
+parseAbiblity :: Value -> Maybe ParsedAbility
+parseAbiblity v = do
+    uid <- v ^? key "id" . _Integer
+    name <- v ^? key "name" . _String
+    let constructor = mkName (sanitize name)
+    return $ ParsedAbility (fromInteger uid) constructor
+
 parseUnits :: Value -> Q [ParsedUnit]
 parseUnits val = do
-    let Just (Array units) = val ^? key "Unit" -- Adjusted to match SC2 layout
+    let Just (Array units) = val ^? key "Unit"
     return $ catMaybes $ map parseUnit (V.toList units)
 
 parseUnit :: Value -> Maybe ParsedUnit
@@ -49,43 +86,43 @@ parseUnit v = do
                 [(k, b) | k <- keys, Just b <- [v ^? key (fromString k) . _Bool]]
     return $ ParsedUnit (fromInteger uid) constructor race boolTraits
 
-genDataDecl :: [ParsedUnit] -> Dec
-genDataDecl units =
+genDataDecl :: (TechEnum t) => [t] -> Dec
+genDataDecl values =
     DataD
         []
-        (mkName "UnitTypeId")
+        (mkName (techTypeName (head values)))
         []
         Nothing
-        (NormalC invalidCon [] : map (\u -> NormalC (unitName u) []) units)
+        (NormalC invalidCon [] : map (\u -> NormalC (techName u) []) values)
         [DerivClause Nothing (map ConT [''Eq, ''Ord, ''Show, ''Lift, ''Read])]
   where
-    invalidCon = mkName "Invalid"
+    invalidCon = mkName (techInvalidTypeName (head values))
 
-genEnumInstance :: [ParsedUnit] -> Dec
-genEnumInstance units =
+genEnumInstance :: (TechEnum t) => [t] -> Dec
+genEnumInstance values =
     InstanceD
         Nothing
         []
-        (AppT (ConT ''Enum) (ConT (mkName "UnitTypeId")))
+        (AppT (ConT ''Enum) (ConT (mkName (techTypeName (head values)))))
         [ FunD
             'fromEnum
-            ( Clause [ConP (mkName "Invalid") [] []] (NormalB (LitE (IntegerL 0))) []
+            ( Clause [ConP (mkName (techInvalidTypeName (head values))) [] []] (NormalB (LitE (IntegerL 0))) []
                 : [ Clause
-                        [ConP (unitName u) [] []]
-                        (NormalB (LitE (IntegerL (fromIntegral (unitId u)))))
+                        [ConP (techName u) [] []]
+                        (NormalB (LitE (IntegerL (fromIntegral (techId u)))))
                         []
-                  | u <- units
+                  | u <- values
                   ]
             )
         , FunD 'toEnum $
-            Clause [LitP (IntegerL 0)] (NormalB (ConE (mkName "Invalid"))) []
+            Clause [LitP (IntegerL 0)] (NormalB (ConE (mkName (techInvalidTypeName (head values))))) []
                 : [ Clause
-                        [LitP (IntegerL (fromIntegral (unitId u)))]
-                        (NormalB (ConE (unitName u)))
+                        [LitP (IntegerL (fromIntegral (techId u)))]
+                        (NormalB (ConE (techName u)))
                         []
-                  | u <- units
+                  | u <- values
                   ]
-                ++ [Clause [WildP] (NormalB (ConE (mkName "Invalid"))) []]
+                ++ [Clause [WildP] (NormalB (ConE (mkName (techInvalidTypeName (head values))))) []]
         ]
 
 genTraitFunction :: (String, String) -> [ParsedUnit] -> Dec
@@ -100,18 +137,19 @@ genTraitFunction (traitName, traitFunc) units =
         fallback = Clause [WildP] (NormalB (ConE 'False)) []
      in FunD (mkName traitFunc) (matchClauses ++ [fallback])
 
-generateUnitTypeStuff :: Q [Dec]
-generateUnitTypeStuff = do
+generateTechTypeStuff :: Q [Dec]
+generateTechTypeStuff = do
     addDependentFile jsonDataFileName
     content <- runIO $ B.readFile jsonDataFileName
     let Just val = decode content
-    parsed <- parseUnits val
+    parsedUnits <- parseUnits val
+    parsedAbs <- parseAbilities val
 
-    let dataDecl = genDataDecl parsed
-        enumDecl = genEnumInstance parsed
+    let dataDeclUnitTypeId = genDataDecl parsedUnits
+        enumDeclUnitTypeId = genEnumInstance parsedUnits
         traitDecls =
             map
-                (\trait -> genTraitFunction trait parsed)
+                (\trait -> genTraitFunction trait parsedUnits)
                 [ ("is_structure", "isUnitStructure")
                 , ("is_worker", "isUnitWorker")
                 , ("is_townhall", "isUnitTownhall")
@@ -119,7 +157,10 @@ generateUnitTypeStuff = do
                 , ("needs_power", "isUnitNeedsPower")
                 ]
 
-    return (dataDecl : enumDecl : traitDecls)
+        dataDeclAbilityId = genDataDecl parsedAbs
+        enumDeclAbilityId = genEnumInstance parsedAbs
+
+    return $ (dataDeclUnitTypeId : enumDeclUnitTypeId : traitDecls) ++ [dataDeclAbilityId, enumDeclAbilityId]
 
 capitalize (c : cs) = toEnum (fromEnum c - 32) : cs
 capitalize [] = []

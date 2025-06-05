@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveLift #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module SC2.Ids.UnitTypeId(UnitTypeId(..), toEnum, fromEnum, isUnitStructure) where
+
+import SC2.Ids.Ids
 
 import Data.Hashable
 import Language.Haskell.TH.Syntax (Lift)
@@ -10,9 +11,6 @@ import Data.Aeson (ToJSON(..), FromJSON(..), withText)
 import Data.Text (unpack)
 import Text.Read (readMaybe)
 
-import SC2.Ids.UnitTypeGen
-
-$(generateUnitTypeStuff)
 instance Hashable UnitTypeId where
   hash = fromEnum
   hashWithSalt s val = fromEnum val + s

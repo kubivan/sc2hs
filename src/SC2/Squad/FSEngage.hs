@@ -48,10 +48,10 @@ stepForwardOrBack u e = do
         upos = toPoint2D $ u ^. #pos
     if distSq / 2 >= (range / 2) * (range / 2) then do
         stepForward <- u `stepToward` e
-        command [PointCommand Move [u] (upos + stepForward)] -- TODO: 1 stepForward vec
+        command [PointCommand MOVE [u] (upos + stepForward)] -- TODO: 1 stepForward vec
     else do
         stepBack <- stepBackward u e
-        command [PointCommand Move [u] (upos + stepBack) ]
+        command [PointCommand MOVE [u] (upos + stepBack) ]
 
 fleeVelocity :: Point2D -> Point2D -> Float -> Point2D
 fleeVelocity currentPos targetPos speed =
@@ -82,7 +82,7 @@ unitEngageBehaviorTree u e = do
     canAtk <- canAttack u e
     if canAtk
         then
-            command [UnitCommand AttackAttack [u] e]
+            command [UnitCommand ATTACKATTACK [u] e]
         else
             stepForwardOrBack u e
 
@@ -110,7 +110,7 @@ instance SquadFS FSEngage where
             -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
             units = catMaybes $ [unitByTag t | t <- squadUnits squad]
         traceM ("[step] FSEngageFar " ++ show (squadId squad))
-        command [UnitCommand AttackAttack units enemy]
+        command [UnitCommand ATTACKATTACK units enemy]
 
     fsStep squad (FSEngageClose enemyTag) = do
         ds <- agentGet
