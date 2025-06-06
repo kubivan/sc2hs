@@ -144,6 +144,7 @@ spec =
                     print $ bbFootPrints
                     gridToFile "outgrid_with_clasters.txt" gridWithClusters
 
+                    length resourceFields `shouldBe` 148
                     length marked `shouldBe` length resourceFields
                     length expands `shouldBe` 15 -- 16 - already buit start nexus
                 it "grid_segmentation" $ \(obs, gi) -> do

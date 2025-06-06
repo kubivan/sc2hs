@@ -29,7 +29,7 @@ module Units (
     toEnum',
     fromEnum',
     unitsBoundingBox,
-    unitVelocityVec
+    unitVelocityVec,
 )
 where
 
@@ -38,7 +38,7 @@ import SC2.Geometry
 import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (Unit, UnitOrder, Point2D)
+import SC2.Proto.Data (Alliance (..), Point2D, Unit, UnitOrder)
 import UnitsTh
 
 import Conduit
@@ -46,11 +46,11 @@ import Data.Function (on)
 import Data.List (maximumBy, minimumBy)
 import Data.Map qualified as Map
 import Data.Ord ()
+import Data.ProtoLens (Message (defMessage), defMessage)
 import GHC.Word (Word32)
 import Lens.Micro
 import Lens.Micro.Extras (view)
 import Utils
-import Data.ProtoLens (defMessage, Message (defMessage))
 
 import Proto.S2clientprotocol.Common_Fields as C
 
@@ -63,48 +63,51 @@ toEnum' = toEnum . fromIntegral
 fromEnum' :: (Enum e) => e -> GHC.Word.Word32
 fromEnum' = fromIntegral . fromEnum
 
---TODO: check and remove if not needed
+-- TODO: check and remove if not needed
+
 -- $(genBuildingMapping ''UnitTypeId ''AbilityId)
 
 -- | TODO: remove compatibility wrapper
 isBuildingType :: UnitTypeId -> Bool
 isBuildingType = isUnitStructure
 
--- isBuildingType :: UnitTypeId -> Bool
--- isBuildingType utype = isJust (readMaybe =<< buildCmdStr :: Maybe AbilityId)
---  where
---    buildCmdStr = ("Build" ++) <$> stripPrefix "Protoss" (show utype)
-
 isBuilding :: Unit -> Bool
 isBuilding = isBuildingType . toEnum' . view PR.unitType
 
 isMineral :: Unit -> Bool
 isMineral u =
-    utype == NeutralMineralField || utype == NeutralMineralField750
-    --TODO: add missing minerals
-        -- || utype == NeutralMineralField750
-        -- || utype == NeutralLabMineralField
-        -- || utype == NeutralLabMineralField
-        -- || utype == NeutralLabMineralField750
-        -- || utype == NeutralRichMineralField
-        -- || utype == NeutralRichMineralField750
-        -- || utype == NeutralPurifierrichMineralField750
-        -- || utype == NeutralPurifierrichMineralField
-        -- || utype == NeutralBattlestationMineralField
-        -- || utype == NeutralBattlestationMineralField750
+    utype == NeutralMineralField
+        || utype == NeutralMineralField750
+         -- TODO: for some reason this check doesn't work: finds 36 patches from 148
+        || (u ^. #mineralContents > 0 && u ^. #alliance == Neutral)
+        -- TODO: add missing minerals
   where
+    -- \|| utype == NeutralMineralField750
+    -- \|| utype == NeutralLabMineralField
+    -- \|| utype == NeutralLabMineralField
+    -- \|| utype == NeutralLabMineralField750
+    -- \|| utype == NeutralRichMineralField
+    -- \|| utype == NeutralRichMineralField750
+    -- \|| utype == NeutralPurifierrichMineralField750
+    -- \|| utype == NeutralPurifierrichMineralField
+    -- \|| utype == NeutralBattlestationMineralField
+    -- \|| utype == NeutralBattlestationMineralField750
+
     utype = toEnum' $ u ^. PR.unitType
 
 isGeyser :: Unit -> Bool
 isGeyser u =
     utype == NeutralVespeneGeyser
         || utype == NeutralRichVespeneGeyser
-        -- || utype == NeutralProtossvespenegeyser
-        -- || utype == NeutralSpaceplatformGeyser
-        -- || utype == NeutralPurifierVespeneGeyser
-        -- || utype == NeutralShakurasVespeneGeyser
+        || hasGas
   where
+    -- \|| utype == NeutralProtossvespenegeyser
+    -- \|| utype == NeutralSpaceplatformGeyser
+    -- \|| utype == NeutralPurifierVespeneGeyser
+    -- \|| utype == NeutralShakurasVespeneGeyser
+
     utype = toEnum' $ u ^. PR.unitType
+    hasGas = u ^. #vespeneContents > 0
 
 isAssimilator :: Unit -> Bool
 isAssimilator u =
@@ -186,11 +189,10 @@ dbscan eps minPts points = foldl' dbscan' Map.empty points -- `Utils.dbg` ("poin
 
 countCluster clusters n = Map.foldlWithKey (\count _ label -> if label == Cluster n then count + 1 else count) 0 clusters
 
-unitVelocityVec  :: Unit -> Point2D
+unitVelocityVec :: Unit -> Point2D
 unitVelocityVec unit =
     let rotation = unit ^. #facing
         speed = 4.13 -- TODO: remove hardcoded stalkers value
         vx = speed * cos rotation
         vy = speed * sin rotation
-    in
-        defMessage & x .~ vx & y .~ vy
+     in defMessage & x .~ vx & y .~ vy
