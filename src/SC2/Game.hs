@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module SC2.Game (playMatch) where
+module SC2.Game (playMatch, joinMatch) where
 
 import Agent
 
@@ -45,6 +45,15 @@ import Network.WebSockets as WS (
     Connection,
     runClient,
  )
+
+joinMatch :: Agent a => a -> IO ()
+-- 1vs1
+joinMatch agent = do
+    let joinRequest = requestJoinGame1vs1 serverPortSet clientPortSet
+
+    signals <- newGameSignals 1
+    let clientApp conn = putStrLn "client joining game..." >> clientAppJoinGame conn agent signals joinRequest >>= (\ _ -> return ())
+    WS.runClient hostName 5000 "/sc2api" clientApp
 
 playMatch :: Participant -> Participant -> IO ()
 -- 1vs1

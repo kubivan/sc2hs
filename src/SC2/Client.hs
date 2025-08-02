@@ -79,7 +79,7 @@ unitAbilities raw =
                 )
             .| sinkList
 
-startStarCraft :: Int32 -> IO ProcessHandle
+startStarCraft :: Int32 -> IO ()
 startStarCraft port = do
     let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base93333\\SC2_x64.exe\""
         cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
@@ -88,7 +88,7 @@ startStarCraft port = do
 
     (_, _, _, sc2Handle) <- createProcess proc
     waitForSC2WebSocket hostName port
-    return sc2Handle
+    --return sc2Handle
   where
     pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
 
