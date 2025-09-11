@@ -23,6 +23,7 @@ import Lens.Micro.Extras (view)
 import Debug.Trace
 
 import Proto.S2clientprotocol.Common ( Point2D )
+import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
 
 data FSEngage = FSEngageFar UnitTag | FSEngageClose UnitTag
 
@@ -40,9 +41,16 @@ canAttack u e = do
     inRange <- isEnemyInRange e u
     return $ isWeaponReady u && inRange
 
--- when (null . view #orders $ u) $
+unitIsNotMoving :: Unit -> Bool
+unitIsNotMoving u = noOrders || notMoving where
+    noOrders =  null . view #orders $ u
+    order = view #abilityId . head . view #orders $ u
+    notMoving = order /= fromEnum' MOVEMOVE
+
+
+-- when () $
 stepForwardOrBack ::AgentDynamicState d =>  Unit -> Unit -> StepMonad d ()
-stepForwardOrBack u e = do
+stepForwardOrBack u e = when (unitIsNotMoving u) $ do
     range <- siUnitRange u e
     let distSq = distSquared (u ^. #pos) (e ^. #pos)
         upos = toPoint2D $ u ^. #pos

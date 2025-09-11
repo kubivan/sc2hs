@@ -9,6 +9,9 @@ module SC2.TechTree (
     abilityToUnit,
     abilityToUnitSafe,
     unitToAbility,
+    researchDeps,
+    abilityExecutor,
+    trainDeps,
 ) where
 
 import SC2.Ids.AbilityId

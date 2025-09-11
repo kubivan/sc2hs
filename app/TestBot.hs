@@ -72,9 +72,10 @@ import SC2.Grid.Algo (regionGraphBfs)
 import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
 import StepMonad (StaticInfo (siRegionPathToEnemy))
 import System.Random (newStdGen)
+import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))
 
 deathBall :: [Tech]
-deathBall = [TechUnit ProtossDarkTemplar]
+deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
 
 stepTowardsTechGoal :: (AgentDynamicState d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
@@ -108,14 +109,33 @@ stepTowardsTechGoal goal = do
     traceM $ "currentTechs" ++ show currentTechs
     traceM $ "availTech" ++ show availTechs
     traceM $ "Path towards goal" ++ show pathTobuild
-    when (not . null $ pathTobuild) $ do
+    unless (null pathTobuild) $ do
         ds <- agentGet
-        let toBuild@(TechUnit b) = head pathTobuild
-            grid = getGrid ds
-        cres <- tryCreate grid (Cost 0 0) b
-        case cres of
-            Just (action, cost, grid') -> command [action]
-            _ -> return ()
+        let toBuild = head pathTobuild
+            obs = getObs ds
+        case toBuild of
+            TechUnit u -> do
+                if isUnitStructure u then do
+                    let grid = getGrid ds
+                    cres <- tryCreate grid (Cost 0 0) u
+                    case cres of
+                        Just (action, cost, grid') -> command [action]
+                        _ -> return ()
+                else do -- Unit training
+                    let trainAbility = trainDeps HashMap.! u
+                        producer = head $ runC $ unitsSelf obs
+                            -- .| unitIdleC
+                            .| unitTypeC (abilityExecutor HashMap.! trainAbility)
+                    command [SelfCommand trainAbility [producer]]
+
+            TechUpgrade upgrade -> do
+                let upgradeAbility = researchDeps HashMap.! upgrade
+                    producer = head $ runC $ unitsSelf obs
+                        -- .| unitIdleC
+                        .| unitTypeC (abilityExecutor HashMap.! upgradeAbility)
+                command [SelfCommand upgradeAbility [producer]]
+            _ -> error "not implemented"
+
 
 type BuildOrder = [UnitTypeId]
 
@@ -635,7 +655,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
-        command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
+        --command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
         command [SelfCommand (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER) idleGates]
 
         trainProbes

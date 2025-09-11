@@ -50,6 +50,8 @@ type BuildDeps = HashMap.HashMap UnitTypeId AbilityId
 type MorphDeps = HashMap.HashMap UnitTypeId AbilityId
 type ResearchDeps = HashMap.HashMap UpgradeId AbilityId
 
+type AbilityProducer = HashMap.HashMap AbilityId UnitTypeId
+
 type UnitAbilityDeps = HashMap.HashMap UnitTypeId [(AbilityId, [Tech])]
 
 type TechDeps = HashMap.HashMap Tech [Tech]
@@ -72,6 +74,9 @@ generateDeps = do
 
         unitAbilitiesGrouped :: UnitAbilityDeps
         unitAbilitiesGrouped = HashMap.fromList $ mapMaybe extractUnitAbilities unitAbilitiesList
+
+        --abilityProducer :: AbilityProducer
+        abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
 
         techAbilityDeps :: [(Tech, [Tech])]
         techAbilityDeps =
@@ -138,6 +143,9 @@ generateDeps = do
 
         unitAbilitiesDeps :: UnitAbilityDeps
         unitAbilitiesDeps = HashMap.fromList $(liftHashMap unitAbilitiesGrouped)
+
+        abilityExecutor :: AbilityProducer
+        abilityExecutor = HashMap.fromList $(liftHashMap $ HashMap.fromList abilityProducerPairs)
 
         techDeps :: TechDeps
         techDeps =
@@ -235,3 +243,7 @@ ordNub = go Set.empty
     go seen (x : xs)
         | x `Set.member` seen = go seen xs
         | otherwise = x : go (Set.insert x seen) xs
+
+extractAbilityProducers :: Value -> [(AbilityId, UnitTypeId)]
+extractAbilityProducers unitValue = [(toEnum . fromIntegral $ a, toEnum . fromIntegral $ unitValue ^?! key "id" . _Integral )
+    | a <- unitValue ^.. key "abilities" . _Array . traverse . key "ability" . _Integral]

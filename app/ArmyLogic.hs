@@ -87,6 +87,7 @@ agentUpdateDsArmy = do
         (squadsFull, squadsToCheck) = partition isSquadFull squads
         (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
 
+
         squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
 
         freeArmyUnitTags = runC $ obsArmyUnits .| mapC (view #tag) .| filterC (\utag -> not $ utag `Set.member` squadedUnitTags)
