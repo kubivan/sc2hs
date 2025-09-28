@@ -51,6 +51,59 @@ import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
+import qualified Utils
+
+-- import Proto.S2clientprotocol.Requests as A
+-- import Proto.S2clientprotocol.Common as C
+
+-- | Build InterfaceOptions similar to python-sc2 defaults
+-- defaultInterfaceOptions :: A.InterfaceOptions
+-- defaultInterfaceOptions =
+--     defMessage
+--       & #raw .~ True
+--       & #score .~ True
+--       & #featureLayer .~ (defMessage & #resolution .~ (defMessage & #x .~ 1 & #y .~ 1)
+--                                      & #minimapResolution .~ (defMessage & #x .~ 1 & #y .~ 1))
+--       & #showCloaked .~ True
+--       & #showBurrowedShadows .~ True
+--       & #rawAffectsSelection .~ True
+--       & #rawCropToPlayableArea .~ True
+--       & #showPlaceholders .~ True
+
+-- -- | Builder for JoinGame request
+-- requestJoinGame1vs1
+--     :: (Int32, Int32)  -- ^ server ports: (game_port, base_port)
+--     -> [(Int32, Int32)] -- ^ client ports
+--     -> A.Race     -- ^ race for bot; Nothing if observer
+--     -> A.Request
+-- requestJoinGame1vs1 (srvGamePort, srvBasePort) clientPorts r =
+--     defMessage & #joinGame .~ joinMsg
+--   where
+--     joinMsg :: A.RequestJoinGame
+--     joinMsg = defMessage
+--       & #options .~ defaultInterfaceOptions
+--       & setParticipation
+--       & setServerPorts
+--       & setClientPorts
+--       & setPlayerName
+
+--     -- Only one of race or observed_player_id
+--     setParticipation :: A.RequestJoinGame -> A.RequestJoinGame
+--     setParticipation msg = msg & #race .~ r
+
+--     -- server_ports (required for multiplayer arena)
+--     setServerPorts :: A.RequestJoinGame -> A.RequestJoinGame
+--     setServerPorts msg =
+--       msg & #serverPorts .~ (defMessage & #gamePort .~ srvGamePort & #basePort .~ srvBasePort)
+
+--     -- client_ports
+--     setClientPorts :: A.RequestJoinGame -> A.RequestJoinGame
+--     setClientPorts msg =
+--       msg & #clientPorts .~ Prelude.map (\(gp, bp) -> defMessage & #gamePort .~ gp & #basePort .~ bp) clientPorts
+
+--     setPlayerName :: A.RequestJoinGame -> A.RequestJoinGame
+--     setPlayerName msg = msg & #playerName .~ "some"
+
 
 newtype ProtoException = ProtoException String deriving (Show)
 instance Exception ProtoException
@@ -62,7 +115,7 @@ decodeMessageThrowing :: BS.ByteString -> IO A.Response
 decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
 
 sendRequestSync :: WS.Connection -> A.Request -> IO A.Response
-sendRequestSync conn request = WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
+sendRequestSync conn request = print request >> WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123
@@ -97,11 +150,12 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ m
     toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ Participant
 
 requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> Race -> A.Request
-requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage
+requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage `Utils.dbg` (show ("requestJoinGame1vs1","race", race))
   where
-    mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
+    --mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
+    mods = setParticipation race -- . setOptions -- . setSharedPort
     setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
-    setParticipation r = #race .~ r
+    setParticipation r ctx = ctx & #race .~ r -- & A.playerName .~ "my_name"
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
     setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)
@@ -111,6 +165,44 @@ requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mod
 
     setPortsClient :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
     setPortsClient (gamePort, basePort) = #clientPorts .~ [defMessage & #gamePort .~ gamePort & #basePort .~ basePort]
+
+-- requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> Race -> A.Request
+-- requestJoinGame1vs1 serverPorts clientPorts race =
+--    let bs = BS.pack [18,6,8,3,26,2,8,1] in
+
+--    case decodeMessage bs of
+--      Left err -> Prelude.error $ "Failed to decode: " ++ err
+--      Right (req ) -> req
+
+-- requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> Race -> A.Request
+-- requestJoinGame1vs1 serverPorts clientPorts race =
+--     defMessage & #joinGame .~ joinMsg `Utils.dbg` show ("requestJoinGame1vs1", "race", race)
+--   where
+--     joinMsg =
+--           defMessage
+--         & setParticipation race
+--         & setOptions
+--         & setPortsServer serverPorts
+--         & setPortsClient clientPorts
+--         & setPlayerName "my_name"
+
+--     setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
+--     setParticipation r = #race .~ r
+
+--     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
+--     setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)
+
+--     setPortsServer :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
+--     setPortsServer (gamePort, basePort) =
+--         #serverPorts .~ (defMessage & #gamePort .~ gamePort & #basePort .~ basePort)
+
+--     setPortsClient :: (Int32, Int32) -> A.RequestJoinGame -> A.RequestJoinGame
+--     setPortsClient (gamePort, basePort) =
+--         #clientPorts .~ [defMessage & #gamePort .~ gamePort & #basePort .~ basePort]
+
+--     setPlayerName :: Text -> A.RequestJoinGame -> A.RequestJoinGame
+--     setPlayerName name = #playerName .~ name
+
 
 requestJoinGameVsAi :: Race -> A.Request
 requestJoinGameVsAi race = defMessage & #joinGame .~ mods defMessage

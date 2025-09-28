@@ -11,7 +11,7 @@ module AgentBulidUtils where
 
 import Actions
 import SC2.Grid(
-    Grid (..),
+    Grid,
     canPlaceBuilding,
     findPlacementPoint,
     findPlacementPointInRadius,
@@ -56,8 +56,6 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
-import Utils
-
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
