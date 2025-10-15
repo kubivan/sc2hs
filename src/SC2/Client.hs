@@ -18,7 +18,7 @@ module SC2.Client (
 ) where
 
 import Observation (Observation)
-import SC2.Config
+import SC2.BotConfig (StarCraft2Config (..))
 import SC2.Ids.AbilityId (AbilityId, toEnum)
 import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
 import SC2.Proto.Data qualified as Proto
@@ -79,15 +79,30 @@ unitAbilities raw =
                 )
             .| sinkList
 
-startStarCraft :: Int32 -> IO ()
-startStarCraft port = do
-    let sc2 = "\"C:\\Program Files (x86)\\StarCraft II\\Versions\\Base93333\\SC2_x64.exe\""
-        cwd = Just "C:\\Program Files (x86)\\StarCraft II\\Support64"
-        args = ["-listen", hostName, "-port", show port, "-displayMode", "0", "-windowwidth", "1024", "-windowheight", "768", "-windowx", "100", "-windowy", "200"]
-        proc = (shell $ sc2 ++ " " ++ unwords args){cwd = cwd}
+startStarCraft :: StarCraft2Config -> String -> Int32 -> IO ()
+startStarCraft cfg host port = do
+    let sc2Binary = "\"" ++ exePath cfg ++ "\""
+        workingDir = Just (SC2.BotConfig.cwd cfg)
+        args =
+            [ "-listen"
+            , host
+            , "-port"
+            , show port
+            , "-displayMode"
+            , "0"
+            , "-windowwidth"
+            , show (windowWidth cfg)
+            , "-windowheight"
+            , show (windowHeight cfg)
+            , "-windowx"
+            , show (windowX cfg)
+            , "-windowy"
+            , show (windowY cfg)
+            ]
+        proc = (shell $ sc2Binary ++ " " ++ unwords args){System.Process.cwd = workingDir}
 
-    (_, _, _, sc2Handle) <- createProcess proc
-    waitForSC2WebSocket hostName port
+    (_, _, _, _sc2Handle) <- createProcess proc
+    waitForSC2WebSocket host port
     --return sc2Handle
   where
     pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
@@ -106,15 +121,15 @@ startStarCraft port = do
 
     -- Function to wait until the SC2 WebSocket connection is available
     waitForSC2WebSocket :: String -> Int32 -> IO ()
-    waitForSC2WebSocket host port = loop
+    waitForSC2WebSocket targetHost targetPort = loop
       where
         loop = do
-            isOpen <- isWebSocketOpen host (fromIntegral port)
+            isOpen <- isWebSocketOpen targetHost (fromIntegral targetPort)
             if isOpen
                 then putStrLn "SC2 WebSocket connection is open and ready."
-                else do
-                    threadDelay pollInterval
-                    loop
+            else do
+                threadDelay pollInterval
+                loop
 
 data GameSignals = GameSignals
     { gameCreated :: MVar Bool

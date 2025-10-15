@@ -5,12 +5,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module SC2.Game (playMatch, joinMatch) where
+module SC2.Game (
+    NetworkSettings (..),
+    HostRuntime (..),
+    JoinRuntime (..),
+    playMatch,
+    joinMatch,
+) where
 
 import Agent
 
 -- import SC2.Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi, Race, Request)
 
+import SC2.BotConfig (StarCraft2Config (..))
 import SC2.Client (
     GameSignals,
     newGameSignals,
@@ -22,20 +29,20 @@ import SC2.Client (
     waitAllClientsJoined,
     waitForGameCreation,
  )
-import SC2.Config
 import SC2.Grid.Core (gridFromImage)
-import SC2.Grid.Utils (printGrid)
 import SC2.Participant
-import SC2.Proto.Data
+import SC2.Proto.Data (Map, PlayerResult, Race)
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Requests
 import SC2.Proto.Requests qualified as Proto
 
 import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (async, wait)
+import Control.Monad (when)
 import Control.Monad.Writer.Strict (MonadIO (liftIO))
 import Data.ByteString qualified as B
 import Data.Functor ((<&>))
+import Data.Int (Int32)
 import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (traceM)
@@ -46,87 +53,121 @@ import Network.WebSockets as WS (
     runClient,
  )
 
-joinMatch :: Agent a => a -> IO ()
--- 1vs1
-joinMatch agent = do
-    let joinRequest = requestJoinGame1vs1 serverPortSet clientPortSet
 
-    signals <- newGameSignals 1
-    let clientApp conn = putStrLn "client joining game..." >> clientAppJoinGame conn agent signals joinRequest >>= (\ _ -> return ())
-    WS.runClient hostName 5000 "/sc2api" clientApp
+data NetworkSettings = NetworkSettings
+    { networkHostName :: String
+    , networkHostPort :: Int
+    , networkClientPort :: Int
+    }
+    deriving (Show)
 
-playMatch :: Participant -> Participant -> IO ()
--- 1vs1
-playMatch firstParticipant secondParticipant@(Player{}) = do
-    let joinRequest = requestJoinGame1vs1 serverPortSet clientPortSet
-    signals <- newGameSignals 2
+data HostRuntime = HostRuntime
+    { hostParticipant :: Participant
+    , opponentParticipant :: Participant
+    , hostNetwork :: NetworkSettings
+    , hostStarcraft :: StarCraft2Config
+    , hostMap :: Map
+    }
 
-    asyncHostTask <- async $ do
-        threadId <- myThreadId
-        putStrLn $ "Host thread ID: " ++ show threadId
-        playHost firstParticipant [firstParticipant, secondParticipant] signals joinRequest
+data JoinRuntime = JoinRuntime
+    { joinParticipant :: Participant
+    , joinNetwork :: NetworkSettings
+    }
 
-    asyncClientTask <- async $ playClient secondParticipant signals joinRequest
+serverPortSet :: NetworkSettings -> (Int32, Int32)
+serverPortSet NetworkSettings{networkHostPort = hostBasePort} =
+    ( fromIntegral (hostBasePort + 2)
+    , fromIntegral (hostBasePort + 3)
+    )
 
-    gameOver <- wait asyncHostTask
-    _ <- wait asyncClientTask
-    putStrLn $ "Game Ended: " ++ show gameOver
+clientPortSet :: NetworkSettings -> (Int32, Int32)
+clientPortSet NetworkSettings{networkHostPort = hostBasePort} =
+    ( fromIntegral (hostBasePort + 4)
+    , fromIntegral (hostBasePort + 5)
+    )
 
--- 1vsComputer
-playMatch firstParticipant secondParticipant = do
-    let (joinRequest, playersCount) = (requestJoinGameVsAi, 1)
+playMatch :: HostRuntime -> IO ()
+playMatch (HostRuntime hostPart opponentPart net sc2Cfg mapSpec) =
+    case opponentPart of
+        Computer{} -> hostVsComputer
+        Player{} -> hostVsPlayer
+  where
+    participants = [hostPart, opponentPart]
 
-    signals <- newGameSignals playersCount
-    asyncHostTask <- async $ do
-        threadId <- myThreadId
-        putStrLn $ "Host thread ID: " ++ show threadId
-        playHost firstParticipant [firstParticipant, secondParticipant] signals joinRequest
+    hostVsComputer = do
+        let joinRequest = requestJoinGameVsAi
+        signals <- newGameSignals 1
+        results <- runHostSession sc2Cfg mapSpec net hostPart participants signals joinRequest
+        putStrLn $ "Game Ended: " ++ show results
 
-    gameOver <- wait asyncHostTask
-    putStrLn $ "Game Ended: " ++ show gameOver
+    hostVsPlayer = do
+        let joinRequest = requestJoinGame1vs1 (serverPortSet net) (clientPortSet net)
+        signals <- newGameSignals 2
+        asyncHostTask <- async $ runHostSession sc2Cfg mapSpec net hostPart participants signals joinRequest
+        asyncClientTask <- async $ runClientSession net opponentPart signals joinRequest
+        hostResults <- wait asyncHostTask
+        _ <- wait asyncClientTask
+        putStrLn $ "Game Ended: " ++ show hostResults
 
-clientAppCreateGame :: Connection -> [Participant] -> GameSignals -> IO ()
-clientAppCreateGame conn participants signals = do
+joinMatch :: JoinRuntime -> IO ()
+joinMatch (JoinRuntime participant net) =
+    case participant of
+        Computer{} -> Prelude.error "computer cannot join as a player"
+        Player agent -> do
+            signals <- newGameSignals 1
+            let joinRequest = requestJoinGame1vs1Created
+            WS.runClient (networkHostName net) (networkHostPort net) "/sc2api" $ \conn -> do
+                putStrLn "client joining game..."
+                _ <- clientAppJoinGame conn agent signals joinRequest
+                pure ()
+
+clientAppCreateGame :: Connection -> Map -> [Participant] -> GameSignals -> IO ()
+clientAppCreateGame conn mapSpec participants signals = do
     putStrLn "creating game..."
-    responseCreateGame <- Proto.sendRequestSync conn $ Proto.requestCreateGame (Proto.LocalMap "ai/2000AtmospheresAIE.SC2Map" Nothing) participants
+    responseCreateGame <- Proto.sendRequestSync conn $ Proto.requestCreateGame mapSpec participants
     print responseCreateGame
     signalGameCreated signals
 
-clientAppJoinGame :: (Agent a) => Connection -> a -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
+clientAppJoinGame :: (Agent a) => Connection -> a -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
 clientAppJoinGame conn agent signals joinFunc = do
     responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
-    print responseJoinGame
-    let playerId = responseJoinGame ^. #joinGame . #playerId
-    traceM $ "playerId " ++ show playerId
+    print $ "responseJoinGame: " ++ (show responseJoinGame)
+    let joinedPlayerId = responseJoinGame ^. #joinGame . #playerId
+    traceM $ "playerId " ++ show joinedPlayerId
     signalClientJoined signals
 
-    runGameLoop conn signals agent playerId
+    runGameLoop conn signals agent joinedPlayerId
 
-playHost :: Participant -> [Participant] -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
-playHost (Computer _ _) _ _ _ = Prelude.error "computer cannot be the host"
-playHost (Player agent) participants signals joinFunc = do
-    traceM "starting sc2 host"
-    _ <- startStarCraft portHost
-    traceM "running host"
-    WS.runClient hostName (fromIntegral portHost) "/sc2api" clientApp
-  where
-    clientApp conn = putStrLn "creating game..." >> clientAppCreateGame conn participants signals >> putStrLn "Host joining game..." >> clientAppJoinGame conn agent signals joinFunc
+runHostSession :: StarCraft2Config -> Map -> NetworkSettings -> Participant -> [Participant] -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
+runHostSession _ _ _ (Computer _ _ _) _ _ _ = Prelude.error "computer cannot be the host"
+runHostSession sc2Cfg mapSpec net (Player agent) participants signals joinFunc = do
+        when (start sc2Cfg) $
+                startStarCraft sc2Cfg (networkHostName net) (fromIntegral $ networkHostPort net)
+        threadId <- myThreadId
+        putStrLn $ "Host thread ID: " ++ show threadId
+        WS.runClient (networkHostName net) (networkHostPort net) "/sc2api" clientApp
+    where
+        clientApp conn = do
+                putStrLn "creating game..."
+                clientAppCreateGame conn mapSpec participants signals
+                putStrLn "Host joining game..."
+                clientAppJoinGame conn agent signals joinFunc
 
-playClient :: Participant -> GameSignals -> (Race -> Request) -> IO [PlayerResult]
-playClient (Computer _ _) _ _ = Prelude.error "Computer cannot be host"
-playClient (Player agent) signals joinFunc = do
-    traceM "starting sc2 for second player"
-    threadId <- myThreadId
-    putStrLn $ "Current thread ID: " ++ show threadId
-    _ <- startStarCraft portClient
-    waitForGameCreation signals
-    WS.runClient hostName (fromIntegral portClient) "/sc2api" clientApp
-  where
-    clientApp conn = putStrLn "client joining game..." >> clientAppJoinGame conn agent signals joinFunc
+runClientSession :: NetworkSettings -> Participant -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
+runClientSession _ (Computer _ _ _) _ _ = Prelude.error "computer cannot be the client"
+runClientSession net (Player agent) signals joinFunc = do
+        threadId <- myThreadId
+        putStrLn $ "Client thread ID: " ++ show threadId
+        waitForGameCreation signals
+        WS.runClient (networkHostName net) (networkClientPort net) "/sc2api" clientApp
+    where
+        clientApp conn = do
+                putStrLn "client joining game..."
+                clientAppJoinGame conn agent signals joinFunc
 
 runGameLoop :: (Agent a) => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
-runGameLoop conn signals agent playerId = do
-    putStrLn $ "Player" ++ show playerId ++ "waiting for host to create the game..."
+runGameLoop conn signals agent localPlayerId = do
+    putStrLn $ "Player" ++ show localPlayerId ++ "waiting for host to create the game..."
     waitAllClientsJoined signals
 
     putStrLn "getting game info..."
@@ -136,14 +177,14 @@ runGameLoop conn signals agent playerId = do
     let gi :: Proto.ResponseGameInfo = respGameInfo ^. #gameInfo
         gd :: Proto.ResponseData = gameDataResp ^. #data'
         -- Just gd = gameDataResp ^. #maybe'data
-        pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
+        _pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
-    --printGrid pathingGrid
+    --printGrid _pathingGrid
     liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
     obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 
-    agent' <- makeAgent agent playerId gi gd (obs0 ^. #observation)
+    agent' <- makeAgent agent localPlayerId gi gd (obs0 ^. #observation)
 
     gameStepLoop conn agent'
 
@@ -156,10 +197,10 @@ gameStepLoop conn agent = do
         then return gameOver
         else do
             let obs = responseObs ^. #observation . #observation
-                gameLoop = obs ^. #gameLoop
+                _gameLoop = obs ^. #gameLoop
 
-            abilities <- unitAbilitiesRaw conn obs <&> unitAbilities
-            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilities -- UnitAbilities
+            abilityMap <- unitAbilitiesRaw conn obs <&> unitAbilities
+            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilityMap
 
             -- (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
             -- liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") (getGrid ds')

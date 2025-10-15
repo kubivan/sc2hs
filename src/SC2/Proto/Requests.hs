@@ -10,6 +10,8 @@ module SC2.Proto.Requests (
     requestAvailableMaps,
     requestCreateGame,
     -- TODO: remove code duplication
+    
+    requestJoinGame1vs1Created,
     requestJoinGame1vs1,
     requestJoinGameVsAi,
     requestObservation,
@@ -43,12 +45,7 @@ import Proto.S2clientprotocol.Raw_Fields (alliance)
 import Proto.S2clientprotocol.Common as A
 import Proto.S2clientprotocol.Query as A
 import Proto.S2clientprotocol.Raw as A
-import Proto.S2clientprotocol.Sc2api as A
-import Proto.S2clientprotocol.Sc2api_Fields as A
 import Proto.S2clientprotocol.Data as A
-import Proto.S2clientprotocol.Sc2api qualified as A
-import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 import qualified Utils
@@ -146,16 +143,27 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ m
     setPlayers participants = #playerSetup .~ (toPlayerSetup <$> participants)
 
     toPlayerSetup :: Participant -> A.PlayerSetup
-    toPlayerSetup (SC2.Participant.Computer r d) = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ d
-    toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ Participant
+    toPlayerSetup (SC2.Participant.Computer r d build) =
+        let base = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ d
+         in maybe base (\b -> base & #aiBuild .~ b) build
+    toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ A.Participant
+
+requestJoinGame1vs1Created :: Race -> A.Request
+requestJoinGame1vs1Created race = defMessage & #joinGame .~ mods defMessage
+  where
+    mods = setParticipation race . setOptions 
+    setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
+    setParticipation r = #race .~ r
+
+    setOptions :: A.RequestJoinGame -> A.RequestJoinGame
+    setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)
 
 requestJoinGame1vs1 :: (Int32, Int32) -> (Int32, Int32) -> Race -> A.Request
-requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage `Utils.dbg` (show ("requestJoinGame1vs1","race", race))
+requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mods defMessage
   where
-    --mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
-    mods = setParticipation race -- . setOptions -- . setSharedPort
+    mods = setParticipation race . setOptions . setPortsServer serverPorts . setPortsClient clientPorts -- . setSharedPort
     setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
-    setParticipation r ctx = ctx & #race .~ r -- & A.playerName .~ "my_name"
+    setParticipation r = #race .~ r
 
     setOptions :: A.RequestJoinGame -> A.RequestJoinGame
     setOptions = #options .~ (defMessage & #raw .~ True & #score .~ True)

@@ -1,0 +1,29 @@
+
+---
+# Bot configuration file for sc2hs
+starcraft2:
+  exe_path: >
+    C:\Program Files (x86)\StarCraft II\Versions\Base93333\SC2_x64.exe
+  cwd: >
+    C:\Program Files (x86)\StarCraft II\Support64
+  window_width: 1024
+  window_height: 768
+  window_x: 100
+  window_y: 200
+  start: false
+
+general:
+  log_level: "info"
+  host_name: "127.0.0.1"
+  port_host: 5000
+  port_client: 8168
+
+host:
+  map_path: "AbyssalReefAIE.SC2Map"
+
+opponent:
+  type: ai
+  ai:
+    race: protoss
+    difficulty: medium
+    build: macro
