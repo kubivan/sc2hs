@@ -52,6 +52,7 @@ import Network.WebSockets as WS (
     Connection,
     runClient,
  )
+import System.Directory(createDirectoryIfMissing)
 
 
 data NetworkSettings = NetworkSettings
@@ -180,6 +181,7 @@ runGameLoop conn signals agent localPlayerId = do
         _pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
     --printGrid _pathingGrid
+    createDirectoryIfMissing True "grids"
     liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
     obs0 <- Proto.sendRequestSync conn Proto.requestObservation
