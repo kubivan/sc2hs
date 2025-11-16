@@ -1,26 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module SC2.LoadConfig (
-  CommandOptions (..),
-  HostCLI (..),
-  JoinCLI (..),
-  NetworkOverrides (..),
-  OpponentOverrides (..),
-  OpponentTypeOverride (..),
-  parseCommandOptions,
-  loadBotConfig,
-  applyHostOverrides,
-  applyJoinOverrides,
-) where
+module SC2.LoadConfig
+  ( CommandOptions (..),
+    HostCLI (..),
+    JoinCLI (..),
+    NetworkOverrides (..),
+    OpponentOverrides (..),
+    OpponentTypeOverride (..),
+    parseCommandOptions,
+    loadBotConfig,
+    applyHostOverrides,
+    applyJoinOverrides,
+  )
+where
 
 import Control.Applicative ((<|>))
 import Data.Char (toLower)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Yaml (decodeFileEither)
 import Options.Applicative
+import Paths_sc2hs (getDataFileName)
 import Proto.S2clientprotocol.Common qualified as C
 import Proto.S2clientprotocol.Sc2api qualified as A
 import SC2.BotConfig
+import System.Directory (doesFileExist)
 
 data CommandOptions
   = HostCommand HostCLI
@@ -28,16 +31,16 @@ data CommandOptions
   deriving (Show)
 
 data HostCLI = HostCLI
-  { hostConfigPath :: FilePath
-  , hostNetworkOverrides :: NetworkOverrides
-  , hostStartOverride :: Maybe Bool
-  , hostOpponentOverrides :: OpponentOverrides
+  { hostConfigPath :: FilePath,
+    hostNetworkOverrides :: NetworkOverrides,
+    hostStartOverride :: Maybe Bool,
+    hostOpponentOverrides :: OpponentOverrides
   }
   deriving (Show)
 
 data JoinCLI = JoinCLI
-  { joinConfigPath :: FilePath
-  , joinNetworkOverrides :: NetworkOverrides
+  { joinConfigPath :: FilePath,
+    joinNetworkOverrides :: NetworkOverrides
   }
   deriving (Show)
 
@@ -64,13 +67,13 @@ data OpponentOverrides = OpponentOverrides
 parseCommandOptions :: IO CommandOptions
 parseCommandOptions = customExecParser prefsParser (info (commandParser <**> helper) fullDesc)
   where
-  prefsParser = prefs showHelpOnError
+    prefsParser = prefs showHelpOnError
 
 commandParser :: Parser CommandOptions
 commandParser = hsubparser (host <> join)
   where
-  host = command "host" (info (HostCommand <$> hostParser) (progDesc "Host a game"))
-  join = command "join" (info (JoinCommand <$> joinParser) (progDesc "Join an existing game"))
+    host = command "host" (info (HostCommand <$> hostParser) (progDesc "Host a game"))
+    join = command "join" (info (JoinCommand <$> joinParser) (progDesc "Join an existing game"))
 
 hostParser :: Parser HostCLI
 hostParser =
@@ -90,10 +93,10 @@ configOption :: Parser FilePath
 configOption =
   strOption
     ( long "config"
-      <> metavar "PATH"
-      <> value "bot-config.yaml"
-      <> showDefault
-      <> help "Path to the configuration file"
+        <> metavar "PATH"
+        <> value "bot-config.yaml"
+        <> showDefault
+        <> help "Path to the configuration file"
     )
 
 networkParser :: Bool -> Parser NetworkOverrides
@@ -111,15 +114,15 @@ startOverrideParser :: Parser (Maybe Bool)
 startOverrideParser =
   optional
     ( flag'
-      True
-      ( long "start-sc2"
-        <> help "Start StarCraft II before connecting"
-      )
-      <|> flag'
-        False
-        ( long "no-start-sc2"
-          <> help "Do not attempt to start StarCraft II"
+        True
+        ( long "start-sc2"
+            <> help "Start StarCraft II before connecting"
         )
+        <|> flag'
+          False
+          ( long "no-start-sc2"
+              <> help "Do not attempt to start StarCraft II"
+          )
     )
 
 opponentParser :: Parser OpponentOverrides
@@ -178,15 +181,26 @@ lowercase = map toLower
 
 loadBotConfig :: FilePath -> IO (Either String BotConfig)
 loadBotConfig path = do
-    result <- decodeFileEither path
-    pure $ either (Left . show) Right result
+  -- Try to find the config file in this order:
+  -- 1. Provided path (if it exists)
+  -- 2. Installed data directory (from stack install)
+  configPath <- findConfigFile path
+  result <- decodeFileEither configPath
+  pure $ either (Left . show) Right result
+
+findConfigFile :: FilePath -> IO FilePath
+findConfigFile path = do
+  existsAtPath <- doesFileExist path
+  if existsAtPath
+    then pure path
+    else getDataFileName path -- Falls back to installed data file
 
 applyHostOverrides :: BotConfig -> HostCLI -> Either String BotConfig
 applyHostOverrides cfg cli = do
-    opponent' <- applyOpponent (hostOpponentOverrides cli) (opponent cfg)
-    let general' = applyNetwork (hostNetworkOverrides cli) (general cfg)
-        starcraft' = applyStart (hostStartOverride cli) (starcraft2 cfg)
-    pure cfg{general = general', starcraft2 = starcraft', opponent = opponent'}
+  opponent' <- applyOpponent (hostOpponentOverrides cli) (opponent cfg)
+  let general' = applyNetwork (hostNetworkOverrides cli) (general cfg)
+      starcraft' = applyStart (hostStartOverride cli) (starcraft2 cfg)
+  pure cfg {general = general', starcraft2 = starcraft', opponent = opponent'}
 
 applyJoinOverrides :: BotConfig -> JoinCLI -> BotConfig
 applyJoinOverrides cfg cli =
@@ -197,14 +211,14 @@ applyJoinOverrides cfg cli =
 applyNetwork :: NetworkOverrides -> GeneralConfig -> GeneralConfig
 applyNetwork overrides gen =
   gen
-    { hostName = fromMaybe (hostName gen) (overrideHostName overrides)
-    , portHost = fromMaybe (portHost gen) (overridePortHost overrides)
-    , portClient = fromMaybe (portClient gen) (overridePortClient overrides)
+    { hostName = fromMaybe (hostName gen) (overrideHostName overrides),
+      portHost = fromMaybe (portHost gen) (overridePortHost overrides),
+      portClient = fromMaybe (portClient gen) (overridePortClient overrides)
     }
 
 applyStart :: Maybe Bool -> StarCraft2Config -> StarCraft2Config
 applyStart Nothing sc2 = sc2
-applyStart (Just flag) sc2 = sc2{start = flag}
+applyStart (Just flag) sc2 = sc2 {start = flag}
 
 applyOpponent :: OpponentOverrides -> OpponentConfig -> Either String OpponentConfig
 applyOpponent overrides base =
@@ -234,9 +248,9 @@ buildAIConfig overrides base =
       build = case buildOverride of
         Nothing -> base >>= aiBuild
         Just value -> value
-  in case (race, difficulty) of
-    (Just r, Just d) -> pure $ AIConfig r d build
-    _ -> Left "AI opponent requires both race and difficulty"
+   in case (race, difficulty) of
+        (Just r, Just d) -> pure $ AIConfig r d build
+        _ -> Left "AI opponent requires both race and difficulty"
 
 updateAI :: AIConfig -> OpponentOverrides -> Either String AIConfig
 updateAI cfg overrides =

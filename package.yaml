@@ -64,8 +64,8 @@ library:
     - ImportQualifiedPost
 
 executables:
-# profiling how to
-# https://gist.github.com/jproyo/0ca95b96c9b8207a2aab3654f2d5ca6f
+  # profiling how to
+  # https://gist.github.com/jproyo/0ca95b96c9b8207a2aab3654f2d5ca6f
 
   sc2hs-exe:
     main: Main.hs
