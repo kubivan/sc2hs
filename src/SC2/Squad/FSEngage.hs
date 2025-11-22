@@ -1,4 +1,3 @@
-
 module SC2.Squad.FSEngage where
 
 import Actions
@@ -7,15 +6,18 @@ import SC2.Grid
 import SC2.Squad.Class
 import SC2.Squad.Squad
 import SC2.Geometry
+import SC2.Utils
 import StepMonad
 import StepMonadUtils
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import Observation
 
+import Control.Monad
+import Conduit (filterC)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
-import Control.Monad
+import Data.List (maximumBy)
 
 import Lens.Micro
 import Lens.Micro.Extras (view)
@@ -24,6 +26,7 @@ import Debug.Trace
 
 import Proto.S2clientprotocol.Common ( Point2D )
 import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
+import SC2.Squad.Targeting (findBestTargetTag)
 
 data FSEngage = FSEngageFar UnitTag | FSEngageClose UnitTag
 
@@ -107,6 +110,13 @@ unitSeek unit enemy =
     in trace (show (unit ^. #tag) ++ " egaging: " ++ enemyStr enemy ++ ": " ++ show (desiredVelocity - unitVelocity))
         desiredVelocity - unitVelocity
 
+-- unitsSelf :: Observation -> ConduitT a Unit Identity ()
+-- unitsSelf obs = obsUnitsC obs .| allianceC Self
+
+-- | Calculate priority for a target unit (higher = more important to attack)
+-- | Calculate priority for a target unit, considering attacker and target properties
+-- Removed primitive targetPriority/findTarget; using new utility scoring in SC2.Squad.Targeting.
+
 
 instance SquadFS FSEngage where
 
@@ -133,34 +143,33 @@ instance SquadFS FSEngage where
         mapM_ (\u -> debugUnitVec u (unitSeek u enemy)) units
         mapM_ (`unitEngageBehaviorTree` enemy) units
 
+    fsUpdate squad st@(FSEngageClose enemyTag) = do
+        ds <- agentGet
+        let unitByTag t = HashMap.lookup t (getUnitMap ds)
+            leader = fromJust $ unitByTag . head . squadUnits $ squad
+            leaderTag = leader ^. #tag
+        obs <- agentObs
+        newTag <- findBestTargetTag leader enemyTag
+        case getUnit obs newTag of
+            Nothing -> do
+                traceM ("no more unit with tag " ++ show newTag)
+                return (True, st)
+            _ -> return (False, FSEngageClose newTag)
 
-    fsUpdate squad st@(FSEngageClose enemyTag) =
-        do
-            ds <- agentGet
-            obs <- agentObs
-            case getUnit obs enemyTag of
-                Nothing -> do
-                    traceM ("no more unit with tag " ++ show enemyTag)
-                    return (True, st)
-
-                _ -> return (False, FSEngageClose enemyTag)
-
-    fsUpdate squad st@(FSEngageFar enemyTag) =
-        do
-            ds <- agentGet
-            obs <- agentObs
-            let unitByTag t = HashMap.lookup t (getUnitMap ds)
-                enemy = getUnit obs enemyTag
-                leader = fromJust $ unitByTag . head . squadUnits $ squad
-            --TODO: need more fine control, squad leader may not be able to focus target
-            inRange <- isEnemyInRange (fromJust enemy) leader
-
-            case enemy of
-                Nothing -> do
-                    traceM ("no more unit with tag " ++ show enemyTag)
-                    return (True, st)
-
-                _ -> return (False, if inRange then FSEngageClose enemyTag else st)
+    fsUpdate squad st@(FSEngageFar enemyTag) = do
+        ds <- agentGet
+        obs <- agentObs
+        let unitByTag t = HashMap.lookup t (getUnitMap ds)
+            leader = fromJust $ unitByTag . head . squadUnits $ squad
+        newTag <- findBestTargetTag leader enemyTag
+        let enemy = getUnit obs newTag
+        case enemy of
+            Nothing -> do
+                traceM ("no more unit with tag " ++ show newTag)
+                return (True, st)
+            Just eunit -> do
+                inRange <- isEnemyInRange eunit leader
+                return (False, if inRange then FSEngageClose newTag else FSEngageFar newTag)
 
     fsOnEnter s _ = traceM $ "[enter] FSEngage " ++ show (squadId s)
     fsOnExit  s _ = traceM $ "[exit] FSEngage " ++ show (squadId s)

@@ -33,6 +33,10 @@ import Data.Typeable
 import Debug.Trace
 import Control.Monad (filterM, void, when)
 
+import Proto.S2clientprotocol.Common ( Point, Point2D )
+import Data.ProtoLens (defMessage)
+import Proto.S2clientprotocol.Common_Fields ( x, y, z )
+
 isSquadFull :: (HasArmy d) => FSMSquad a -> StepMonad d Bool
 isSquadFull squad = do
     ds <- agentGet
@@ -81,7 +85,24 @@ squadExploreRegion s region =
         if isNothing isFound
             then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
             else do
-                command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
+                command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (nudgeTileCenter leaderPos posToGo)]
+
+-- Convert a source tile and a destination tile to a nudged Point2D:
+-- take the destination tile center and nudge a small epsilon toward the direction
+-- from 'fromTile' to 'toTile'. This keeps the target clearly inside the intended cell.
+-- defMessage & x .~ (0.5 + getX p) & y .~ (0.5 + getY p)
+nudgeTileCenter :: TilePos -> TilePos -> Point2D
+nudgeTileCenter fromTile toTile@(destX, destY) = defMessage & x .~ xres & y .~ yres
+  where
+    (dxi, dyi) = fromTile - toTile
+    --(dx, dy) :: (Float, Float)
+    (dx, dy) = (fromIntegral dxi, fromIntegral dyi)
+    mag = sqrt (dx * dx + dy * dy)
+    eps = 0.12  -- tweakable; small fraction of a tile
+    nx = if mag == 0 then 0 else dx / mag
+    ny = if mag == 0 then 0 else dy / mag
+    xres = fromIntegral destX + nx * eps
+    yres = fromIntegral destY + ny * eps
 
 squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
