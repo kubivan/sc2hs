@@ -2,12 +2,14 @@ module SC2.Army.Planner (
     AIMode(..)
   , ArmyIntent(..)
   , computeArmyPlan
+  , currentArmyIntent
 ) where
 
 import StepMonad (StepMonad, agentObs, AgentDynamicState)
 import Observation (obsUnitsC)
-import Units (runC)
+import Units (runC, allianceC)
 import Conduit (filterC, (.|))
+import SC2.Proto.Data (Alliance(..))
 import SC2.Army.ThreatMap (computeThreatMap, regionThreat, ThreatMap(..))
 import SC2.Grid.Algo (RegionId)
 import SC2.Utils (isEnemy)
@@ -34,8 +36,8 @@ data ArmyIntent = ArmyIntent { aiMode :: AIMode, aiFocusRegion :: Maybe Int }
 computeArmyPlan :: AgentDynamicState d => StepMonad d ArmyIntent
 computeArmyPlan = do
   obs <- agentObs
-  let friends = runC $ obsUnitsC obs .| filterC (not . isEnemy)
-      enemies = runC $ obsUnitsC obs .| filterC isEnemy
+  let friends = runC $ obsUnitsC obs .| allianceC Self
+      enemies = runC $ obsUnitsC obs .| allianceC Enemy
       fc = fromIntegral (length friends) :: Float
       ec = fromIntegral (length enemies) :: Float
       mode | fc > ec * 1.2 = AimAttack
@@ -46,3 +48,7 @@ computeArmyPlan = do
   let regionList = HashMap.toList (tmRegionThreat tm)
   let focus = if null regionList then Nothing else Just (fst $ maximumBy (comparing snd) regionList)
   pure $ ArmyIntent mode focus
+
+-- | Convenience wrapper for squads to read the current army intent.
+currentArmyIntent :: AgentDynamicState d => StepMonad d ArmyIntent
+currentArmyIntent = computeArmyPlan
