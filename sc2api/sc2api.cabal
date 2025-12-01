@@ -1,0 +1,109 @@
+cabal-version: 1.24
+
+-- This file has been generated from package.yaml by hpack version 0.37.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           sc2api
+version:        0.4.2.0
+synopsis:       Low-level StarCraft II bot API - minimal interface for bot implementation
+category:       Game
+license:        MIT
+build-type:     Custom
+extra-source-files:
+    protos/s2clientprotocol/common.proto
+    protos/s2clientprotocol/data.proto
+    protos/s2clientprotocol/debug.proto
+    protos/s2clientprotocol/error.proto
+    protos/s2clientprotocol/query.proto
+    protos/s2clientprotocol/raw.proto
+    protos/s2clientprotocol/sc2api.proto
+    protos/s2clientprotocol/score.proto
+    protos/s2clientprotocol/spatial.proto
+    protos/s2clientprotocol/ui.proto
+    data/data.json
+
+custom-setup
+  setup-depends:
+      Cabal
+    , base
+    , filepath
+    , proto-lens-protoc
+    , proto-lens-setup
+
+library
+  exposed-modules:
+      Proto.S2clientprotocol.Common
+      Proto.S2clientprotocol.Data
+      Proto.S2clientprotocol.Debug
+      Proto.S2clientprotocol.Error
+      Proto.S2clientprotocol.Query
+      Proto.S2clientprotocol.Raw
+      Proto.S2clientprotocol.Sc2api
+      Proto.S2clientprotocol.Score
+      Proto.S2clientprotocol.Spatial
+      Proto.S2clientprotocol.Ui
+      Proto.S2clientprotocol.Common_Fields
+      Proto.S2clientprotocol.Data_Fields
+      Proto.S2clientprotocol.Debug_Fields
+      Proto.S2clientprotocol.Error_Fields
+      Proto.S2clientprotocol.Query_Fields
+      Proto.S2clientprotocol.Raw_Fields
+      Proto.S2clientprotocol.Sc2api_Fields
+      Proto.S2clientprotocol.Score_Fields
+      Proto.S2clientprotocol.Spatial_Fields
+      Proto.S2clientprotocol.Ui_Fields
+      Agent
+      Actions
+      UnitAbilities
+      SC2.Geometry
+      SC2.Proto.Data
+      SC2.Proto.Requests
+      SC2.Client
+      SC2.Launcher.Participant
+      SC2.Launcher.BotConfig
+      SC2.Launcher.Config
+      SC2.Launcher.LoadConfig
+      SC2.Launcher.Game
+      SC2.Ids.Ids
+      SC2.Ids.GenIdsTh
+      SC2.Ids.Deps
+      SC2.Ids.AbilityId
+      SC2.Ids.UnitTypeId
+      SC2.Ids.UpgradeId
+      SC2.Ids.BuffId
+  other-modules:
+      Paths_sc2api
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      OverloadedLabels
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat
+  build-tool-depends:
+      proto-lens-protoc:proto-lens-protoc
+  build-depends:
+      aeson
+    , async
+    , base >=4.12
+    , bytestring
+    , conduit
+    , containers
+    , directory
+    , filepath
+    , hashable
+    , lens-aeson
+    , microlens
+    , mtl
+    , optparse-applicative
+    , process
+    , proto-lens
+    , proto-lens-runtime
+    , template-haskell
+    , text
+    , unordered-containers
+    , vector
+    , websockets >=0.12.7.3
+    , yaml
+  default-language: Haskell2010

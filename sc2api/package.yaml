@@ -1,0 +1,97 @@
+name: sc2api
+version: 0.4.2.0
+synopsis: Low-level StarCraft II bot API - minimal interface for bot implementation
+license: MIT
+category: Game
+
+extra-source-files:
+  - protos/s2clientprotocol/*.proto
+  - data/data.json
+
+build-type: Custom
+custom-setup:
+  dependencies:
+    - base
+    - Cabal
+    - filepath
+    - proto-lens-protoc
+    - proto-lens-setup
+
+dependencies:
+  - base >= 4.12
+  - filepath
+  - proto-lens-runtime
+  - proto-lens
+  - aeson
+  - bytestring
+  - text
+  - containers
+  - unordered-containers
+  - hashable
+  - microlens
+  - websockets >= 0.12.7.3
+  - async
+  - template-haskell
+  - vector
+  - conduit
+  - lens-aeson
+  - process
+  - directory
+  - yaml
+  - optparse-applicative
+  - mtl
+  
+library:
+  source-dirs: src
+  build-tool-depends: proto-lens-protoc:proto-lens-protoc
+  default-extensions:
+    - OverloadedStrings
+    - OverloadedLabels
+    - ImportQualifiedPost
+  ghc-options:
+    - -Wall
+    - -Wcompat
+  exposed-modules:
+    # Proto-generated modules
+    - Proto.S2clientprotocol.Common
+    - Proto.S2clientprotocol.Data
+    - Proto.S2clientprotocol.Debug
+    - Proto.S2clientprotocol.Error
+    - Proto.S2clientprotocol.Query
+    - Proto.S2clientprotocol.Raw
+    - Proto.S2clientprotocol.Sc2api
+    - Proto.S2clientprotocol.Score
+    - Proto.S2clientprotocol.Spatial
+    - Proto.S2clientprotocol.Ui
+    - Proto.S2clientprotocol.Common_Fields
+    - Proto.S2clientprotocol.Data_Fields
+    - Proto.S2clientprotocol.Debug_Fields
+    - Proto.S2clientprotocol.Error_Fields
+    - Proto.S2clientprotocol.Query_Fields
+    - Proto.S2clientprotocol.Raw_Fields
+    - Proto.S2clientprotocol.Sc2api_Fields
+    - Proto.S2clientprotocol.Score_Fields
+    - Proto.S2clientprotocol.Spatial_Fields
+    - Proto.S2clientprotocol.Ui_Fields
+    # Core API modules
+    - Agent
+    - Actions
+    - UnitAbilities
+    - SC2.Geometry
+    - SC2.Proto.Data
+    - SC2.Proto.Requests
+    - SC2.Client
+    # Launcher modules
+    - SC2.Launcher.Participant
+    - SC2.Launcher.BotConfig
+    - SC2.Launcher.Config
+    - SC2.Launcher.LoadConfig
+    - SC2.Launcher.Game
+    # ID modules
+    - SC2.Ids.Ids
+    - SC2.Ids.GenIdsTh
+    - SC2.Ids.Deps
+    - SC2.Ids.AbilityId
+    - SC2.Ids.UnitTypeId
+    - SC2.Ids.UpgradeId
+    - SC2.Ids.BuffId

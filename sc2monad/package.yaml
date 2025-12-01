@@ -1,0 +1,97 @@
+name: sc2monad
+version: 0.4.2.0
+synopsis: High-level StarCraft II bot framework with StepMonad and game systems
+license: MIT
+category: Game
+
+dependencies:
+  - base >= 4.12
+  - sc2api
+  - aeson
+  - bytestring
+  - conduit
+  - containers
+  - hashable
+  - microlens
+  - mtl
+  - proto-lens
+  - text
+  - transformers
+  - unordered-containers
+  - vector
+  - template-haskell
+  - safe
+  - split
+  - random
+  - async
+  - websockets
+  - directory
+  - lens-aeson
+  - process
+  - aeson-pretty
+
+library:
+  source-dirs: src
+  default-extensions:
+    - OverloadedStrings
+    - OverloadedLabels
+    - ImportQualifiedPost
+  ghc-options:
+    - -Wall
+    - -Wcompat
+    - -Widentities
+    - -Wincomplete-record-updates
+    - -Wincomplete-uni-patterns
+    - -Wmissing-export-lists
+    - -Wmissing-home-modules
+    - -Wpartial-fields
+    - -Wredundant-constraints
+  exposed-modules:
+    # Core monadic framework
+    - StepMonad
+    - StepMonadUtils
+    - Observation
+    - Units
+    - UnitsTh
+    - Footprint
+    - Utils
+    # SC2 modules
+    - SC2.TechTree
+    - SC2.Utils
+    # Grid system
+    - SC2.Grid
+    - SC2.Grid.Core
+    - SC2.Grid.Algo
+    - SC2.Grid.Utils
+    - SC2.Grid.TilePos
+    # Army system
+    - SC2.Army.Army
+    - SC2.Army.Class
+    # Units
+    - SC2.Units.CombatEval
+    # Squad system
+    - SC2.Squad
+    - SC2.Squad.Squad
+    - SC2.Squad.Class
+    - SC2.Squad.State
+    - SC2.Squad.FSM
+    - SC2.Squad.Behavior
+    - SC2.Squad.Micro
+    - SC2.Squad.FSEngage
+    - SC2.Squad.FSExploreRegion
+    - SC2.Squad.FSSquadForming
+    - SC2.Squad.FSSquadIdle
+
+tests:
+  sc2monad-test:
+    main: Spec.hs
+    source-dirs:
+      - test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hspec
+      - sc2api
+      - sc2monad

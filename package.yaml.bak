@@ -1,0 +1,89 @@
+name:                sc2hs
+version:             0.1.0.0
+github:              "githubuser/sc2hs-stack"
+license:             BSD3
+author:              "kubi"
+maintainer:          "example@example.com"
+copyright:           "2023 Author name here"
+
+extra-source-files:
+  - README.md
+  - CHANGELOG.md
+
+description: >-
+  Please see the README on GitHub at
+  https://github.com/githubuser/sc2hs-stack#readme
+
+dependencies:
+  - base >= 4.12
+  - sc2api
+  - sc2-core
+  - websockets >= 0.12.7.3
+  - proto-lens
+  - microlens
+  - text
+  - directory
+  - bytestring
+  - filepath
+  - process
+  - mtl
+  - conduit
+  - vector
+  - containers
+  - unordered-containers
+  - hashable
+  - optparse-applicative
+  - transformers
+  - async
+  - loop
+  - template-haskell
+  - safe
+  - split
+  - random
+  - aeson
+  - aeson-pretty
+  - lens-aeson
+  - yaml
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-export-lists
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+
+default-extensions:
+  - OverloadedStrings
+  - OverloadedLabels
+  - ImportQualifiedPost
+
+executables:
+  # profiling how to
+  # https://gist.github.com/jproyo/0ca95b96c9b8207a2aab3654f2d5ca6f
+
+  sc2hs-exe:
+    main: Main.hs
+    source-dirs:
+      - app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    main: Spec.hs
+    source-dirs:
+      - test
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - hspec
+      - sc2api
+      - sc2-core

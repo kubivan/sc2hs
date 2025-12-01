@@ -1,0 +1,121 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.37.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           sc2monad
+version:        0.4.2.0
+synopsis:       High-level StarCraft II bot framework with StepMonad and game systems
+category:       Game
+license:        MIT
+build-type:     Simple
+
+library
+  exposed-modules:
+      StepMonad
+      StepMonadUtils
+      Observation
+      Units
+      UnitsTh
+      Footprint
+      Utils
+      SC2.TechTree
+      SC2.Utils
+      SC2.Grid
+      SC2.Grid.Core
+      SC2.Grid.Algo
+      SC2.Grid.Utils
+      SC2.Grid.TilePos
+      SC2.Army.Army
+      SC2.Army.Class
+      SC2.Units.CombatEval
+      SC2.Squad
+      SC2.Squad.Squad
+      SC2.Squad.Class
+      SC2.Squad.State
+      SC2.Squad.FSM
+      SC2.Squad.Behavior
+      SC2.Squad.Micro
+      SC2.Squad.FSEngage
+      SC2.Squad.FSExploreRegion
+      SC2.Squad.FSSquadForming
+      SC2.Squad.FSSquadIdle
+  other-modules:
+      Paths_sc2monad
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      OverloadedLabels
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      aeson
+    , aeson-pretty
+    , async
+    , base >=4.12
+    , bytestring
+    , conduit
+    , containers
+    , directory
+    , hashable
+    , lens-aeson
+    , microlens
+    , mtl
+    , process
+    , proto-lens
+    , random
+    , safe
+    , sc2api
+    , split
+    , template-haskell
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , websockets
+  default-language: Haskell2010
+
+test-suite sc2monad-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      TestGrid
+      TestObservation
+      TestStepMonad
+      TestTechTree
+      TestUnits
+      TestUtils
+      Paths_sc2monad
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , aeson-pretty
+    , async
+    , base >=4.12
+    , bytestring
+    , conduit
+    , containers
+    , directory
+    , hashable
+    , hspec
+    , lens-aeson
+    , microlens
+    , mtl
+    , process
+    , proto-lens
+    , random
+    , safe
+    , sc2api
+    , sc2monad
+    , split
+    , template-haskell
+    , text
+    , transformers
+    , unordered-containers
+    , vector
+    , websockets
+  default-language: Haskell2010

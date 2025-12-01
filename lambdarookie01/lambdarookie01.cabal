@@ -1,0 +1,46 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.37.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           lambdarookie01
+version:        0.0.4.0
+description:    Protoss bot implementation using sc2api and sc2monad
+author:         kubi
+maintainer:     kubi
+license:        MIT
+build-type:     Simple
+
+executable lambdarookie01
+  main-is: Main.hs
+  other-modules:
+      AgentBulidUtils
+      ArmyLogic
+      BotDynamicState
+      TestBot
+      Paths_lambdarookie01
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedStrings
+      OverloadedLabels
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.12
+    , conduit
+    , containers
+    , hashable
+    , microlens
+    , mtl
+    , proto-lens
+    , random
+    , safe
+    , sc2api
+    , sc2monad
+    , split
+    , text
+    , transformers
+    , unordered-containers
+  default-language: Haskell2010
