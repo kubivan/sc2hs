@@ -33,4 +33,4 @@ class Agent a where
     makeAgent :: a -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO a
 
     agentRace :: a -> Proto.Race
-    agentStep :: a -> Proto.ResponseObservation -> UnitAbilities -> (a, StepPlan)
+    agentStep :: a -> Proto.ResponseObservation -> UnitAbilities -> IO (a, StepPlan)

@@ -19,7 +19,7 @@ import Data.Char (toLower)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Yaml (decodeFileEither)
 import Options.Applicative
-import Paths_sc2hs (getDataFileName)
+import Paths_sc2api (getDataFileName)
 import Proto.S2clientprotocol.Common qualified as C
 import Proto.S2clientprotocol.Sc2api qualified as A
 import SC2.BotConfig

@@ -8,7 +8,6 @@ copyright:           "2023 Author name here"
 
 extra-source-files:
   - README.md
-  - CHANGELOG.md
 
 description: >-
   Please see the README on GitHub at
@@ -16,6 +15,8 @@ description: >-
 
 dependencies:
   - base >= 4.12
+  - sc2api
+  - sc2-core
   - websockets >= 0.12.7.3
   - proto-lens
   - microlens
@@ -23,7 +24,6 @@ dependencies:
   - directory
   - bytestring
   - filepath
-  - sc2-proto
   - process
   - mtl
   - conduit
@@ -55,18 +55,12 @@ ghc-options:
   - -Wpartial-fields
   - -Wredundant-constraints
 
-library:
-  source-dirs:
-    - src
-  default-extensions:
-    - OverloadedStrings
-    - OverloadedLabels
-    - ImportQualifiedPost
+default-extensions:
+  - OverloadedStrings
+  - OverloadedLabels
+  - ImportQualifiedPost
 
 executables:
-  # profiling how to
-  # https://gist.github.com/jproyo/0ca95b96c9b8207a2aab3654f2d5ca6f
-
   sc2hs-exe:
     main: Main.hs
     source-dirs:
@@ -75,15 +69,6 @@ executables:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
-    dependencies:
-      - sc2hs
-      - transformers
-      - safe
-      - random
-    default-extensions:
-      - OverloadedStrings
-      - OverloadedLabels
-      - ImportQualifiedPost
 
 tests:
   sc2hs-test:
@@ -96,4 +81,3 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - hspec
-      - sc2hs

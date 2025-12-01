@@ -33,8 +33,6 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Lens.Micro ((^..), (^?), (^?!))
 
-import Utils (dbg)
-
 -- Define types
 
 data Tech = TechUnit UnitTypeId | TechUpgrade UpgradeId | TechAbility AbilityId

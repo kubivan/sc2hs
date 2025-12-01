@@ -17,13 +17,11 @@ module SC2.Client (
     unitAbilities,
 ) where
 
-import Observation (Observation)
 import SC2.BotConfig (StarCraft2Config (..))
 import SC2.Ids.AbilityId (AbilityId, toEnum)
 import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Requests qualified as Proto
-import StepMonad (UnitTraits)
 import UnitAbilities
 
 import Conduit (mapC, runConduitPure, sinkList, yieldMany, (.|))
@@ -62,8 +60,9 @@ import System.Process (
     shell,
  )
 
-unitAbilitiesRaw :: WS.Connection -> Observation -> IO [S.ResponseQueryAvailableAbilities]
-unitAbilitiesRaw conn obs = do
+unitAbilitiesRaw :: WS.Connection -> Proto.ResponseObservation -> IO [S.ResponseQueryAvailableAbilities]
+unitAbilitiesRaw conn respObs = do
+    let obs = respObs ^. #observation
     resp <- Proto.sendRequestSync conn $ Proto.requestUnitAbilities obs
     return $ resp ^. #query . #abilities
 

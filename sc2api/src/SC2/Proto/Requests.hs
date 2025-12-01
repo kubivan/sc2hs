@@ -48,10 +48,6 @@ import Proto.S2clientprotocol.Raw as A
 import Proto.S2clientprotocol.Data as A
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
-import qualified Utils
-
--- import Proto.S2clientprotocol.Requests as A
--- import Proto.S2clientprotocol.Common as C
 
 -- | Build InterfaceOptions similar to python-sc2 defaults
 -- defaultInterfaceOptions :: A.InterfaceOptions

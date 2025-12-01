@@ -571,7 +571,7 @@ instance Agent BotAgent where
                     then -- trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
                         (BotAgent phase' si ds', plan)
                     else (BotAgent phase' si ds', plan)
-         in tracedResult
+          in pure tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
 agentStepPhase Opening =

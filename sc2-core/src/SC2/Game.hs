@@ -194,15 +194,16 @@ gameStepLoop :: (Agent agent) => Connection -> agent -> IO [PlayerResult]
 gameStepLoop conn agent = do
     responseObs <- Proto.sendRequestSync conn Proto.requestObservation
     let gameOver = responseObs ^. #observation . #playerResult
+        respObs = responseObs ^. #observation
 
     if not (null gameOver)
         then return gameOver
         else do
-            let obs = responseObs ^. #observation . #observation
+            let obs = respObs ^. #observation
                 _gameLoop = obs ^. #gameLoop
 
-            abilityMap <- unitAbilitiesRaw conn obs <&> unitAbilities
-            (agent', StepPlan cmds chats dbgs) <- return $ Agent.agentStep agent (responseObs ^. #observation) abilityMap
+            abilityMap <- unitAbilitiesRaw conn respObs <&> unitAbilities
+            (agent', StepPlan cmds chats dbgs) <- Agent.agentStep agent respObs abilityMap
 
             -- (agent', StepPlan cmds chats dbgs, ds') <- return $ runStep si abilities (setObs obs ds) (Agent.agentStep agent)
             -- liftIO $ gridToFile ("grids/grid" ++ show gameLoop ++ ".txt") (getGrid ds')
