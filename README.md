@@ -191,6 +191,125 @@ data StepPlan = StepPlan
   }
 ```
 
+## Map Analysis & Segmentation
+
+The framework includes advanced map analysis capabilities in `SC2.Grid.Algo`, enabling strategic positioning and terrain-aware decision making.
+
+### Chokepoint Detection
+
+Automatically identify narrow passages and strategic control points using raycasting algorithms:
+
+```haskell
+-- Find a chokepoint from a starting position
+findChokePoint :: Grid -> Int -> TilePos -> Maybe [TilePos]
+
+-- Find all significant chokepoints on the map
+findAllChokePoints :: Grid -> ([Ray], Grid)
+```
+
+**How it works:**
+- Casts rays in multiple directions (0°, 45°, 90°, 135°, 180°) from each open tile
+- Detects narrow passages where opposing rays meet within a threshold distance
+- Validates that chokepoints separate regions of sufficient volume (configurable minimum)
+- Returns ray coordinates representing the chokepoint geometry
+
+**Use cases:**
+- Position defensive units at chokepoints
+- Wall-off narrow passages with buildings
+- Identify attack/retreat paths through narrow terrain
+- Plan expansion placement away from vulnerable chokepoints
+
+### Region Segmentation
+
+Partition the map into distinct regions connected by chokepoints:
+
+```haskell
+-- Segment map into distinct regions
+gridSegment :: Grid -> [(RegionId, Region)]
+
+-- Build adjacency graph of regions
+buildRegionGraph :: [(RegionId, Region)] -> RegionLookup -> RegionGraph
+
+-- Lookup which region a tile belongs to
+buildRegionLookup :: [(RegionId, Region)] -> RegionLookup
+```
+
+**How it works:**
+- Uses flood-fill to identify contiguous walkable areas
+- Each region is a connected component of open tiles
+- Builds graph showing which regions are adjacent (connected through chokepoints)
+- Provides O(1) lookup from tile position to region ID
+
+**Use cases:**
+- Strategic map control: identify which regions you control vs enemy
+- Pathfinding: find sequence of regions to traverse from A to B
+- Expansion planning: identify isolated regions suitable for bases
+- Threat assessment: determine if enemy can reach your base without crossing chokepoints
+
+### Region Graph Pathfinding
+
+Navigate between regions using BFS on the region graph:
+
+```haskell
+-- Find shortest path (in regions) from start to end
+regionGraphBfs :: RegionGraph -> RegionId -> RegionId -> [RegionId]
+```
+
+**Use cases:**
+- High-level strategic pathfinding (region-to-region, then detailed within region)
+- Identify how many chokepoints separate two locations
+- Plan attack routes that minimize chokepoint traversals
+- Predict enemy attack vectors
+
+### Example: Strategic Map Analysis
+
+```haskell
+import SC2.Grid.Algo
+
+analyzeMap :: Grid -> (RegionGraph, RegionLookup)
+analyzeMap grid = (regionGraph, regionLookup)
+  where
+    -- Segment map into regions
+    regions = gridSegment grid
+    
+    -- Build lookup table
+    regionLookup = buildRegionLookup regions
+    
+    -- Build region adjacency graph
+    regionGraph = buildRegionGraph regions regionLookup
+
+-- Find path from your base to enemy base
+findAttackPath :: TilePos -> TilePos -> RegionGraph -> RegionLookup -> [RegionId]
+findAttackPath myBase enemyBase rg rl = 
+  regionGraphBfs rg startRegion endRegion
+  where
+    Just startRegion = HashMap.lookup myBase rl
+    Just endRegion = HashMap.lookup enemyBase rl
+
+-- Identify all chokepoints
+findDefensivePositions :: Grid -> [Ray]
+findDefensivePositions grid = chokepoints
+  where
+    (chokepoints, _) = findAllChokePoints grid
+```
+
+### Grid Utilities
+
+Additional grid analysis functions:
+
+- **`gridBfs`** — Breadth-first search with custom transitions and goal predicates
+- **`gridRaycastTile`** — Cast ray from origin in direction until obstacle
+- **`gridSplitByRay`** — Split grid into regions separated by a ray (chokepoint)
+- **`checkVolumes`** — Verify regions separated by ray meet minimum size requirements
+- **`complementRegionLookup`** — Extend region lookup to tiles near region boundaries
+
+### Implementation Notes
+
+- **Performance:** Unboxed grids (`Data.Vector.Unboxed`) for cache-efficient operations
+- **Precision:** All algorithms work on tile-level granularity (grid cells, not game coordinates)
+- **Validation:** Chokepoint detection includes volume checks to avoid false positives in open areas
+- **Configurability:** Minimum region sizes and chokepoint thresholds are parameterized
+
 ## Testing
 
 Tests cover:
