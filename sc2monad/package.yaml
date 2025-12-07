@@ -83,7 +83,7 @@ library:
     - SC2.Squad.FSSquadIdle
 
 tests:
-  sc2-core-test:
+  sc2monad-test:
     main: Spec.hs
     source-dirs:
       - test
@@ -94,4 +94,4 @@ tests:
     dependencies:
       - hspec
       - sc2api
-      - sc2-core
+      - sc2monad
