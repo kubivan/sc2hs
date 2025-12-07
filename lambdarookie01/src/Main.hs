@@ -7,7 +7,7 @@ import SC2.Launcher.LoadConfig
 import SC2.Launcher.Participant
 import SC2.Proto.Data (Map (LocalMap))
 import System.Exit (exitFailure)
-import Bot.TestBot
+import TestBot
 
 botParticipant :: Participant
 botParticipant = Player EmptyBotAgent

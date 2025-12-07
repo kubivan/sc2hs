@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Bot.AgentBulidUtils where
+module AgentBulidUtils where
 
 import Actions
 import SC2.Grid(

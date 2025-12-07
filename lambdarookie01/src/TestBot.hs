@@ -8,13 +8,13 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Bot.TestBot where
+module TestBot where
 
 import Actions
 import Agent
-import Bot.AgentBulidUtils
-import Bot.ArmyLogic
-import Bot.BotDynamicState
+import AgentBulidUtils
+import ArmyLogic
+import BotDynamicState
 import Footprint (getFootprint)
 import Observation
 import SC2.Army.Army

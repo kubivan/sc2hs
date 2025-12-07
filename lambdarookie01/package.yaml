@@ -44,7 +44,7 @@ default-extensions:
 
 executables:
   lambdarookie01:
-    main: Bot/Main.hs
+    main: Main.hs
     source-dirs:
       - src
     ghc-options:
