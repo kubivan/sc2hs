@@ -17,7 +17,7 @@ module SC2.Client (
     unitAbilities,
 ) where
 
-import SC2.BotConfig (StarCraft2Config (..))
+import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Ids.AbilityId (AbilityId, toEnum)
 import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
 import SC2.Proto.Data qualified as Proto
@@ -81,7 +81,7 @@ unitAbilities raw =
 startStarCraft :: StarCraft2Config -> String -> Int32 -> IO ()
 startStarCraft cfg host port = do
     let sc2Binary = "\"" ++ exePath cfg ++ "\""
-        workingDir = Just (SC2.BotConfig.cwd cfg)
+        workingDir = Just (SC2.Launcher.BotConfig.cwd cfg)
         args =
             [ "-listen"
             , host

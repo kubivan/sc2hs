@@ -1,4 +1,4 @@
-name: sc2-core
+name: sc2monad
 version: 0.1.0.0
 synopsis: High-level StarCraft II bot framework with StepMonad and game systems
 license: MIT
@@ -56,7 +56,6 @@ library:
     - Footprint
     - Utils
     # SC2 modules
-    - SC2.Game
     - SC2.TechTree
     - SC2.Utils
     # Grid system

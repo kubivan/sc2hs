@@ -1,9 +1,9 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedLabels #-}
 
-module ArmyLogic where
+module Bot.ArmyLogic where
 
-import BotDynamicState
+import Bot.BotDynamicState
 
 import Actions (Action (..), UnitTag)
 import SC2.Army.Army

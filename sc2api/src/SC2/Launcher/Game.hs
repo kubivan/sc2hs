@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module SC2.Game (
+module SC2.Launcher.Game (
     NetworkSettings (..),
     HostRuntime (..),
     JoinRuntime (..),
@@ -17,7 +17,7 @@ import Agent
 
 -- import SC2.Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi, Race, Request)
 
-import SC2.BotConfig (StarCraft2Config (..))
+import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Client (
     GameSignals,
     newGameSignals,
@@ -29,8 +29,7 @@ import SC2.Client (
     waitAllClientsJoined,
     waitForGameCreation,
  )
-import SC2.Grid.Core (gridFromImage)
-import SC2.Participant
+import SC2.Launcher.Participant
 import SC2.Proto.Data (Map, PlayerResult, Race)
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Requests
@@ -177,8 +176,6 @@ runGameLoop conn signals agent localPlayerId = do
     gameDataResp <- Proto.sendRequestSync conn Proto.requestData
     let gi :: Proto.ResponseGameInfo = respGameInfo ^. #gameInfo
         gd :: Proto.ResponseData = gameDataResp ^. #data'
-        -- Just gd = gameDataResp ^. #maybe'data
-        _pathingGrid = gridFromImage (gi ^. #startRaw . #pathingGrid)
 
     --printGrid _pathingGrid
     createDirectoryIfMissing True "grids"

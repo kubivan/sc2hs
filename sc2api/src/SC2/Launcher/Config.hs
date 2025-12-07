@@ -1,5 +1,5 @@
 
-module SC2.Config (
+module SC2.Launcher.Config (
     hostName,
     portHost,
     portClient,

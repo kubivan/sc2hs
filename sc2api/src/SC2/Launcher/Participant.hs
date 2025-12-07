@@ -1,7 +1,7 @@
 
 {-# LANGUAGE GADTs #-}
 
-module SC2.Participant where
+module SC2.Launcher.Participant where
 
 import Agent
 import SC2.Proto.Data(Race)

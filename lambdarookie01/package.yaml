@@ -1,48 +1,30 @@
-name:                sc2hs
+name:                lambdarookie01
 version:             0.1.0.0
-github:              "githubuser/sc2hs-stack"
+github:              "githubuser/lambdarookie01"
 license:             BSD3
 author:              "kubi"
 maintainer:          "example@example.com"
 copyright:           "2023 Author name here"
 
-extra-source-files:
-  - README.md
-
-description: >-
-  Please see the README on GitHub at
-  https://github.com/githubuser/sc2hs-stack#readme
+description: >
+  Protoss bot implementation using sc2api and sc2monad
 
 dependencies:
   - base >= 4.12
   - sc2api
-  - sc2-core
-  - websockets >= 0.12.7.3
+  - sc2monad
   - proto-lens
   - microlens
   - text
-  - directory
-  - bytestring
-  - filepath
-  - process
-  - mtl
-  - conduit
-  - vector
   - containers
   - unordered-containers
   - hashable
-  - optparse-applicative
-  - transformers
-  - async
-  - loop
-  - template-haskell
   - safe
-  - split
   - random
-  - aeson
-  - aeson-pretty
-  - lens-aeson
-  - yaml
+  - conduit
+  - split
+  - transformers
+  - mtl
 
 ghc-options:
   - -Wall
@@ -61,23 +43,11 @@ default-extensions:
   - ImportQualifiedPost
 
 executables:
-  sc2hs-exe:
-    main: Main.hs
+  lambdarookie01:
+    main: Bot/Main.hs
     source-dirs:
-      - app
+      - src
     ghc-options:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
-
-tests:
-  sc2hs-test:
-    main: Spec.hs
-    source-dirs:
-      - test
-    ghc-options:
-      - -threaded
-      - -rtsopts
-      - -with-rtsopts=-N
-    dependencies:
-      - hspec

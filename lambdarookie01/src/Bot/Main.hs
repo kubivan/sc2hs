@@ -1,13 +1,13 @@
 module Main where
 
 import Data.Text qualified as T
-import SC2.BotConfig
-import SC2.Game
-import SC2.LoadConfig
-import SC2.Participant
+import SC2.Launcher.BotConfig
+import SC2.Launcher.Game
+import SC2.Launcher.LoadConfig
+import SC2.Launcher.Participant
 import SC2.Proto.Data (Map (LocalMap))
 import System.Exit (exitFailure)
-import TestBot
+import Bot.TestBot
 
 botParticipant :: Participant
 botParticipant = Player EmptyBotAgent

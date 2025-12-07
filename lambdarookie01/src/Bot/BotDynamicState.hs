@@ -1,6 +1,6 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 
-module BotDynamicState where
+module Bot.BotDynamicState where
 
 import Actions (UnitTag)
 import SC2.Grid

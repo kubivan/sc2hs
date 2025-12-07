@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module SC2.LoadConfig
+module SC2.Launcher.LoadConfig
   ( CommandOptions (..),
     HostCLI (..),
     JoinCLI (..),
@@ -22,7 +22,7 @@ import Options.Applicative
 import Paths_sc2api (getDataFileName)
 import Proto.S2clientprotocol.Common qualified as C
 import Proto.S2clientprotocol.Sc2api qualified as A
-import SC2.BotConfig
+import SC2.Launcher.BotConfig
 import System.Directory (doesFileExist)
 
 data CommandOptions

@@ -81,10 +81,12 @@ library:
     - SC2.Proto.Data
     - SC2.Proto.Requests
     - SC2.Client
-    - SC2.Participant
-    - SC2.BotConfig
-    - SC2.Config
-    - SC2.LoadConfig
+    # Launcher modules
+    - SC2.Launcher.Participant
+    - SC2.Launcher.BotConfig
+    - SC2.Launcher.Config
+    - SC2.Launcher.LoadConfig
+    - SC2.Launcher.Game
     # ID modules
     - SC2.Ids.Ids
     - SC2.Ids.GenIdsTh

@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module SC2.BotConfig (
+module SC2.Launcher.BotConfig (
   BotConfig (..),
   GeneralConfig (..),
   HostConfig (..),

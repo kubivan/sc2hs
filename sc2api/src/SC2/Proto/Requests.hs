@@ -25,7 +25,7 @@ module SC2.Proto.Requests (
 ) where
 
 import SC2.Proto.Data
-import SC2.Participant
+import SC2.Launcher.Participant
 import Actions
     ( DebugCommand, Action, ChatMsg, toDebug, toChatAction, toAction )
 import Agent ( Agent(agentRace) )
@@ -139,7 +139,7 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ m
     setPlayers participants = #playerSetup .~ (toPlayerSetup <$> participants)
 
     toPlayerSetup :: Participant -> A.PlayerSetup
-    toPlayerSetup (SC2.Participant.Computer r d build) =
+    toPlayerSetup (SC2.Launcher.Participant.Computer r d build) =
         let base = defMessage & #race .~ r & #type' .~ A.Computer & #difficulty .~ d
          in maybe base (\b -> base & #aiBuild .~ b) build
     toPlayerSetup (Player agent) = defMessage & #race .~ Agent.agentRace agent & #type' .~ A.Participant
