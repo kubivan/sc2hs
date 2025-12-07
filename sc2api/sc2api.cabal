@@ -5,8 +5,8 @@ cabal-version: 1.24
 -- see: https://github.com/sol/hpack
 
 name:           sc2api
-version:        0.1.0.0
-synopsis:       Low-level StarCraft II bot API - minimal interface for bot implementations
+version:        0.4.2.0
+synopsis:       Low-level StarCraft II bot API - minimal interface for bot implementation
 category:       Game
 license:        MIT
 build-type:     Custom

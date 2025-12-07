@@ -5,19 +5,12 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lambdarookie01
-version:        0.1.0.0
+version:        0.0.4.0
 description:    Protoss bot implementation using sc2api and sc2monad
-homepage:       https://github.com/githubuser/lambdarookie01#readme
-bug-reports:    https://github.com/githubuser/lambdarookie01/issues
 author:         kubi
-maintainer:     example@example.com
-copyright:      2023 Author name here
-license:        BSD3
+maintainer:     kubi
+license:        MIT
 build-type:     Simple
-
-source-repository head
-  type: git
-  location: https://github.com/githubuser/lambdarookie01
 
 executable lambdarookie01
   main-is: Main.hs

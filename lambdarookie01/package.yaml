@@ -1,10 +1,7 @@
 name:                lambdarookie01
-version:             0.1.0.0
-github:              "githubuser/lambdarookie01"
-license:             BSD3
+version:             0.0.4.0
+license:             MIT
 author:              "kubi"
-maintainer:          "example@example.com"
-copyright:           "2023 Author name here"
 
 description: >
   Protoss bot implementation using sc2api and sc2monad
