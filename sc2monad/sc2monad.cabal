@@ -42,6 +42,8 @@ library
       SC2.Squad.FSSquadForming
       SC2.Squad.FSSquadIdle
   other-modules:
+      SC2.Army.MacroArmBandit
+      SC2.Army.StrategyBayes
       Paths_sc2monad
   hs-source-dirs:
       src
