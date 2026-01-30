@@ -73,6 +73,9 @@ import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
 import StepMonad (StaticInfo (siRegionPathToEnemy))
 import System.Random (newStdGen)
 import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))
+import BotStrategyUpdate (initializeStrategyBelief, updateStrategyBeliefThisFrame)
+import StrategyDetectionIntegration ()
+import SC2.Army.StrategyDetection (StrategyBelief, recognizedStrategy, allPosteriors)
 
 deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
@@ -515,6 +518,7 @@ data BotAgent
         { botPhase :: BotPhase
         , botStaticInfo :: StaticInfo
         , botDynState :: BotDynamicState
+        , botStrategyBelief :: StrategyBelief
         }
     | EmptyBotAgent
 
@@ -555,23 +559,27 @@ instance Agent BotAgent where
 
         traceM "create ds"
         dynamicState <- makeDynamicState obsRaw grid
+        let belief0 = initializeStrategyBelief
         traceM "created ds"
-        return $ BotAgent Opening si dynamicState
+        return $ BotAgent Opening si dynamicState belief0
 
     agentRace _ = Protoss
 
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
-    agentStep (BotAgent phase si ds) obs abilities =
+    agentStep (BotAgent phase si ds belief) obs abilities =
         let sm = agentStepPhase phase
             (phase', plan, ds') = runStepM si abilities (setObs (obs ^. #observation) ds) sm
             actions = obs ^. #actions
             errors = obs ^. #actionErrors
-            tracedResult =
-                if not (null actions) || not (null errors)
-                    then -- trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
-                        (BotAgent phase' si ds', plan)
-                    else (BotAgent phase' si ds', plan)
-          in pure tracedResult
+            obsPrev = getObs ds
+            obsCurr = obs ^. #observation
+            -- Update strategy belief based on diagnostic events
+            belief' = fst . fst $ runReader (runStateT (runWriterT (updateStrategyBeliefThisFrame belief obsCurr obsPrev)) ds) (si, abilities)
+        in do
+          traceM ("Agent Step: " ++ strBotPhase phase ++ " -> " ++ strBotPhase phase')
+          traceM ("  Recognized: " ++ show (recognizedStrategy belief'))
+          traceM ("  Posteriors: " ++ show (allPosteriors belief'))
+          pure (BotAgent phase' si ds' belief', plan)
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
 agentStepPhase Opening =

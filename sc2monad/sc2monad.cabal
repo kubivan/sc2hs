@@ -29,6 +29,7 @@ library
       SC2.Grid.TilePos
       SC2.Army.Army
       SC2.Army.Class
+      SC2.Army.StrategyDetection
       SC2.Units.CombatEval
       SC2.Squad
       SC2.Squad.Squad
@@ -42,6 +43,7 @@ library
       SC2.Squad.FSSquadForming
       SC2.Squad.FSSquadIdle
   other-modules:
+      SC2.Army.MacroArmBandit
       Paths_sc2monad
   hs-source-dirs:
       src

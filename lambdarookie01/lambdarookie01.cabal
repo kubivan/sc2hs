@@ -18,6 +18,9 @@ executable lambdarookie01
       AgentBulidUtils
       ArmyLogic
       BotDynamicState
+      BotStrategyUpdate
+      DiagnosticExtraction
+      StrategyDetectionIntegration
       TestBot
       Paths_lambdarookie01
   hs-source-dirs:

@@ -67,6 +67,7 @@ library:
     # Army system
     - SC2.Army.Army
     - SC2.Army.Class
+    - SC2.Army.StrategyDetection
     # Units
     - SC2.Units.CombatEval
     # Squad system
