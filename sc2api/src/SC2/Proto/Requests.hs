@@ -108,7 +108,8 @@ decodeMessageThrowing :: BS.ByteString -> IO A.Response
 decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
 
 sendRequestSync :: WS.Connection -> A.Request -> IO A.Response
-sendRequestSync conn request = print request >> WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
+sendRequestSync conn request = -- print request >>
+  WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123

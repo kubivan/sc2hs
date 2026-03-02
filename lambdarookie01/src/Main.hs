@@ -30,6 +30,10 @@ runJoin :: Participant -> JoinCLI -> IO ()
 runJoin player cli = do
   cfg <- loadOrFail (joinConfigPath cli)
   let adjusted = applyJoinOverrides cfg cli
+  print "Joining match with the following configuration:"
+  print $ "Host: " <> networkHostName (buildNetwork (general adjusted))
+  print $ "Host Port: " <> show (networkHostPort (buildNetwork (general adjusted)))
+  print $ "Client Port: " <> show (networkClientPort (buildNetwork (general adjusted)))
   joinMatch (buildJoinRuntime player adjusted)
 
 buildHostRuntime :: Participant -> BotConfig -> HostRuntime

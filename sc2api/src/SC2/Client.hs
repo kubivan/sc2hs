@@ -153,13 +153,13 @@ signalClientJoined signals = trace "signalClientJoined" modifyMVar_ (allClientsJ
 -- Wait for all clients to join
 waitAllClientsJoined :: GameSignals -> IO ()
 waitAllClientsJoined signals = do
-    traceM "waitForAllClients: "
     joinedCountNotMeet
   where
     joinedCountNotMeet :: IO ()
     joinedCountNotMeet = do
         count <- readMVar $ allClientsJoined signals
         let expectedCount = expectedClients signals
+        traceM $ "waitForAllClients: count " ++ show count ++ " expected " ++ show expectedCount
         -- traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
         when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
 
