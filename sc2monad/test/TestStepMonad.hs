@@ -106,10 +106,7 @@ staticInfo =
         , heightMap = initialGrid
         , expandsPos = []
         , enemyStartLocation = (0, 0)
-        , regionGraph = HashMap.empty
-        , regionLookup = HashMap.empty
-        , siRegions = HashMap.empty
-        , siRegionPathToEnemy = []
+        , siAsyncStaticInfo = Nothing
         }
 
 runStep :: StepMonad DummyState a -> (a, StepPlan, DummyState)

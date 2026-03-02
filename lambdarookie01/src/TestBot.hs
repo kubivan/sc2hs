@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -52,13 +53,14 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
+import Control.Concurrent (forkIO)
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
 import Data.List (find, partition, sortOn)
-import Data.Maybe (catMaybes, fromJust, isJust, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
@@ -70,9 +72,11 @@ import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
 import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
-import StepMonad (StaticInfo (siRegionPathToEnemy))
+import StepMonad (AsyncStaticInfo (..), StaticInfo (siAsyncStaticInfo), siRegionLookup, siRegionPathToEnemyResolved, siRegionsResolved)
 import System.Random (newStdGen)
 import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))
+
+import Control.Concurrent.STM
 
 deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
@@ -399,7 +403,7 @@ debugSquads = do
     -- agentObs >>= \obs -> debugTexts [("squad " ++ show (), c ^. #pos) | c <- runC $ unitsSelf obs]
     ds <- agentGet
     (si, _) <- agentAsk
-    let regionLookupMap = regionLookup si
+    let regionLookupMap = siRegionLookup si
         squads = armySquads . dsArmy $ ds
         hashArmy :: HashMap.HashMap UnitTag Unit
         hashArmy = armyUnits . dsArmy $ ds
@@ -437,7 +441,7 @@ setArmy a st = st{dsArmy = a}
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
     canSeek <- squadSeek s
-    canExplore <- squadAssignToExplore s
+    canExplore <- squadAssignToExplore' s
     return $ canSeek || canExplore
 
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
@@ -460,27 +464,51 @@ squadSeek squad = case unwrapState (squadState squad) of
                 agentPut $ setArmy army' ds
                 return True
 
+squadAssignToExploreBlind :: Squad -> StepMonad BotDynamicState Bool
+squadAssignToExploreBlind squad = do
+    ds <- agentGet
+    si <- agentStatic
+    let unitByTag t = HashMap.lookup t (armyUnits (dsArmy ds))
+        units = catMaybes [unitByTag t | t <- squadUnits squad]
+    case units of
+        [] -> return False
+        _ -> do
+            command [PointCommand ATTACKATTACK units (toPoint2D (enemyStartLocation si))]
+            return True
+
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
 squadAssignToExplore s = do
-    ds <- agentGet
-    (si, _) <- agentAsk
-    let regionById rid = siRegions si HashMap.! rid
-        allRegions = HashSet.fromList $ siRegionPathToEnemy si
-        usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
-        availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
-    traceM $ "assigning: all regions " ++ show (allRegions)
-    traceM $ "assigning: used regions " ++ show (usedRegions)
-    traceM $ "assigning: availableRegionIds " ++ show (availableRegionIds)
-    case availableRegionIds of
-        [] -> return False -- no unassigned regions left
-        (rid : _) -> do
-            -- Assign squad to region
-            let squad' = s{squadState = wrapState (FSExploreRegion rid (regionById rid))}
-                squads' = replaceSquad squad' (armySquads (dsArmy ds))
-                army' = (dsArmy ds){armySquads = squads'}
-            -- traceM $ "   assigded squads': " ++ show squad'
-            agentPut $ setArmy army' ds
-            return True
+    assigned <- isJust <$> runMaybeT (assignSegmented s)
+    return assigned
+  where
+    assignSegmented :: Squad -> MaybeStepMonad BotDynamicState Bool
+    assignSegmented squad = do
+        ds <- lift agentGet
+        si <- lift agentStatic
+
+        regionsById <- MaybeT . pure $ siRegionsResolved si
+        regionPathToEnemy <- MaybeT . pure $ siRegionPathToEnemyResolved si
+        guard (not (null regionPathToEnemy))
+
+        let allRegions = HashSet.fromList regionPathToEnemy
+            usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
+            availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
+        lift $ traceM $ "assigning: all regions " ++ show allRegions
+        lift $ traceM $ "assigning: used regions " ++ show usedRegions
+        lift $ traceM $ "assigning: availableRegionIds " ++ show availableRegionIds
+
+        rid <- MaybeT . pure $ listToMaybe availableRegionIds
+        let region = regionsById HashMap.! rid
+            squad' = squad{squadState = wrapState (FSExploreRegion rid region)}
+            squads' = replaceSquad squad' (armySquads (dsArmy ds))
+            army' = (dsArmy ds){armySquads = squads'}
+        lift $ agentPut $ setArmy army' ds
+        pure True
+
+squadAssignToExplore' :: Squad -> StepMonad BotDynamicState Bool
+squadAssignToExplore' s = do
+    canExplore <- squadAssignToExplore s
+    if canExplore then return True else squadAssignToExploreBlind s
 
 agentAssignIdleSquads :: StepMonad BotDynamicState ()
 agentAssignIdleSquads = do
@@ -510,11 +538,46 @@ agentArmyControl = do
     let army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
+data Env = Env
+  { chokeQueue :: TQueue ()
+    , chokeVar :: TVar (Maybe AsyncStaticInfo)
+  }
+
+makeEnv :: IO Env
+makeEnv = do
+  queue <- newTQueueIO
+  var   <- newTVarIO Nothing
+  pure $ Env queue var
+
+startChokeWorker :: Env -> Grid -> TilePos -> TilePos -> IO ()
+startChokeWorker env grid startPos enemyPos =
+  void . forkIO . forever $ do
+    atomically $ readTQueue (chokeQueue env)
+    let !(rays, gridChoked) = findAllChokePoints grid
+        !regions = gridSegment gridChoked
+        !regionsById = HashMap.fromList regions
+        !regionLookup = complementRegionLookup (buildRegionLookup regions) (foldl' (++) [] rays)
+        !regionGraph = buildRegionGraph regions regionLookup
+        !pathToEnemy =
+            maybe
+                []
+                (\(startRegion, enemyRegion) -> regionGraphBfs regionGraph startRegion enemyRegion)
+                ((,) <$> HashMap.lookup startPos regionLookup <*> HashMap.lookup enemyPos regionLookup)
+        !result =
+            AsyncStaticInfo
+                { asiRegionGraph = regionGraph
+                , asiRegionLookup = regionLookup
+                , asiRegions = regionsById
+                , asiRegionPathToEnemy = pathToEnemy
+                }
+    atomically $ writeTVar (chokeVar env) (Just result)
+
 data BotAgent
     = BotAgent
         { botPhase :: BotPhase
         , botStaticInfo :: StaticInfo
         , botDynState :: BotDynamicState
+        , botEnv :: Env
         }
     | EmptyBotAgent
 
@@ -541,37 +604,33 @@ instance Agent BotAgent where
             playerInfos = gi ^. #playerInfo
             playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
 
-            (rays, gridChoked) = findAllChokePoints gridPathingClean
-            regions = gridSegment gridChoked
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart Nothing
 
-            regionLookup = complementRegionLookup (buildRegionLookup regions) (foldl' (++) [] rays)
-            regionGraph = buildRegionGraph regions regionLookup
-            startRegion = regionLookup HashMap.! tilePos nexusPos
-            enemyRegion = regionLookup HashMap.! enemyStart
-            pathToEnemy = regionGraphBfs regionGraph startRegion enemyRegion
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart regionGraph regionLookup (HashMap.fromList regions) pathToEnemy
-
-        print pathToEnemy
+        env <- makeEnv
+        startChokeWorker env gridPathingClean (tilePos nexusPos) enemyStart
+        atomically $ writeTQueue (chokeQueue env) ()
 
         traceM "create ds"
         dynamicState <- makeDynamicState obsRaw grid
         traceM "created ds"
-        return $ BotAgent Opening si dynamicState
+        return $ BotAgent Opening si dynamicState env
 
     agentRace _ = Protoss
 
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
-    agentStep (BotAgent phase si ds) obs abilities =
-        let sm = agentStepPhase phase
-            (phase', plan, ds') = runStepM si abilities (setObs (obs ^. #observation) ds) sm
+    agentStep (BotAgent phase si ds env) obs abilities = do
+        asyncResult <- readTVarIO (chokeVar env)
+        let si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
+            sm = agentStepPhase phase
+            (phase', plan, ds') = runStepM si' abilities (setObs (obs ^. #observation) ds) sm
             actions = obs ^. #actions
             errors = obs ^. #actionErrors
             tracedResult =
                 if not (null actions) || not (null errors)
                     then -- trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
-                        (BotAgent phase' si ds', plan)
-                    else (BotAgent phase' si ds', plan)
-          in pure tracedResult
+                        (BotAgent phase' si' ds' env, plan)
+                    else (BotAgent phase' si' ds' env, plan)
+        pure tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
 agentStepPhase Opening =

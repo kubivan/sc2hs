@@ -6,7 +6,12 @@
 
 module StepMonad (
     StepPlan (..),
+        AsyncStaticInfo (..),
     StaticInfo (..),
+        siRegionGraph,
+        siRegionLookup,
+        siRegionsResolved,
+        siRegionPathToEnemyResolved,
     AgentDynamicState (..),
     StepMonad,
     MaybeStepMonad,
@@ -43,9 +48,8 @@ import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
-import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
 
@@ -78,6 +82,15 @@ debugTexts = mapM_ (uncurry debugText)
 agentChat :: String -> StepMonad dyn ()
 agentChat msg = tell (StepPlan [] [pack msg] [])
 
+data AsyncStaticInfo = AsyncStaticInfo
+    { asiRegionGraph :: !RegionGraph
+    , asiRegionLookup :: !RegionLookup
+    , asiRegions :: !(HashMap RegionId Region)
+    , asiRegionPathToEnemy :: ![RegionId]
+    }
+
+type RegionLookup = HashMap TilePos RegionId
+
 data StaticInfo = StaticInfo
     { gameInfo :: ResponseGameInfo
     , playerInfo :: PlayerInfo
@@ -85,11 +98,20 @@ data StaticInfo = StaticInfo
     , heightMap :: Grid
     , expandsPos :: [TilePos]
     , enemyStartLocation :: TilePos
-    , regionGraph :: !(HashMap RegionId (Set.Set RegionId))
-    , regionLookup :: !(HashMap TilePos RegionId)
-    , siRegions :: !(HashMap RegionId Region)
-    , siRegionPathToEnemy :: ![RegionId]
+    , siAsyncStaticInfo :: !(Maybe AsyncStaticInfo)
     }
+
+siRegionGraph :: StaticInfo -> RegionGraph
+siRegionGraph = maybe HashMap.empty asiRegionGraph . siAsyncStaticInfo
+
+siRegionLookup :: StaticInfo -> RegionLookup
+siRegionLookup = maybe HashMap.empty asiRegionLookup . siAsyncStaticInfo
+
+siRegionsResolved :: StaticInfo -> Maybe (HashMap RegionId Region)
+siRegionsResolved = fmap asiRegions . siAsyncStaticInfo
+
+siRegionPathToEnemyResolved :: StaticInfo -> Maybe [RegionId]
+siRegionPathToEnemyResolved = fmap asiRegionPathToEnemy . siAsyncStaticInfo
 
 class AgentDynamicState dyn where
     getObs :: dyn -> Observation
