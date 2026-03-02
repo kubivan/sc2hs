@@ -22,6 +22,7 @@ dependencies:
   - split
   - transformers
   - mtl
+  - stm
 
 ghc-options:
   - -Wall
