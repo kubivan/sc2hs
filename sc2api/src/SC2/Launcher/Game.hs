@@ -172,14 +172,14 @@ runGameLoop conn signals agent localPlayerId = do
 
     putStrLn "getting game info..."
     respGameInfo <- Proto.sendRequestSync conn Proto.requestGameInfo
-    print respGameInfo
+    --print respGameInfo
     gameDataResp <- Proto.sendRequestSync conn Proto.requestData
     let gi :: Proto.ResponseGameInfo = respGameInfo ^. #gameInfo
         gd :: Proto.ResponseData = gameDataResp ^. #data'
 
     --printGrid _pathingGrid
-    createDirectoryIfMissing True "grids"
-    liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
+    --createDirectoryIfMissing True "grids"
+    --liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
     obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 
