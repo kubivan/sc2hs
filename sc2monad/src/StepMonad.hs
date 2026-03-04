@@ -12,8 +12,9 @@ module StepMonad (
         siRegionLookup,
         siRegionsResolved,
         siRegionPathToEnemyResolved,
-    AgentDynamicState (..),
     StepMonad,
+    HasObs(..),
+    HasGrid(..),
     MaybeStepMonad,
     runStepM,
     agentChat,
@@ -21,7 +22,10 @@ module StepMonad (
     agentStatic,
     agentGet,
     agentObs,
+    agentGrid,
     agentModify,
+    agentModifyGrid,
+    agentModifyObs,
     agentAbilities,
     agentPut,
     UnitAbilities,
@@ -51,7 +55,7 @@ import Data.Functor
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text (pack)
-import Lens.Micro ((^.))
+import Lens.Micro ((^.), (%~), Lens')
 
 
 obsApplyAction :: Action -> Observation -> Observation
@@ -60,13 +64,12 @@ obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) 
     units = getExecutors a
     ability = getCmd a
 
-command :: (AgentDynamicState d) => [Action] -> StepMonad d ()
+command :: (HasObs d) => [Action] -> StepMonad d ()
 command acts = do
     -- unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
     dyn <- agentGet
 
-    let obs' = foldl' (flip obsApplyAction) (getObs dyn) acts
-    put $ setObs obs' dyn
+    agentModifyObs $ \obs -> foldl' (flip obsApplyAction) obs acts
 
     tell (StepPlan acts [] [])
 
@@ -113,14 +116,11 @@ siRegionsResolved = fmap asiRegions . siAsyncStaticInfo
 siRegionPathToEnemyResolved :: StaticInfo -> Maybe [RegionId]
 siRegionPathToEnemyResolved = fmap asiRegionPathToEnemy . siAsyncStaticInfo
 
-class AgentDynamicState dyn where
-    getObs :: dyn -> Observation
-    getGrid :: dyn -> Grid
+class HasObs s where
+  obsL :: Lens' s Observation
 
-    setObs :: Observation -> dyn -> dyn
-    setGrid :: Grid -> dyn -> dyn
-
-    dsUpdate :: Observation -> Grid -> dyn -> dyn
+class HasGrid s where
+  gridL :: Lens' s Grid
 
 agentAsk :: StepMonad dyn (StaticInfo, UnitAbilities)
 agentAsk = lift $ lift ask
@@ -128,8 +128,17 @@ agentAsk = lift $ lift ask
 agentAbilities :: StepMonad dyn UnitAbilities
 agentAbilities = agentAsk <&> snd
 
-agentObs :: (AgentDynamicState dyn) => StepMonad dyn Observation
-agentObs = agentGet <&> getObs
+agentObs :: (HasObs dyn) => StepMonad dyn Observation
+agentObs = agentGet <&> (^. obsL)
+
+agentModifyObs :: (HasObs d) => (Observation -> Observation) -> StepMonad d ()
+agentModifyObs f = agentModify (obsL %~ f)
+
+agentGrid :: (HasGrid dyn) => StepMonad dyn Grid
+agentGrid = agentGet <&> (^. gridL)
+
+agentModifyGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
+agentModifyGrid f = agentModify (gridL %~ f)
 
 agentStatic :: StepMonad dyn StaticInfo
 agentStatic = agentAsk <&> fst

@@ -16,22 +16,20 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Set(Set)
 import Data.Set qualified as Set
+import Data.Functor ((<&>))
 
 data BotDynamicState = BotDynamicState
-    { observation :: Observation
-    , grid :: Grid
-    , randGen :: StdGen
+    { dsObs :: Observation
+    , dsGrid :: Grid
+    , dsRandGen :: StdGen
     , dsArmy :: Army
     }
 
--- Update the AgentDynamicState instance for AgentDynamicState
-instance AgentDynamicState BotDynamicState where
-    getObs (BotDynamicState obs _ _ _) = obs
-    getGrid (BotDynamicState _ grid _ _) = grid
+instance HasObs BotDynamicState where
+  obsL f s = f (dsObs s) <&> \o -> s { dsObs = o }
 
-    setObs obs (BotDynamicState _ grid gen army) = BotDynamicState obs grid gen army
-    setGrid grid (BotDynamicState obs _ gen army) = BotDynamicState obs grid gen army
-    dsUpdate obs grid (BotDynamicState _ _ gen army) = BotDynamicState obs grid gen army
+instance HasGrid BotDynamicState where
+  gridL f s = f (dsGrid s) <&> \g -> s { dsGrid = g }
 
 instance HasArmy BotDynamicState where
   --getArmy = dsArmy

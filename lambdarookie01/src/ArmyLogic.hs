@@ -107,8 +107,8 @@ agentUpdateDsArmy = do
 updateVisitedTile :: UnitTag -> TilePos -> StepMonad BotDynamicState ()
 updateVisitedTile tag tile = do
     ds <- agentGet
-    let grid = getGrid ds
-        army = armyUnitsData . dsArmy $ ds
+    grid <- agentGrid
+    let army = armyUnitsData . dsArmy $ ds
         defaultUnitData = ArmyUnitData Set.empty (Set.fromList . Seq.toList $ neighbors tile grid)
         unitData = HashMap.lookupDefault defaultUnitData tag army
         newVisited = Set.insert tile (auVisitedTiles unitData)
@@ -129,9 +129,9 @@ randomArmyFiddling :: StepMonad BotDynamicState ()
 randomArmyFiddling = do
     obs <- agentObs
     ds <- agentGet
+    grid <- agentGrid
     -- Retrieve army units and enemies
     let armyUs = runC $ unitsSelf obs .| filterC isArmyUnit
-        grid = getGrid ds -- Retrieve the grid from the dynamic state
 
     -- Execute a random command for each unit in the army
     mapM_
@@ -170,7 +170,7 @@ randCmd2 grid udata u = do
     calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
     calcMovePos candidates = do
         ds <- agentGet
-        rnd <- randGen <$> agentGet -- Retrieve the current random generator
+        rnd <- dsRandGen <$> agentGet -- Retrieve the current random generator
         let scored = scoreMoveCandidates upos udata candidates
             (wrandPos, rnd') = weightedRandomChoice scored rnd -- `Utils.dbg` ("scored: " ++ show scored)
         agentPut $ setRandGen rnd' ds -- Update the random generator in the dynamic state

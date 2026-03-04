@@ -71,12 +71,12 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-canAffordTech :: (AgentDynamicState d) => Tech -> StepMonad d (Bool, Cost)
+canAffordTech :: (HasObs d) => Tech -> StepMonad d (Bool, Cost)
 canAffordTech (TechUnit u) = canAfford u (Cost 0 0)
 canAffordTech _ = error "not implemented"
 
 
-canAfford :: (AgentDynamicState d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
+canAfford :: (HasObs d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
 canAfford uid r = do
     si <- agentStatic
     obs <- agentObs
