@@ -31,12 +31,12 @@ data FSEngage = FSEngageFar UnitTag | FSEngageClose UnitTag
 isWeaponReady :: Unit -> Bool
 isWeaponReady u = (u ^. #weaponCooldown) == 0
 
-isEnemyInRange :: AgentDynamicState d => Unit -> Unit -> StepMonad d Bool
+isEnemyInRange :: Unit -> Unit -> StepMonad d Bool
 isEnemyInRange e u = do
     range <- siUnitRange u e
     return $ distSquared (u ^. #pos) (e ^. #pos) <= range * range
 
-canAttack :: AgentDynamicState d => Unit -> Unit -> StepMonad d Bool
+canAttack :: Unit -> Unit -> StepMonad d Bool
 canAttack u e = do
     inRange <- isEnemyInRange e u
     return $ isWeaponReady u && inRange
@@ -49,7 +49,7 @@ unitIsNotMoving u = noOrders || notMoving where
 
 
 -- when () $
-stepForwardOrBack ::AgentDynamicState d =>  Unit -> Unit -> StepMonad d ()
+stepForwardOrBack :: HasObs d => Unit -> Unit -> StepMonad d ()
 stepForwardOrBack u e = when (unitIsNotMoving u) $ do
     range <- siUnitRange u e
     let distSq = distSquared (u ^. #pos) (e ^. #pos)
@@ -69,7 +69,7 @@ seekVelocity :: Point2D -> Point2D -> Float -> Point2D
 seekVelocity currentPos targetPos speed =
   vecNormalize $ vecScale speed (targetPos - currentPos)
 
-stepBackward :: AgentDynamicState d => Unit -> Unit -> StepMonad d Point2D
+stepBackward :: Unit -> Unit -> StepMonad d Point2D
 stepBackward u e = do
     udata <- siUnitData u
     let uspeed = udata ^. #movementSpeed
@@ -77,7 +77,7 @@ stepBackward u e = do
         unitPos2D = toPoint2D $ u ^. #pos
     return $ fleeVelocity unitPos2D enemyPos2D uspeed
 
-stepToward :: AgentDynamicState d => Unit -> Unit -> StepMonad d Point2D
+stepToward :: Unit -> Unit -> StepMonad d Point2D
 stepToward u e = do
     udata <- siUnitData u
     let uspeed = udata ^. #movementSpeed
@@ -85,7 +85,7 @@ stepToward u e = do
         unitPos2D = toPoint2D $ u ^. #pos
     return $ seekVelocity unitPos2D enemyPos2D uspeed
 
-unitEngageBehaviorTree :: AgentDynamicState d => Unit -> Unit -> StepMonad d ()
+unitEngageBehaviorTree :: HasObs d => Unit -> Unit -> StepMonad d ()
 unitEngageBehaviorTree u e = do
     canAtk <- canAttack u e
     if canAtk

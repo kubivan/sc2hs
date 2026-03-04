@@ -17,7 +17,7 @@ import StepMonadUtils
 
 type Squad = FSMSquad SquadState
 
-debugSquad :: (HasArmy d, AgentDynamicState d) => Squad -> StepMonad d ()
+debugSquad :: (HasArmy d) => Squad -> StepMonad d ()
 debugSquad squad = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)

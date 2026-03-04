@@ -5,7 +5,7 @@ module SC2.Squad.Micro
 
 import SC2.Units.CombatEval (effectiveHp, unitDps, unitRange)
 import Units (Unit)
-import StepMonad (StepMonad, AgentDynamicState)
+import StepMonad (StepMonad, HasObs)
 
 -- | Per-unit micro behavior kind (placeholder)
 data UnitMicro
@@ -18,7 +18,7 @@ data UnitMicro
 -- | Decide a micro action for a single unit. This is a stub that
 -- will be extended: it currently picks actions based on simple
 -- thresholds from CombatEval.
-chooseMicroAction :: AgentDynamicState d => Unit -> StepMonad d UnitMicro
+chooseMicroAction :: Unit -> StepMonad d UnitMicro
 chooseMicroAction u = do
   let ehp = effectiveHp u
   dps <- unitDps u

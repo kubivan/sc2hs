@@ -14,11 +14,11 @@ import StepMonad
 
 class SquadFS st where
 
-    fsStep :: (HasArmy d, AgentDynamicState d) => FSMSquad a-> st -> StepMonad d ()
-    fsUpdate :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d (Bool, st)
+    fsStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a-> st -> StepMonad d ()
+    fsUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d (Bool, st)
 
-    fsOnEnter :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d ()
-    fsOnExit :: (HasArmy d, AgentDynamicState d) => FSMSquad a -> st -> StepMonad d ()
+    fsOnEnter :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d ()
+    fsOnExit :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d ()
 
 data FSMSquad s = Squad
     { squadUnits :: [UnitTag]

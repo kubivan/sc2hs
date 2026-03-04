@@ -53,29 +53,23 @@ import Proto.S2clientprotocol.Data_Fields (sightRange)
 
 
 -- findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
-findPlacementPointInRadiusSM :: AgentDynamicState d => Footprint -> TilePos -> Float -> StepMonad d (Maybe TilePos)
+findPlacementPointInRadiusSM :: (HasGrid d) => Footprint -> TilePos -> Float -> StepMonad d (Maybe TilePos)
 findPlacementPointInRadiusSM fprint start radius = do
     si <- agentStatic
-    ds <- agentGet
-    let obs = getObs ds
-        grid = getGrid ds
+    grid <- agentGrid
     return $ findPlacementPointInRadius grid (heightMap si) fprint start radius
 
-addMarkSM :: AgentDynamicState d => Footprint -> TilePos -> StepMonad d Grid
+addMarkSM :: (HasGrid d) => Footprint -> TilePos -> StepMonad d Grid
 addMarkSM fprint cpos = do
-    ds <- agentGet
-    let obs = getObs ds
-        grid = getGrid ds
+    grid <- agentGrid
     return $ addMark grid fprint cpos
 
-removeMarkSM :: AgentDynamicState d => Footprint -> TilePos -> StepMonad d Grid
+removeMarkSM :: (HasGrid d) => Footprint -> TilePos -> StepMonad d Grid
 removeMarkSM fprint cpos = do
-    ds <- agentGet
-    let obs = getObs ds
-        grid = getGrid ds
+    grid <- agentGrid
     return $ removeMark grid fprint cpos
 
---debugUnit :: AgentDynamicState d => Unit -> StepMonad d ()
+--debugUnit :: (HasObs d, HasGrid d) => Unit -> StepMonad d ()
 debugUnit unit = do
     ds <- agentGet
     let unitPos :: Point
@@ -93,7 +87,7 @@ debugUnit unit = do
         line = defMessage & #p0 .~ p0 & #p1 .~ p1
     StepMonad.debug [DebugLine [(colorGreen, line)] ]
 
-debugUnitVec :: AgentDynamicState d => Unit -> Point2D -> StepMonad d ()
+debugUnitVec :: (HasObs d, HasGrid d) => Unit -> Point2D -> StepMonad d ()
 debugUnitVec unit vec2d = do
     ds <- agentGet
     let unitPos :: Point
@@ -112,7 +106,7 @@ debugUnitVec unit vec2d = do
         -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
     StepMonad.debug [DebugLine [(colorGreen, line)] ]
 
-siUnitData :: AgentDynamicState d => Unit -> StepMonad d UnitTypeData
+siUnitData :: Unit -> StepMonad d UnitTypeData
 siUnitData u = do
     si <- agentStatic
     let traits = unitTraits si
@@ -123,13 +117,13 @@ headF :: String -> [a] -> a
 headF err []    = error err
 headF _   (x:_) = x
 
-siUnitRange :: AgentDynamicState d => Unit -> Unit -> StepMonad d Float
+siUnitRange :: Unit -> Unit -> StepMonad d Float
 siUnitRange u e = do -- TODO: take into account different data.weapons: air/ground etc
     udata <- siUnitData u
     let range = view #range $ headF ("no weapons in unit " ++ show u) $ udata ^. #weapons
     return range
 
-siUnitSightRange :: AgentDynamicState d => Unit -> StepMonad d Float
+siUnitSightRange :: Unit -> StepMonad d Float
 siUnitSightRange u = do
     udata <- siUnitData u
     let range = view #sightRange udata
