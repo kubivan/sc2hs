@@ -1,9 +1,13 @@
 
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module SC2.Squad.FSSquadForming where
 
 import SC2.Squad.Class
 
 import SC2.Squad.Squad
+import SC2.Squad.State
+import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
 import SC2.Squad.Behavior
 import SC2.Utils
 import SC2.Grid
@@ -28,7 +32,7 @@ import Data.Char (isDigit)
 type SquadFormation = (TilePos, Footprint)
 newtype FSSquadForming = FSSquadForming (Maybe SquadFormation)
 
-instance SquadFS FSSquadForming where
+instance SquadFS SquadState FSSquadForming where
 
     fsStep s (FSSquadForming Nothing) = pure ()
     fsStep s (FSSquadForming (Just (fcenter, formation))) = do
@@ -63,3 +67,4 @@ instance SquadFS FSSquadForming where
         case f of
             Nothing -> pure ()
             Just (center, fprint) -> void $ removeMarkSM fprint center
+    fsTransitionNext _ _ = pure $ wrapState FSSquadIdle

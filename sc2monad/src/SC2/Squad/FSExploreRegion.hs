@@ -1,10 +1,14 @@
 
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module SC2.Squad.FSExploreRegion where
 
 import SC2.Utils
 import SC2.Grid
 import SC2.Squad.Class
 import SC2.Squad.Squad
+import SC2.Squad.State
+import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
 import SC2.Squad.Behavior
 import SC2.Geometry
 import StepMonad
@@ -26,7 +30,7 @@ import Data.Char (isDigit)
 
 data FSExploreRegion = FSExploreRegion RegionId Region
 
-instance SquadFS FSExploreRegion where
+instance SquadFS SquadState FSExploreRegion where
 
     fsStep s (FSExploreRegion rid region) = do
         -- traceM ("[step] FSExploreRegion " ++ show (squadId s))
@@ -50,6 +54,7 @@ instance SquadFS FSExploreRegion where
             return (Set.size region' == 0, state')
     fsOnEnter s _ = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
     fsOnExit  s _ = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
+    fsTransitionNext _ _ = pure $ wrapState FSSquadIdle
 
 -- data FSAttack = FSAttack Target
 -- data FSEvade = FSEvade

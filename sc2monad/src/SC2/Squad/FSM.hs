@@ -1,103 +1,82 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
 
 module SC2.Squad.FSM where
 
 import SC2.Squad.FSSquadForming
 import SC2.Squad.FSSquadIdle
 import SC2.Squad.FSExploreRegion
+import SC2.Squad.FSEngage
 
 -- import SC2.Army.Army
-import SC2.Utils
-import SC2.Squad.Squad hiding (SquadState(..))
+import SC2.Squad.Squad
 import SC2.Squad.Class
 import SC2.Squad.State
-import SC2.Grid
-import SC2.Geometry
+import SC2.Grid (RegionId)
 import StepMonad
-import StepMonadUtils
-import Actions (Action (..), UnitTag)
-import SC2.Ids.AbilityId
+import Data.Maybe (isJust)
 
-import Control.Monad (void)
-import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe
-import Data.Set qualified as Set
-import Lens.Micro ((^.))
-import Lens.Micro.Extras (view)
-
-import Debug.Trace (traceM)
-import Footprint
-
-import Data.Char (isDigit)
-
-data SomeFS where
-  SomeFS :: (SquadFS st, IsSquadFS st) => st -> SomeFS
 
 isSquadIdle :: FSMSquad SquadState -> Bool
-isSquadIdle s = case unwrapState (squadState s) of
-    Just (FSSquadIdle) -> True
-    Nothing -> False
+isSquadIdle s = isJust (unwrapState @FSSquadIdle (squadState s))
 
 squadAssignedRegion :: FSMSquad SquadState -> Maybe RegionId
-squadAssignedRegion squad = case unwrapState(squadState squad) of
-    Just (FSExploreRegion rid _) -> Just rid
-    Nothing -> Nothing
+squadAssignedRegion squad = case unwrapState @FSExploreRegion (squadState squad) of
+  Just (FSExploreRegion rid _) -> Just rid
+  Nothing -> Nothing
 
 dispatchUpdate
   :: (HasArmy d, HasObs d, HasGrid d)
   => FSMSquad SquadState -> SquadState -> StepMonad d (Bool, SquadState)
-dispatchUpdate squad state = case matchState state of
-  Just (SomeFS st) -> do
-    (done, newSt) <- fsUpdate squad st
-    pure (done, wrapState newSt)
-  Nothing -> error "Unknown SquadState in dispatchUpdate"
+dispatchUpdate squad (MkSquadState st) = do
+  (done, st') <- fsUpdate squad st
+  pure (done, wrapState st')
 
 dispatchStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchStep squad state = case matchState state of
-  Just (SomeFS st) -> fsStep squad st
-  Nothing -> error "Unknown SquadState in dispatchStep"
+dispatchStep squad (MkSquadState st) = fsStep squad st
 
 dispatchOnEnter
-  :: forall d. (HasArmy d, HasObs d, HasGrid d)
+  :: (HasArmy d, HasObs d, HasGrid d)
   => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnEnter squad st = case matchState st of
-  Just (SomeFS st) -> fsOnEnter squad st
-  Nothing -> error "Unknown SquadState in dispatchStep"
+dispatchOnEnter squad (MkSquadState st) = fsOnEnter squad st
 
 dispatchOnExit
-  :: forall d. (HasArmy d, HasObs d, HasGrid d)
+  :: (HasArmy d, HasObs d, HasGrid d)
   => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnExit squad st = case matchState st of
-  Just (SomeFS st) -> fsOnExit squad st
-  Nothing -> error "Unknown SquadState in dispatchStep"
+dispatchOnExit squad (MkSquadState st) = fsOnExit squad st
+
+dispatchTransitionNext
+  :: (HasArmy d, HasObs d, HasGrid d)
+  => FSMSquad SquadState -> SquadState -> StepMonad d SquadState
+dispatchTransitionNext squad (MkSquadState st) = fsTransitionNext squad st
+
+type TransitionChooser d = FSMSquad SquadState -> SquadState -> StepMonad d SquadState
+
+defaultTransitionChooser :: (HasArmy d, HasObs d, HasGrid d) => TransitionChooser d
+defaultTransitionChooser = dispatchTransitionNext
 
 
-matchState :: SquadState -> Maybe SomeFS
-matchState (SquadIdleState st)    = Just (SomeFS st)
-matchState (SquadFormingState st) = Just (SomeFS st)
-matchState (SquadExploreState st) = Just (SomeFS st)
-matchState (SquadEngageEnemy st) = Just (SomeFS st)
-
-
-processSquad ::(HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
-processSquad squad = do
+processSquadWith ::(HasArmy d, HasObs d, HasGrid d) => TransitionChooser d -> FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
+processSquadWith chooseTransition squad = do
       (done, state') <- dispatchUpdate squad (squadState squad)
       if done
-        then squadTransitionFrom squad state'
+        then squadTransitionFromWith chooseTransition squad state'
         else do
           dispatchStep squad state'
           return squad { squadState = state' }
 
-squadTransitionFrom :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
-squadTransitionFrom squad oldState = do
-  dispatchOnExit squad oldState
+processSquad ::(HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
+processSquad = processSquadWith defaultTransitionChooser
 
-  -- Pick new state (e.g., Idle)
-  let stNew = wrapState FSSquadIdle  -- or whatever your decision logic is
+squadTransitionFromWith :: (HasArmy d, HasObs d, HasGrid d) => TransitionChooser d -> FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
+squadTransitionFromWith chooseTransition squad oldState = do
+  dispatchOnExit squad oldState
+  stNew <- chooseTransition squad oldState
   dispatchOnEnter squad stNew
 
   return squad { squadState = stNew }
+
+squadTransitionFrom :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
+squadTransitionFrom = squadTransitionFromWith defaultTransitionChooser

@@ -16,6 +16,7 @@ import Agent
 import AgentBulidUtils
 import ArmyLogic
 import BotDynamicState
+import SquadRetreat
 import Footprint (getFootprint)
 import Observation
 import SC2.Army.Army
@@ -526,6 +527,15 @@ agentTryEngage = do
 
     mapM_ squadSeek squads
 
+squadTransitionChooser :: TransitionChooser BotDynamicState
+squadTransitionChooser squad oldState =
+    case (unwrapState oldState :: Maybe FSEngage) of
+        Just _ -> do
+            obs <- agentObs
+            let retreatPos = tilePos (findNexus obs ^. #pos)
+            pure $ wrapState (SquadRetreat retreatPos)
+        Nothing -> defaultTransitionChooser squad oldState
+
 agentArmyControl :: StepMonad BotDynamicState ()
 agentArmyControl = do
     agentAssignIdleSquads
@@ -533,7 +543,7 @@ agentArmyControl = do
     ds <- agentGet
     let army = dsArmy ds
         squads = armySquads army
-    squads' <- mapM processSquad squads
+    squads' <- mapM (processSquadWith squadTransitionChooser) squads
     let army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes, ConstraintKinds #-}
 {-# LANGUAGE GADTs, ConstraintKinds #-}
@@ -12,13 +13,14 @@ import SC2.Squad.Class
 import StepMonad
 
 
-class SquadFS st where
+class SquadFS s st where
 
-    fsStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a-> st -> StepMonad d ()
-    fsUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d (Bool, st)
+    fsStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad s -> st -> StepMonad d ()
+    fsUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad s -> st -> StepMonad d (Bool, st)
 
-    fsOnEnter :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d ()
-    fsOnExit :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad a -> st -> StepMonad d ()
+    fsOnEnter :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad s -> st -> StepMonad d ()
+    fsOnExit :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad s -> st -> StepMonad d ()
+    fsTransitionNext :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad s -> st -> StepMonad d s
 
 data FSMSquad s = Squad
     { squadUnits :: [UnitTag]
