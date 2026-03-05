@@ -56,10 +56,10 @@ ghc-options:
   "$everything": -fexternal-interpreter
   "$locals": -fwrite-ide-info
 
-default-extensions:
-- OverloadedStrings
-- OverloadedLabels
-- ImportQualifiedPost
+# default-extensions:
+# - OverloadedStrings
+# - OverloadedLabels
+# - ImportQualifiedPost
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
