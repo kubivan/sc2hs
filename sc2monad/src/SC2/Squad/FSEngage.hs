@@ -1,4 +1,6 @@
 
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 module SC2.Squad.FSEngage where
 
 import Actions
@@ -6,6 +8,10 @@ import Units
 import SC2.Grid
 import SC2.Squad.Class
 import SC2.Squad.Squad
+import SC2.Squad.State
+import SC2.Squad.Behavior (isSquadFull)
+import SC2.Squad.FSSquadForming (FSSquadForming (..))
+import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
 import SC2.Geometry
 import StepMonad
 import StepMonadUtils
@@ -108,7 +114,7 @@ unitSeek unit enemy =
         desiredVelocity - unitVelocity
 
 
-instance SquadFS FSEngage where
+instance SquadFS SquadState FSEngage where
 
     fsStep squad (FSEngageFar enemyTag) = do
         ds <- agentGet
@@ -164,3 +170,6 @@ instance SquadFS FSEngage where
 
     fsOnEnter s _ = traceM $ "[enter] FSEngage " ++ show (squadId s)
     fsOnExit  s _ = traceM $ "[exit] FSEngage " ++ show (squadId s)
+    fsTransitionNext squad _ = do
+        full <- isSquadFull squad
+        pure $ if full then wrapState FSSquadIdle else wrapState (FSSquadForming Nothing)
