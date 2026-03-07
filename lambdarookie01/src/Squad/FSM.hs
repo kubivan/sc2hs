@@ -16,13 +16,13 @@ import Data.Maybe (isJust)
 
 isSquadIdle :: FSMSquad SquadState -> Bool
 isSquadIdle s = case squadState s of
-    SSIdle -> True
-    _      -> False
+    SSIdle _ -> True
+    _        -> False
 
 squadAssignedRegion :: FSMSquad SquadState -> Maybe RegionId
 squadAssignedRegion squad = case squadState squad of
-    SSExploreRegion rid _ -> Just rid
-    _                     -> Nothing
+    SSExploreRegion (FSExploreRegion rid _) -> Just rid
+    _                                       -> Nothing
 
 -- ---------------------------------------------------------------------------
 -- Dispatch
@@ -30,49 +30,58 @@ squadAssignedRegion squad = case squadState squad of
 dispatchUpdate
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d (Bool, SquadState)
-dispatchUpdate squad SSIdle                      = idleUpdate squad
-dispatchUpdate squad (SSForming f)               = formingUpdate squad f
-dispatchUpdate squad (SSExploreRegion rid region) = exploreRegionUpdate squad rid region
-dispatchUpdate squad (SSEngageFar tag)           = engageFarUpdate squad tag
-dispatchUpdate squad (SSEngageClose tag)         = engageCloseUpdate squad tag
-dispatchUpdate squad (SSRetreat pos)             = retreatUpdate squad pos
+dispatchUpdate squad (SSIdle s) = do
+    (done, s') <- idleUpdate squad
+    pure (done, SSIdle s')
+dispatchUpdate squad (SSForming s) = do
+    (done, s') <- formingUpdate squad s
+    pure (done, SSForming s')
+dispatchUpdate squad (SSExploreRegion s) = do
+    (done, s') <- exploreRegionUpdate squad s
+    pure (done, SSExploreRegion s')
+dispatchUpdate squad (SSEngage s@(FSEngageFar _)) = do
+    (done, s') <- engageFarUpdate squad s
+    pure (done, SSEngage s')
+dispatchUpdate squad (SSEngage s@(FSEngageClose _)) = do
+    (done, s') <- engageCloseUpdate squad s
+    pure (done, SSEngage s')
+dispatchUpdate squad (SSRetreat s) = do
+    (done, s') <- retreatUpdate squad s
+    pure (done, SSRetreat s')
 
 dispatchStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchStep squad SSIdle                       = idleStep squad
-dispatchStep squad (SSForming f)                = formingStep squad f
-dispatchStep squad (SSExploreRegion _ region)   = exploreRegionStep squad region
-dispatchStep squad (SSEngageFar tag)            = engageFarStep squad tag
-dispatchStep squad (SSEngageClose tag)          = engageCloseStep squad tag
-dispatchStep squad (SSRetreat pos)              = retreatStep squad pos
+dispatchStep squad (SSIdle _)          = idleStep squad
+dispatchStep squad (SSForming f)       = formingStep squad f
+dispatchStep squad (SSExploreRegion s) = exploreRegionStep squad s
+dispatchStep squad (SSEngage s@(FSEngageFar _))   = engageFarStep squad s
+dispatchStep squad (SSEngage s@(FSEngageClose _)) = engageCloseStep squad s
+dispatchStep squad (SSRetreat s)       = retreatStep squad s
 
 dispatchOnEnter
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnEnter squad SSIdle          = idleOnEnter squad
-dispatchOnEnter squad (SSForming f)   = formingOnEnter squad f
-dispatchOnEnter squad st@(SSExploreRegion{}) = exploreRegionOnEnter squad
-dispatchOnEnter squad (SSEngageFar _) = engageOnEnter squad
-dispatchOnEnter squad (SSEngageClose _) = engageOnEnter squad
-dispatchOnEnter squad (SSRetreat _)   = retreatOnEnter squad
+dispatchOnEnter squad (SSIdle _)          = idleOnEnter squad
+dispatchOnEnter squad (SSForming f)       = formingOnEnter squad f
+dispatchOnEnter squad (SSExploreRegion _) = exploreRegionOnEnter squad
+dispatchOnEnter squad (SSEngage _)        = engageOnEnter squad
+dispatchOnEnter squad (SSRetreat _)       = retreatOnEnter squad
 
 dispatchOnExit
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnExit squad SSIdle            = idleOnExit squad
-dispatchOnExit squad (SSForming f)     = formingOnExit squad f
-dispatchOnExit squad st@(SSExploreRegion{}) = exploreRegionOnExit squad
-dispatchOnExit squad (SSEngageFar _)   = engageOnExit squad
-dispatchOnExit squad (SSEngageClose _) = engageOnExit squad
-dispatchOnExit squad (SSRetreat _)     = retreatOnExit squad
+dispatchOnExit squad (SSIdle _)          = idleOnExit squad
+dispatchOnExit squad (SSForming f)       = formingOnExit squad f
+dispatchOnExit squad (SSExploreRegion _) = exploreRegionOnExit squad
+dispatchOnExit squad (SSEngage _)        = engageOnExit squad
+dispatchOnExit squad (SSRetreat _)       = retreatOnExit squad
 
 dispatchTransitionNext
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d SquadState
-dispatchTransitionNext squad SSIdle             = pure SSIdle
+dispatchTransitionNext _ (SSIdle s)         = pure (SSIdle s)
 dispatchTransitionNext squad (SSForming _)      = formingTransitionNext squad
-dispatchTransitionNext squad (SSExploreRegion{}) = exploreRegionTransitionNext squad
-dispatchTransitionNext squad (SSEngageFar _)    = engageTransitionNext squad
-dispatchTransitionNext squad (SSEngageClose _)  = engageTransitionNext squad
+dispatchTransitionNext squad (SSExploreRegion _) = exploreRegionTransitionNext squad
+dispatchTransitionNext squad (SSEngage _)    = engageTransitionNext squad
 dispatchTransitionNext squad (SSRetreat _)      = retreatTransitionNext squad
 
 -- ---------------------------------------------------------------------------
