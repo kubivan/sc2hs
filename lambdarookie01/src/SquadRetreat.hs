@@ -2,10 +2,10 @@
 
 module SquadRetreat where
 
-import SC2.Squad.Squad
-import SC2.Squad.State
-import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
-import SC2.Squad.Class
+import Squad.Squad
+import Squad.State
+import Squad.FSSquadIdle (FSSquadIdle (..))
+import Squad.Class
 import SC2.Geometry
 import SC2.Grid
 import StepMonad

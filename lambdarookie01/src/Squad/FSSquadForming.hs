@@ -1,14 +1,14 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module SC2.Squad.FSSquadForming where
+module Squad.FSSquadForming where
 
-import SC2.Squad.Class
+import Squad.Class
 
-import SC2.Squad.Squad
-import SC2.Squad.State
-import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
-import SC2.Squad.Behavior
+import Squad.Squad
+import Squad.State
+import Squad.FSSquadIdle (FSSquadIdle (..))
+import Squad.Behavior
 import SC2.Utils
 import SC2.Grid
 import SC2.Geometry

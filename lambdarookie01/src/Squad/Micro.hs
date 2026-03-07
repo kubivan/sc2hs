@@ -1,4 +1,4 @@
-module SC2.Squad.Micro
+module Squad.Micro
   ( UnitMicro(..)
   , chooseMicroAction
   ) where

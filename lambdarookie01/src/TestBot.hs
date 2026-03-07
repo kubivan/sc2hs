@@ -19,18 +19,18 @@ import BotDynamicState
 import SquadRetreat
 import Footprint (getFootprint)
 import Observation
-import SC2.Army.Army
+import Army.Army
 import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
-import SC2.Squad
-import SC2.Squad.Behavior
-import SC2.Squad.FSEngage
-import SC2.Squad.FSExploreRegion
-import SC2.Squad.State
+import Squad
+import Squad.Behavior
+import Squad.FSEngage
+import Squad.FSExploreRegion
+import Squad.State
 import SC2.TechTree
 import SC2.Utils
 import StepMonad
@@ -72,7 +72,7 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
-import SC2.Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
+import Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
 import StepMonad (AsyncStaticInfo (..), StaticInfo (siAsyncStaticInfo), siRegionLookup, siRegionPathToEnemyResolved, siRegionsResolved)
 import System.Random (newStdGen)
 import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))

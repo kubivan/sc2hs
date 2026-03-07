@@ -4,9 +4,9 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module SC2.Squad.State where
+module Squad.State where
 
-import SC2.Squad.Squad
+import Squad.Squad
 import Data.Typeable (Typeable, cast)
 
 data SquadState = forall st. (Typeable st, SquadFS SquadState st) => MkSquadState st

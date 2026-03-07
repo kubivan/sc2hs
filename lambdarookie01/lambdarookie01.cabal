@@ -16,8 +16,21 @@ executable lambdarookie01
   main-is: Main.hs
   other-modules:
       AgentBulidUtils
+      Army.Army
+      Army.Class
       ArmyLogic
       BotDynamicState
+      Squad
+      Squad.Behavior
+      Squad.Class
+      Squad.FSEngage
+      Squad.FSExploreRegion
+      Squad.FSM
+      Squad.FSSquadForming
+      Squad.FSSquadIdle
+      Squad.Micro
+      Squad.Squad
+      Squad.State
       SquadRetreat
       TestBot
       Paths_lambdarookie01

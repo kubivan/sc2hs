@@ -6,11 +6,11 @@ module ArmyLogic where
 import BotDynamicState
 
 import Actions (Action (..), UnitTag)
-import SC2.Army.Army
-import SC2.Squad.State
-import SC2.Squad.FSSquadForming
--- import SC2.Squad.FSM
-import SC2.Squad
+import Army.Army
+import Squad.State
+import Squad.FSSquadForming
+-- import Squad.FSM
+import Squad
 import SC2.Utils
 import SC2.Grid
 import SC2.Geometry

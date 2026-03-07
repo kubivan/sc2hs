@@ -1,4 +1,4 @@
-module SC2.Army.Class where
+module Army.Class where
 
 import SC2.Grid
 import Units(Unit(..))

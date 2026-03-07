@@ -1,5 +1,5 @@
 
-module SC2.Squad.Class(HasArmy(..)) where
+module Squad.Class(HasArmy(..)) where
 
 import Data.HashMap.Strict(HashMap)
 import Actions(UnitTag)

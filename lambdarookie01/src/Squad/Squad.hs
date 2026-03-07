@@ -5,11 +5,11 @@
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes, ConstraintKinds #-}
 {-# LANGUAGE GADTs, ConstraintKinds #-}
 
-module SC2.Squad.Squad(FSMSquad(..), squadId, SquadFS(..), Target(..), replaceSquad) where
+module Squad.Squad(FSMSquad(..), squadId, SquadFS(..), Target(..), replaceSquad) where
 
 import Actions (UnitTag)
 import SC2.Grid.TilePos
-import SC2.Squad.Class
+import Squad.Class
 import StepMonad
 
 
