@@ -1,6 +1,4 @@
 
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module Squad.FSEngage where
 
 import Actions
@@ -10,8 +8,6 @@ import Squad.Class
 import Squad.Squad
 import Squad.State
 import Squad.Behavior (isSquadFull)
-import Squad.FSSquadForming (FSSquadForming (..))
-import Squad.FSSquadIdle (FSSquadIdle (..))
 import SC2.Geometry
 import StepMonad
 import StepMonadUtils
@@ -30,9 +26,6 @@ import Debug.Trace
 
 import Proto.S2clientprotocol.Common ( Point2D )
 import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
-
-data FSEngage = FSEngageFar UnitTag | FSEngageClose UnitTag
-
 
 isWeaponReady :: Unit -> Bool
 isWeaponReady u = (u ^. #weaponCooldown) == 0
@@ -53,8 +46,6 @@ unitIsNotMoving u = noOrders || notMoving where
     order = view #abilityId . head . view #orders $ u
     notMoving = order /= fromEnum' MOVEMOVE
 
-
--- when () $
 stepForwardOrBack :: HasObs d => Unit -> Unit -> StepMonad d ()
 stepForwardOrBack u e = when (unitIsNotMoving u) $ do
     range <- siUnitRange u e
@@ -62,7 +53,7 @@ stepForwardOrBack u e = when (unitIsNotMoving u) $ do
         upos = toPoint2D $ u ^. #pos
     if distSq / 2 >= (range / 2) * (range / 2) then do
         stepForward <- u `stepToward` e
-        command [PointCommand MOVE [u] (upos + stepForward)] -- TODO: 1 stepForward vec
+        command [PointCommand MOVE [u] (upos + stepForward)]
     else do
         stepBack <- stepBackward u e
         command [PointCommand MOVE [u] (upos + stepBack) ]
@@ -100,7 +91,6 @@ unitEngageBehaviorTree u e = do
         else
             stepForwardOrBack u e
 
-
 enemyStr :: Unit -> String
 enemyStr u = show (u ^. #tag) ++ ", " ++ show ((toEnum' (u ^. #unitType)) :: UnitTypeId) ++ " " ++ show (tilePos (u ^. #pos))
 
@@ -113,63 +103,70 @@ unitSeek unit enemy =
     in trace (show (unit ^. #tag) ++ " egaging: " ++ enemyStr enemy ++ ": " ++ show (desiredVelocity - unitVelocity))
         desiredVelocity - unitVelocity
 
+-- ---------------------------------------------------------------------------
+-- Step
 
-instance SquadFS SquadState FSEngage where
+engageFarStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> UnitTag -> StepMonad d ()
+engageFarStep squad enemyTag = do
+    ds <- agentGet
+    obs <- agentObs
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
+        enemy = fromJust $ getUnit obs enemyTag
+        units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+    traceM ("[step] FSEngageFar " ++ show (squadId squad))
+    command [UnitCommand ATTACKATTACK units enemy]
 
-    fsStep squad (FSEngageFar enemyTag) = do
-        ds <- agentGet
-        obs <- agentObs
-        let unitByTag t = HashMap.lookup t (getUnitMap ds)
-            enemy = fromJust $ getUnit obs enemyTag
-            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
-        traceM ("[step] FSEngageFar " ++ show (squadId squad))
-        command [UnitCommand ATTACKATTACK units enemy]
+engageCloseStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> UnitTag -> StepMonad d ()
+engageCloseStep squad enemyTag = do
+    ds <- agentGet
+    obs <- agentObs
+    traceM ("[step] FSSeek " ++ show (squadId squad))
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
+        enemy = fromJust $ getUnit obs enemyTag
+        units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+    debugUnit enemy
+    mapM_ (\u -> debugUnitVec u (unitSeek u enemy)) units
+    mapM_ (`unitEngageBehaviorTree` enemy) units
 
-    fsStep squad (FSEngageClose enemyTag) = do
-        ds <- agentGet
-        obs <- agentObs
-        traceM ("[step] FSSeek " ++ show (squadId squad))
-        let unitByTag t = HashMap.lookup t (getUnitMap ds)
-            enemy = fromJust $ getUnit obs enemyTag
-            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+-- ---------------------------------------------------------------------------
+-- Update
 
-        debugUnit enemy
-        mapM_ (\u -> debugUnitVec u (unitSeek u enemy)) units
-        mapM_ (`unitEngageBehaviorTree` enemy) units
+engageCloseUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> UnitTag -> StepMonad d (Bool, SquadState)
+engageCloseUpdate squad enemyTag = do
+    ds <- agentGet
+    obs <- agentObs
+    case getUnit obs enemyTag of
+        Nothing -> do
+            traceM ("no more unit with tag " ++ show enemyTag)
+            return (True, SSEngageClose enemyTag)
+        _ -> return (False, SSEngageClose enemyTag)
 
+engageFarUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> UnitTag -> StepMonad d (Bool, SquadState)
+engageFarUpdate squad enemyTag = do
+    ds <- agentGet
+    obs <- agentObs
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
+        enemy = getUnit obs enemyTag
+        leader = fromJust $ unitByTag . head . squadUnits $ squad
+    inRange <- case enemy of
+        Just e  -> isEnemyInRange e leader
+        Nothing -> return False
+    case enemy of
+        Nothing -> do
+            traceM ("no more unit with tag " ++ show enemyTag)
+            return (True, SSEngageFar enemyTag)
+        _ -> return (False, if inRange then SSEngageClose enemyTag else SSEngageFar enemyTag)
 
-    fsUpdate squad st@(FSEngageClose enemyTag) =
-        do
-            ds <- agentGet
-            obs <- agentObs
-            case getUnit obs enemyTag of
-                Nothing -> do
-                    traceM ("no more unit with tag " ++ show enemyTag)
-                    return (True, st)
+-- ---------------------------------------------------------------------------
+-- Enter / Exit / Transition
 
-                _ -> return (False, FSEngageClose enemyTag)
+engageOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
+engageOnEnter s = traceM $ "[enter] FSEngage " ++ show (squadId s)
 
-    fsUpdate squad st@(FSEngageFar enemyTag) =
-        do
-            ds <- agentGet
-            obs <- agentObs
-            let unitByTag t = HashMap.lookup t (getUnitMap ds)
-                enemy = getUnit obs enemyTag
-                leader = fromJust $ unitByTag . head . squadUnits $ squad
-            --TODO: need more fine control, squad leader may not be able to focus target
-            inRange <- isEnemyInRange (fromJust enemy) leader
+engageOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
+engageOnExit s = traceM $ "[exit] FSEngage " ++ show (squadId s)
 
-            case enemy of
-                Nothing -> do
-                    traceM ("no more unit with tag " ++ show enemyTag)
-                    return (True, st)
-
-                _ -> return (False, if inRange then FSEngageClose enemyTag else st)
-
-    fsOnEnter s _ = traceM $ "[enter] FSEngage " ++ show (squadId s)
-    fsOnExit  s _ = traceM $ "[exit] FSEngage " ++ show (squadId s)
-    fsTransitionNext squad _ = do
-        full <- isSquadFull squad
-        pure $ if full then wrapState FSSquadIdle else wrapState (FSSquadForming Nothing)
+engageTransitionNext :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d SquadState
+engageTransitionNext squad = do
+    full <- isSquadFull squad
+    pure $ if full then SSIdle else SSForming Nothing
