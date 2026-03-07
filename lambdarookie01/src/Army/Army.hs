@@ -1,4 +1,4 @@
-module SC2.Army.Army where
+module Army.Army where
 
 import Actions (Action (..), UnitTag)
 import SC2.Grid.Algo
@@ -6,7 +6,7 @@ import SC2.Grid.TilePos
 import Units
 import Utils
 import Footprint
-import SC2.Squad
+import Squad
 import StepMonad
 
 import Data.HashMap.Strict (HashMap)
@@ -15,10 +15,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Maybe
 import System.Random (Random, StdGen, randomR)
-
--- class HasArmy d where
---   getArmy :: d -> Army
---   setArmy :: Army -> d -> d
 
 data Target
     = TargetPos TilePos
