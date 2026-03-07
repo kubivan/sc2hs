@@ -1,18 +1,17 @@
 
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-
 module Squad.State where
 
-import Squad.Squad
-import Data.Typeable (Typeable, cast)
+import Actions (UnitTag)
+import Footprint (Footprint)
+import SC2.Grid (Region, RegionId)
+import SC2.Grid.TilePos (TilePos)
 
-data SquadState = forall st. (Typeable st, SquadFS SquadState st) => MkSquadState st
+type SquadFormation = (TilePos, Footprint)
 
-wrapState :: (Typeable st, SquadFS SquadState st) => st -> SquadState
-wrapState = MkSquadState
-
-unwrapState :: forall st. Typeable st => SquadState -> Maybe st
-unwrapState (MkSquadState st) = cast st
+data SquadState
+    = SSIdle
+    | SSForming (Maybe SquadFormation)
+    | SSExploreRegion RegionId Region
+    | SSEngageFar UnitTag
+    | SSEngageClose UnitTag
+    | SSRetreat TilePos

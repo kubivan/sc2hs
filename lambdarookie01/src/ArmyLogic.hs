@@ -8,7 +8,6 @@ import BotDynamicState
 import Actions (Action (..), UnitTag)
 import Army.Army
 import Squad.State
-import Squad.FSSquadForming
 -- import Squad.FSM
 import Squad
 import SC2.Utils
@@ -94,7 +93,7 @@ agentUpdateDsArmy = do
         (refilledSquads, restUnits) = fillSquads squadsNotFull freeArmyUnitTags
 
         newSquadUnits = chunksOf 5 restUnits
-        newSquads = concatMap (\us -> [Squad{squadUnits = us, squadState = (wrapState (FSSquadForming Nothing))}]) newSquadUnits
+        newSquads = concatMap (\us -> [Squad{squadUnits = us, squadState = SSForming Nothing}]) newSquadUnits
 
         army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
 
