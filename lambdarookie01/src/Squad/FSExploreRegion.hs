@@ -1,6 +1,4 @@
 
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module Squad.FSExploreRegion where
 
 import SC2.Utils
@@ -8,7 +6,6 @@ import SC2.Grid
 import Squad.Class
 import Squad.Squad
 import Squad.State
-import Squad.FSSquadIdle (FSSquadIdle (..))
 import Squad.Behavior
 import SC2.Geometry
 import StepMonad
@@ -28,33 +25,40 @@ import Footprint
 
 import Data.Char (isDigit)
 
-data FSExploreRegion = FSExploreRegion RegionId Region
+-- ---------------------------------------------------------------------------
+-- Step
 
-instance SquadFS SquadState FSExploreRegion where
+exploreRegionStep :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad SquadState -> Region -> StepMonad d ()
+exploreRegionStep s region = squadExploreRegion s region
 
-    fsStep s (FSExploreRegion rid region) = do
-        -- traceM ("[step] FSExploreRegion " ++ show (squadId s))
-        squadExploreRegion s region
-    fsUpdate squad st@(FSExploreRegion rid region)
-        | Set.size region == 0 = return (True, st)
-        | otherwise = do
-            ds <- agentGet
-            let unitByTag t = HashMap.lookup t (getUnitMap ds)
-                -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-                units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+-- ---------------------------------------------------------------------------
+-- Update
 
-            pixelsToRemove <- fmap concat $ forM units $ \u -> do
-                sightRange <- siUnitSightRange u
-                return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
+exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> RegionId -> Region -> StepMonad d (Bool, SquadState)
+exploreRegionUpdate squad rid region
+    | Set.size region == 0 = return (True, SSExploreRegion rid region)
+    | otherwise = do
+        ds <- agentGet
+        let unitByTag t = HashMap.lookup t (getUnitMap ds)
+            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
 
-                -- TODO: intersect 2 sets instead
-            let region' = foldl' (flip Set.delete) region pixelsToRemove
-                state' = FSExploreRegion rid region'
+        pixelsToRemove <- fmap concat $ forM units $ \u -> do
+            sightRange <- siUnitSightRange u
+            return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
 
-            return (Set.size region' == 0, state')
-    fsOnEnter s _ = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
-    fsOnExit  s _ = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
-    fsTransitionNext _ _ = pure $ wrapState FSSquadIdle
+        let region' = foldl' (flip Set.delete) region pixelsToRemove
+            state' = SSExploreRegion rid region'
 
--- data FSAttack = FSAttack Target
--- data FSEvade = FSEvade
+        return (Set.size region' == 0, state')
+
+-- ---------------------------------------------------------------------------
+-- Enter / Exit / Transition
+
+exploreRegionOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
+exploreRegionOnEnter s = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
+
+exploreRegionOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
+exploreRegionOnExit s = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
+
+exploreRegionTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
+exploreRegionTransitionNext _ = pure SSIdle

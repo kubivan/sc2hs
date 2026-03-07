@@ -1,4 +1,3 @@
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -16,7 +15,6 @@ import Agent
 import AgentBulidUtils
 import ArmyLogic
 import BotDynamicState
-import SquadRetreat
 import Footprint (getFootprint)
 import Observation
 import Army.Army
@@ -28,8 +26,6 @@ import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
 import Squad
 import Squad.Behavior
-import Squad.FSEngage
-import Squad.FSExploreRegion
 import Squad.State
 import SC2.TechTree
 import SC2.Utils
@@ -72,7 +68,6 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
-import Squad.FSEngage (FSEngage (FSEngageClose, FSEngageFar))
 import StepMonad (AsyncStaticInfo (..), StaticInfo (siAsyncStaticInfo), siRegionLookup, siRegionPathToEnemyResolved, siRegionsResolved)
 import System.Random (newStdGen)
 import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))
@@ -445,9 +440,9 @@ squadAssign s = do
     return $ canSeek || canExplore
 
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
-squadSeek squad = case unwrapState (squadState squad) of
-    Just (FSEngageClose _) -> return True
-    Just (FSEngageFar _) -> return True
+squadSeek squad = case squadState squad of
+    SSEngageClose _ -> return True
+    SSEngageFar _   -> return True
     _ -> do
         ds <- agentGet
         obs <- agentObs
@@ -458,7 +453,7 @@ squadSeek squad = case unwrapState (squadState squad) of
         case closestEnemy of
             Nothing -> return False
             (Just enemy) -> do
-                let squad' = squad{squadState = wrapState (FSEngageFar (enemy ^. #tag))}
+                let squad' = squad{squadState = SSEngageFar (enemy ^. #tag)}
                     squads' = replaceSquad squad' (armySquads (dsArmy ds))
                     army' = (dsArmy ds){armySquads = squads'}
                 agentPut $ setArmy army' ds
@@ -499,7 +494,7 @@ squadAssignToExplore s = do
 
         rid <- MaybeT . pure $ listToMaybe availableRegionIds
         let region = regionsById HashMap.! rid
-            squad' = squad{squadState = wrapState (FSExploreRegion rid region)}
+            squad' = squad{squadState = SSExploreRegion rid region}
             squads' = replaceSquad squad' (armySquads (dsArmy ds))
             army' = (dsArmy ds){armySquads = squads'}
         lift $ agentPut $ setArmy army' ds
@@ -529,12 +524,15 @@ agentTryEngage = do
 
 squadTransitionChooser :: TransitionChooser BotDynamicState
 squadTransitionChooser squad oldState =
-    case (unwrapState oldState :: Maybe FSEngage) of
-        Just _ -> do
-            obs <- agentObs
-            let retreatPos = tilePos (findNexus obs ^. #pos)
-            pure $ wrapState (SquadRetreat retreatPos)
-        Nothing -> defaultTransitionChooser squad oldState
+    case oldState of
+        SSEngageFar _   -> retreat
+        SSEngageClose _ -> retreat
+        _               -> defaultTransitionChooser squad oldState
+  where
+    retreat = do
+        obs <- agentObs
+        let retreatPos = tilePos (findNexus obs ^. #pos)
+        pure $ SSRetreat retreatPos
 
 agentArmyControl :: StepMonad BotDynamicState ()
 agentArmyControl = do

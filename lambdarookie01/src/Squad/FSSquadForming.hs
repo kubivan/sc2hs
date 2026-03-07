@@ -1,13 +1,10 @@
 
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module Squad.FSSquadForming where
 
 import Squad.Class
 
 import Squad.Squad
 import Squad.State
-import Squad.FSSquadIdle (FSSquadIdle (..))
 import Squad.Behavior
 import SC2.Utils
 import SC2.Grid
@@ -29,42 +26,51 @@ import Footprint
 
 import Data.Char (isDigit)
 
-type SquadFormation = (TilePos, Footprint)
-newtype FSSquadForming = FSSquadForming (Maybe SquadFormation)
+-- ---------------------------------------------------------------------------
+-- Step
 
-instance SquadFS SquadState FSSquadForming where
+formingStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe SquadFormation -> StepMonad d ()
+formingStep s Nothing = pure ()
+formingStep s (Just (fcenter, formation)) = do
+    traceM "[step] forming"
+    void $ squadMoveToFormation s fcenter formation
 
-    fsStep s (FSSquadForming Nothing) = pure ()
-    fsStep s (FSSquadForming (Just (fcenter, formation))) = do
-         traceM "[step] idle"
-         void $ squadMoveToFormation s fcenter formation
-    fsUpdate s st@(FSSquadForming Nothing) = do -- --TODO: we can try find formation
-        ds <- agentGet
-        let formation = squadFormationFootprint
-            unitByTag t = HashMap.lookup t (getUnitMap ds)
-            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-            units = catMaybes $ [unitByTag t | t <- squadUnits s]
-            leader = head units
-            leaderTpos = tilePos $ leader ^. #pos
-        -- TODO: magic number: consider implement findplacementinregion
-        gatherPlace <- findPlacementPointInRadiusSM formation leaderTpos 10
-        case gatherPlace of
-            Nothing -> do
-                isFull <- isSquadFull s
-                return (isFull, st)
-            (Just fcenter) -> addMarkSM formation fcenter >> return (False, FSSquadForming (Just(fcenter, formation)))
+-- ---------------------------------------------------------------------------
+-- Update
 
-    fsUpdate s st@(FSSquadForming(Just (center, formation))) = do
-        isFull <- isSquadFull s
-        isFormed <- isSquadFormed s center formation
-        return (isFull && isFormed, st)
+formingUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe SquadFormation -> StepMonad d (Bool, SquadState)
+formingUpdate s Nothing = do
+    ds <- agentGet
+    let formation = squadFormationFootprint
+        unitByTag t = HashMap.lookup t (getUnitMap ds)
+        units = catMaybes $ [unitByTag t | t <- squadUnits s]
+        leader = head units
+        leaderTpos = tilePos $ leader ^. #pos
+    gatherPlace <- findPlacementPointInRadiusSM formation leaderTpos 10
+    case gatherPlace of
+        Nothing -> do
+            isFull <- isSquadFull s
+            return (isFull, SSForming Nothing)
+        (Just fcenter) -> addMarkSM formation fcenter >> return (False, SSForming (Just (fcenter, formation)))
 
-    fsOnEnter squad (FSSquadForming Nothing) = do
-        traceM $ "[enter] FSSquadForming " ++ show (squadId squad)
-    fsOnEnter s _ = pure ()
-    fsOnExit s (FSSquadForming f)  = do
-        traceM $ "[exit] FSSquadForming " ++ show (squadId s)
-        case f of
-            Nothing -> pure ()
-            Just (center, fprint) -> void $ removeMarkSM fprint center
-    fsTransitionNext _ _ = pure $ wrapState FSSquadIdle
+formingUpdate s (Just (center, formation)) = do
+    isFull <- isSquadFull s
+    isFormed <- isSquadFormed s center formation
+    return (isFull && isFormed, SSForming (Just (center, formation)))
+
+-- ---------------------------------------------------------------------------
+-- Enter / Exit / Transition
+
+formingOnEnter :: (HasArmy d) => FSMSquad SquadState -> Maybe SquadFormation -> StepMonad d ()
+formingOnEnter squad Nothing = traceM $ "[enter] FSSquadForming " ++ show (squadId squad)
+formingOnEnter _ _ = pure ()
+
+formingOnExit :: (HasArmy d, HasGrid d) => FSMSquad SquadState -> Maybe SquadFormation -> StepMonad d ()
+formingOnExit s f = do
+    traceM $ "[exit] FSSquadForming " ++ show (squadId s)
+    case f of
+        Nothing -> pure ()
+        Just (center, fprint) -> void $ removeMarkSM fprint center
+
+formingTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
+formingTransitionNext _ = pure SSIdle
