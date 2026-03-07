@@ -1,15 +1,15 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module SC2.Squad.FSExploreRegion where
+module Squad.FSExploreRegion where
 
 import SC2.Utils
 import SC2.Grid
-import SC2.Squad.Class
-import SC2.Squad.Squad
-import SC2.Squad.State
-import SC2.Squad.FSSquadIdle (FSSquadIdle (..))
-import SC2.Squad.Behavior
+import Squad.Class
+import Squad.Squad
+import Squad.State
+import Squad.FSSquadIdle (FSSquadIdle (..))
+import Squad.Behavior
 import SC2.Geometry
 import StepMonad
 import StepMonadUtils

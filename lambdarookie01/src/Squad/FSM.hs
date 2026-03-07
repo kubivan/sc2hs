@@ -3,17 +3,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeApplications #-}
 
-module SC2.Squad.FSM where
+module Squad.FSM where
 
-import SC2.Squad.FSSquadForming
-import SC2.Squad.FSSquadIdle
-import SC2.Squad.FSExploreRegion
-import SC2.Squad.FSEngage
+import Squad.FSSquadForming
+import Squad.FSSquadIdle
+import Squad.FSExploreRegion
+import Squad.FSEngage
 
 -- import SC2.Army.Army
-import SC2.Squad.Squad
-import SC2.Squad.Class
-import SC2.Squad.State
+import Squad.Squad
+import Squad.Class
+import Squad.State
 import SC2.Grid (RegionId)
 import StepMonad
 import Data.Maybe (isJust)

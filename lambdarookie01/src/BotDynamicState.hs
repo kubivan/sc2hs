@@ -7,9 +7,9 @@ import SC2.Grid
 import Observation
 import Units
 import StepMonad
-import SC2.Army.Army
-import SC2.Army.Class
-import SC2.Squad.Class
+import Army.Army
+import Army.Class
+import Squad.Class
 
 import System.Random (Random, StdGen, randomR)
 import Data.HashMap.Strict (HashMap)

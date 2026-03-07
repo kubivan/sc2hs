@@ -1,10 +1,10 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module SC2.Squad.FSSquadIdle where
+module Squad.FSSquadIdle where
 
-import SC2.Squad.Squad
-import SC2.Squad.State
+import Squad.Squad
+import Squad.State
 
 import Debug.Trace (traceM)
 

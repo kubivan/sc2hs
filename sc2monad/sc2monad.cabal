@@ -27,20 +27,7 @@ library
       SC2.Grid.Algo
       SC2.Grid.Utils
       SC2.Grid.TilePos
-      SC2.Army.Army
-      SC2.Army.Class
       SC2.Units.CombatEval
-      SC2.Squad
-      SC2.Squad.Squad
-      SC2.Squad.Class
-      SC2.Squad.State
-      SC2.Squad.FSM
-      SC2.Squad.Behavior
-      SC2.Squad.Micro
-      SC2.Squad.FSEngage
-      SC2.Squad.FSExploreRegion
-      SC2.Squad.FSSquadForming
-      SC2.Squad.FSSquadIdle
   other-modules:
       Paths_sc2monad
   hs-source-dirs:

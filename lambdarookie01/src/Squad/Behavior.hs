@@ -5,13 +5,13 @@
 {-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes #-}
 {-# LANGUAGE GADTs, ConstraintKinds, TypeApplications #-}
 
-module SC2.Squad.Behavior where
+module Squad.Behavior where
 
 import Actions (Action (..), UnitTag)
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
-import SC2.Squad.Squad
-import SC2.Squad.Class
+import Squad.Squad
+import Squad.Class
 import Units
 import Utils
 import Footprint
