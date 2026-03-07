@@ -18,6 +18,7 @@ executable lambdarookie01
       AgentBulidUtils
       ArmyLogic
       BotDynamicState
+      SquadRetreat
       TestBot
       Paths_lambdarookie01
   hs-source-dirs:
