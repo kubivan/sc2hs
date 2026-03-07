@@ -28,15 +28,15 @@ import Data.Char (isDigit)
 -- ---------------------------------------------------------------------------
 -- Step
 
-exploreRegionStep :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad SquadState -> Region -> StepMonad d ()
-exploreRegionStep s region = squadExploreRegion s region
+exploreRegionStep :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d ()
+exploreRegionStep s (FSExploreRegion _ region) = squadExploreRegion s region
 
 -- ---------------------------------------------------------------------------
 -- Update
 
-exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> RegionId -> Region -> StepMonad d (Bool, SquadState)
-exploreRegionUpdate squad rid region
-    | Set.size region == 0 = return (True, SSExploreRegion rid region)
+exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d (Bool, FSExploreRegion)
+exploreRegionUpdate squad st@(FSExploreRegion rid region)
+    | Set.size region == 0 = return (True, st)
     | otherwise = do
         ds <- agentGet
         let unitByTag t = HashMap.lookup t (getUnitMap ds)
@@ -47,7 +47,7 @@ exploreRegionUpdate squad rid region
             return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
 
         let region' = foldl' (flip Set.delete) region pixelsToRemove
-            state' = SSExploreRegion rid region'
+            state' = FSExploreRegion rid region'
 
         return (Set.size region' == 0, state')
 
@@ -61,4 +61,4 @@ exploreRegionOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 exploreRegionOnExit s = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
 
 exploreRegionTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
-exploreRegionTransitionNext _ = pure SSIdle
+exploreRegionTransitionNext _ = pure $ SSIdle FSIdle
