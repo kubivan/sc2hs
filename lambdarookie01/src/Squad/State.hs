@@ -8,10 +8,23 @@ import SC2.Grid.TilePos (TilePos)
 
 type SquadFormation = (TilePos, Footprint)
 
+data FSIdle = FSIdle
+
+data FSForming
+    = FSFormingUnplaced
+    | FSFormingPlaced SquadFormation
+
+data FSExploreRegion = FSExploreRegion RegionId Region
+
+data FSEngage
+    = FSEngageFar UnitTag
+    | FSEngageClose UnitTag
+
+newtype FSRetreat = FSRetreat TilePos
+
 data SquadState
-    = SSIdle
-    | SSForming (Maybe SquadFormation)
-    | SSExploreRegion RegionId Region
-    | SSEngageFar UnitTag
-    | SSEngageClose UnitTag
-    | SSRetreat TilePos
+    = SSIdle FSIdle
+    | SSForming FSForming
+    | SSExploreRegion FSExploreRegion
+    | SSEngage FSEngage
+    | SSRetreat FSRetreat

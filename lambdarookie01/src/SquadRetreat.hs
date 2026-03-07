@@ -18,8 +18,8 @@ import Debug.Trace (traceM)
 -- ---------------------------------------------------------------------------
 -- Step
 
-retreatStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> TilePos -> StepMonad d ()
-retreatStep squad rallyPos = do
+retreatStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSRetreat -> StepMonad d ()
+retreatStep squad (FSRetreat rallyPos) = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)
         units = catMaybes [unitByTag t | t <- squadUnits squad]
@@ -30,15 +30,15 @@ retreatStep squad rallyPos = do
 -- ---------------------------------------------------------------------------
 -- Update
 
-retreatUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> TilePos -> StepMonad d (Bool, SquadState)
-retreatUpdate squad rallyPos = do
+retreatUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSRetreat -> StepMonad d (Bool, FSRetreat)
+retreatUpdate squad st@(FSRetreat rallyPos) = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)
         units = catMaybes [unitByTag t | t <- squadUnits squad]
         arrived = case listToMaybe units of
             Nothing     -> True
             Just leader -> distManhattan (tilePos (leader ^. #pos)) rallyPos <= 2
-    pure (arrived, SSRetreat rallyPos)
+    pure (arrived, st)
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition
@@ -50,5 +50,5 @@ retreatOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 retreatOnExit squad = traceM $ "[exit] SquadRetreat " ++ show (squadId squad)
 
 retreatTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
-retreatTransitionNext _ = pure SSIdle
+retreatTransitionNext _ = pure $ SSIdle FSIdle
 

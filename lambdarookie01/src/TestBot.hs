@@ -441,8 +441,8 @@ squadAssign s = do
 
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
 squadSeek squad = case squadState squad of
-    SSEngageClose _ -> return True
-    SSEngageFar _   -> return True
+    SSEngage (FSEngageClose _) -> return True
+    SSEngage (FSEngageFar _)   -> return True
     _ -> do
         ds <- agentGet
         obs <- agentObs
@@ -453,7 +453,7 @@ squadSeek squad = case squadState squad of
         case closestEnemy of
             Nothing -> return False
             (Just enemy) -> do
-                let squad' = squad{squadState = SSEngageFar (enemy ^. #tag)}
+                let squad' = squad{squadState = SSEngage (FSEngageFar (enemy ^. #tag))}
                     squads' = replaceSquad squad' (armySquads (dsArmy ds))
                     army' = (dsArmy ds){armySquads = squads'}
                 agentPut $ setArmy army' ds
@@ -494,7 +494,7 @@ squadAssignToExplore s = do
 
         rid <- MaybeT . pure $ listToMaybe availableRegionIds
         let region = regionsById HashMap.! rid
-            squad' = squad{squadState = SSExploreRegion rid region}
+            squad' = squad{squadState = SSExploreRegion (FSExploreRegion rid region)}
             squads' = replaceSquad squad' (armySquads (dsArmy ds))
             army' = (dsArmy ds){armySquads = squads'}
         lift $ agentPut $ setArmy army' ds
@@ -522,18 +522,6 @@ agentTryEngage = do
 
     mapM_ squadSeek squads
 
-squadTransitionChooser :: TransitionChooser BotDynamicState
-squadTransitionChooser squad oldState =
-    case oldState of
-        SSEngageFar _   -> retreat
-        SSEngageClose _ -> retreat
-        _               -> defaultTransitionChooser squad oldState
-  where
-    retreat = do
-        obs <- agentObs
-        let retreatPos = tilePos (findNexus obs ^. #pos)
-        pure $ SSRetreat retreatPos
-
 agentArmyControl :: StepMonad BotDynamicState ()
 agentArmyControl = do
     agentAssignIdleSquads
@@ -541,7 +529,7 @@ agentArmyControl = do
     ds <- agentGet
     let army = dsArmy ds
         squads = armySquads army
-    squads' <- mapM (processSquadWith squadTransitionChooser) squads
+    squads' <- mapM (processSquad squadTransitionChooser) squads
     let army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
