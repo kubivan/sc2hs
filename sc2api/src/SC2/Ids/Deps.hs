@@ -32,6 +32,8 @@ import GHC.Generics (Generic)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Lens.Micro ((^..), (^?), (^?!))
+import System.Directory (doesFileExist, makeAbsolute)
+import System.FilePath (takeDirectory, (</>))
 
 -- Define types
 
@@ -55,9 +57,32 @@ type UnitAbilityDeps = HashMap.HashMap UnitTypeId [(AbilityId, [Tech])]
 type TechDeps = HashMap.HashMap Tech [Tech]
 type TechPath = HashMap.HashMap Tech [Tech]
 
+-- | Walk up parent directories from the splice-site source file
+-- until a directory containing @data/data.json@ is found.
+findDataJson :: Q FilePath
+findDataJson = do
+    loc <- location
+    let locFile = loc_filename loc
+    runIO $ do
+        absLoc <- makeAbsolute locFile
+        go (takeDirectory absLoc)
+  where
+    go dir = do
+        let candidate = dir </> "data" </> "data.json"
+        exists <- doesFileExist candidate
+        if exists
+            then return candidate
+            else
+                let parent = takeDirectory dir
+                 in if parent == dir
+                        then error $ "data/data.json not found in any parent directory of: " ++ dir
+                        else go parent
+
 generateDeps :: Q [Dec]
 generateDeps = do
-    content <- runIO $ B.readFile "data/data.json"
+    dataFile <- findDataJson
+    qAddDependentFile dataFile
+    content <- runIO $ B.readFile dataFile
     let Just rootVal = decode content :: Maybe Value
         Just (Array abilitiesArray) = rootVal ^? key "Ability"
         abilitiesList = V.toList abilitiesArray
