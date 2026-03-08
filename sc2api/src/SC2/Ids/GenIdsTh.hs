@@ -17,13 +17,34 @@ import Data.Vector qualified as V
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Lens.Micro
+import System.Directory (doesFileExist, makeAbsolute)
+import System.FilePath (takeDirectory, (</>))
 
 -- Template Haskell gene rator for UnitTypeId
 type UnitId = Int
 type UnitName = Name -- the constructor, e.g. ProtossZealot
 type Race = Text
 
-jsonDataFileName = "data/data.json"
+-- | Walk up parent directories from the splice-site source file
+-- until a directory containing @data/data.json@ is found.
+findDataJson :: Q FilePath
+findDataJson = do
+    loc <- location
+    let locFile = loc_filename loc
+    runIO $ do
+        absLoc <- makeAbsolute locFile
+        go (takeDirectory absLoc)
+  where
+    go dir = do
+        let candidate = dir </> "data" </> "data.json"
+        exists <- doesFileExist candidate
+        if exists
+            then return candidate
+            else
+                let parent = takeDirectory dir
+                 in if parent == dir
+                        then error $ "data/data.json not found in any parent directory of: " ++ dir
+                        else go parent
 
 class TechEnum t where
     techName :: t -> Name
@@ -139,8 +160,9 @@ genTraitFunction (traitName, traitFunc) units =
 
 generateTechTypeStuff :: Q [Dec]
 generateTechTypeStuff = do
-    addDependentFile jsonDataFileName
-    content <- runIO $ B.readFile jsonDataFileName
+    dataFile <- findDataJson
+    addDependentFile dataFile
+    content <- runIO $ B.readFile dataFile
     let Just val = decode content
     parsedUnits <- parseUnits val
     parsedAbs <- parseAbilities val
