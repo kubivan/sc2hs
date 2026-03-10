@@ -599,7 +599,7 @@ instance Agent BotAgent where
             playerInfos = gi ^. #playerInfo
             playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
 
-            si = StaticInfo gi playerGameInfo unitTraits heightMap expands enemyStart Nothing
+            si = StaticInfo gi playerGameInfo unitTraits heightMap expands (tilePos nexusPos) enemyStart Nothing
 
         env <- makeEnv
         startChokeWorker env gridPathingClean (tilePos nexusPos) enemyStart
