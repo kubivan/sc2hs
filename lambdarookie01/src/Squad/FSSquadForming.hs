@@ -38,7 +38,7 @@ formingStep s (FSFormingPlaced (fcenter, formation)) = do
 -- ---------------------------------------------------------------------------
 -- Update
 
-formingUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSForming -> StepMonad d (Bool, FSForming)
+formingUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSForming -> StepMonad d UpdateResult
 formingUpdate s FSFormingUnplaced = do
     ds <- agentGet
     let formation = squadFormationFootprint
@@ -50,13 +50,19 @@ formingUpdate s FSFormingUnplaced = do
     case gatherPlace of
         Nothing -> do
             isFull <- isSquadFull s
-            return (isFull, FSFormingUnplaced)
-        (Just fcenter) -> addMarkSM formation fcenter >> return (False, FSFormingPlaced (fcenter, formation))
+            return $ if isFull
+                then Transition SSIdle
+                else Continue (SSForming FSFormingUnplaced)
+        (Just fcenter) -> do
+            addMarkSM formation fcenter
+            return $ Continue (SSForming (FSFormingPlaced (fcenter, formation)))
 
 formingUpdate s (FSFormingPlaced (center, formation)) = do
     isFull <- isSquadFull s
     isFormed <- isSquadFormed s center formation
-    return (isFull && isFormed, FSFormingPlaced (center, formation))
+    return $ if isFull && isFormed
+        then Transition SSIdle
+        else Continue (SSForming (FSFormingPlaced (center, formation)))
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition
@@ -70,6 +76,3 @@ formingOnExit s FSFormingUnplaced = traceM $ "[exit] FSSquadForming " ++ show (s
 formingOnExit s (FSFormingPlaced (center, fprint)) = do
     traceM $ "[exit] FSSquadForming " ++ show (squadId s)
     void $ removeMarkSM fprint center
-
-formingTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
-formingTransitionNext _ = pure $ SSIdle FSIdle

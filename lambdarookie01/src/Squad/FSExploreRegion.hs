@@ -34,9 +34,9 @@ exploreRegionStep s (FSExploreRegion _ region) = squadExploreRegion s region
 -- ---------------------------------------------------------------------------
 -- Update
 
-exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d (Bool, FSExploreRegion)
+exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d UpdateResult
 exploreRegionUpdate squad st@(FSExploreRegion rid region)
-    | Set.size region == 0 = return (True, st)
+    | Set.size region == 0 = return (Transition SSIdle)
     | otherwise = do
         ds <- agentGet
         let unitByTag t = HashMap.lookup t (getUnitMap ds)
@@ -49,7 +49,9 @@ exploreRegionUpdate squad st@(FSExploreRegion rid region)
         let region' = foldl' (flip Set.delete) region pixelsToRemove
             state' = FSExploreRegion rid region'
 
-        return (Set.size region' == 0, state')
+        return $ if Set.size region' == 0
+            then Transition SSIdle
+            else Continue (SSExploreRegion state')
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition
@@ -59,6 +61,3 @@ exploreRegionOnEnter s = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
 
 exploreRegionOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 exploreRegionOnExit s = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
-
-exploreRegionTransitionNext :: (HasArmy d) => FSMSquad SquadState -> StepMonad d SquadState
-exploreRegionTransitionNext _ = pure $ SSIdle FSIdle
