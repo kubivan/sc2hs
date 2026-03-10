@@ -11,3 +11,6 @@ cradle:
 
     - path: "./sc2monad/test"
       component: "sc2monad:test:sc2monad-test"
+
+    - path: "./sc2mapdump/src"
+      component: "sc2mapdump:exe:sc2mapdump"

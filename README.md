@@ -85,6 +85,7 @@ Build a specific package:
 stack build sc2api          # Just the API
 stack build sc2monad        # Framework + tests
 stack build lambdarookie01  # Example bot
+stack build sc2mapdump      # Fixture generator from live SC2 map
 ```
 
 ### Run Tests
@@ -92,6 +93,28 @@ stack build lambdarookie01  # Example bot
 ```bash
 stack test
 ```
+
+### Generate Segmentation Fixtures from SC2 Map
+
+Use `sc2mapdump` to start SC2 in Docker, create a game from a map file, fetch game info, build merged traversal grid (placement + pathing + ramps), and dump it as ASCII.
+
+```bash
+stack run sc2mapdump -- \
+  --map-path /absolute/path/to/MyMap.SC2Map \
+  --output sc2monad/test/data/segmentation/my-map.txt
+```
+
+Optional Docker/connection flags:
+
+```bash
+--docker-image ghcr.io/kubivan/aiurgaze-sc2:latest
+--container-name sc2mapdump-sc2
+--host 127.0.0.1
+--port 5555
+```
+
+Fixture files under `sc2monad/test/data/segmentation` are consumed by the segmentation integration tests.
+
 ### Run the Bot
 
 ```bash

@@ -43,7 +43,8 @@ dependencies:
   
 library:
   source-dirs: src
-  build-tool-depends: proto-lens-protoc:proto-lens-protoc
+  build-tools:
+    - proto-lens-protoc
   default-extensions:
     - OverloadedStrings
     - OverloadedLabels

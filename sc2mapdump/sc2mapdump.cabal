@@ -1,0 +1,26 @@
+cabal-version:      2.4
+name:               sc2mapdump
+version:            0.1.0.0
+license:            MIT
+build-type:         Simple
+synopsis:           Generate ASCII SC2 grid fixtures from live map sessions in Docker
+category:           Game
+
+executable sc2mapdump
+  main-is:             Main.hs
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings, OverloadedLabels, ImportQualifiedPost
+  ghc-options:         -Wall -Wcompat
+  build-depends:
+      base >=4.12
+    , directory
+    , filepath
+    , microlens
+    , optparse-applicative
+    , process
+    , proto-lens
+    , sc2api
+    , sc2monad
+    , text
+    , websockets
