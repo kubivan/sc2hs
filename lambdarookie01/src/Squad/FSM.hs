@@ -48,7 +48,7 @@ dispatchOnEnter
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d ()
 dispatchOnEnter squad SSIdle              = idleOnEnter squad
-dispatchOnEnter squad (SSForming f)       = formingOnEnter squad f
+dispatchOnEnter squad (SSForming _)       = formingOnEnter squad
 dispatchOnEnter squad (SSExploreRegion _) = exploreRegionOnEnter squad
 dispatchOnEnter squad (SSEngage _)        = engageOnEnter squad
 dispatchOnEnter squad (SSRetreat _)       = retreatOnEnter squad
@@ -57,7 +57,7 @@ dispatchOnExit
     :: (HasArmy d, HasObs d, HasGrid d)
     => FSMSquad SquadState -> SquadState -> StepMonad d ()
 dispatchOnExit squad SSIdle              = idleOnExit squad
-dispatchOnExit squad (SSForming f)       = formingOnExit squad f
+dispatchOnExit squad (SSForming _)       = formingOnExit squad
 dispatchOnExit squad (SSExploreRegion _) = exploreRegionOnExit squad
 dispatchOnExit squad (SSEngage _)        = engageOnExit squad
 dispatchOnExit squad (SSRetreat _)       = retreatOnExit squad
@@ -67,11 +67,13 @@ processSquad squad = do
     result <- dispatchUpdate squad (squadState squad)
     case result of
         Continue state' -> do
-            dispatchStep squad state'
-            return squad { squadState = state' }
+            let squad' = squad { squadState = state' }
+            dispatchStep squad' state'
+            return squad'
         Transition stNew -> do
             dispatchOnExit squad (squadState squad)
-            dispatchOnEnter squad stNew
-            processSquad (squad { squadState = stNew })
+            let squad' = squad { squadState = stNew }
+            dispatchOnEnter squad' stNew
+            processSquad squad'
             -- dispatchStep squad stNew
             -- return squad { squadState = stNew }

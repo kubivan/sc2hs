@@ -7,6 +7,7 @@ import Squad.Class
 import Squad.Squad
 import Squad.State
 import Squad.Behavior
+import Squad.FSMLog
 import SC2.Geometry
 import StepMonad
 import StepMonadUtils
@@ -20,7 +21,6 @@ import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 
-import Debug.Trace (traceM)
 import Footprint
 
 import Data.Char (isDigit)
@@ -57,7 +57,7 @@ exploreRegionUpdate squad st@(FSExploreRegion rid region)
 -- Enter / Exit / Transition
 
 exploreRegionOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-exploreRegionOnEnter s = traceM $ "[enter] FSExploreRegion " ++ show (squadId s)
+exploreRegionOnEnter squad = traceFSM squad "enter"
 
 exploreRegionOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-exploreRegionOnExit s = traceM $ "[exit] FSExploreRegion " ++ show (squadId s)
+exploreRegionOnExit squad = traceFSM squad "exit"

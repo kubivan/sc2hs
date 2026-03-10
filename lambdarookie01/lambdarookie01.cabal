@@ -26,6 +26,7 @@ executable lambdarookie01
       Squad.FSEngage
       Squad.FSExploreRegion
       Squad.FSM
+      Squad.FSMLog
       Squad.FSSquadForming
       Squad.FSSquadIdle
       Squad.Micro

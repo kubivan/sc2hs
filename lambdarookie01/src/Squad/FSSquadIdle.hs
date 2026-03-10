@@ -2,20 +2,19 @@
 module Squad.FSSquadIdle where
 
 import Squad.Class
+import Squad.FSMLog
 import Squad.Squad
 import Squad.State
 import StepMonad
 
-import Debug.Trace (traceM)
-
 idleStep :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-idleStep _ = traceM "[step] idle"
+idleStep squad = traceFSM squad "step"
 
 idleUpdate :: (HasArmy d) => FSMSquad SquadState -> StepMonad d UpdateResult
 idleUpdate _ = pure (Continue SSIdle)
 
 idleOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-idleOnEnter s = traceM $ "[enter] Idle " ++ show (squadId s)
+idleOnEnter squad = traceFSM squad "enter"
 
 idleOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-idleOnExit s = traceM $ "[exit] Idle " ++ show (squadId s)
+idleOnExit squad = traceFSM squad "exit"

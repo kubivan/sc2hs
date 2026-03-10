@@ -4,6 +4,7 @@ module SquadRetreat where
 import Squad.Squad
 import Squad.State
 import Squad.Class
+import Squad.FSMLog
 import SC2.Geometry
 import Observation
 import SC2.Grid
@@ -15,7 +16,6 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (catMaybes, listToMaybe, fromJust)
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
-import Debug.Trace (traceM)
 
 -- ---------------------------------------------------------------------------
 -- Step
@@ -78,8 +78,8 @@ retreatUpdate squad st@(Just rallyPos) = do
 -- Enter / Exit / Transition
 
 retreatOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-retreatOnEnter squad = traceM $ "[enter] SquadRetreat " ++ show (squadId squad)
+retreatOnEnter squad = traceFSM squad "enter"
 
 retreatOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-retreatOnExit squad = traceM $ "[exit] SquadRetreat " ++ show (squadId squad)
+retreatOnExit squad = traceFSM squad "exit"
 

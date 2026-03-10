@@ -6,6 +6,7 @@ import Squad.Class
 import Squad.Squad
 import Squad.State
 import Squad.Behavior
+import Squad.FSMLog
 import SC2.Utils
 import SC2.Grid
 import SC2.Geometry
@@ -21,7 +22,6 @@ import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 
-import Debug.Trace (traceM)
 import Footprint
 
 import Data.Char (isDigit)
@@ -32,7 +32,7 @@ import Data.Char (isDigit)
 formingStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSForming -> StepMonad d ()
 formingStep s FSFormingUnplaced = pure ()
 formingStep s (FSFormingPlaced (fcenter, formation)) = do
-    traceM "[step] forming"
+    traceFSM s "step"
     void $ squadMoveToFormation s fcenter formation
 
 -- ---------------------------------------------------------------------------
@@ -67,12 +67,12 @@ formingUpdate s (FSFormingPlaced (center, formation)) = do
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition
 
-formingOnEnter :: (HasArmy d) => FSMSquad SquadState -> FSForming -> StepMonad d ()
-formingOnEnter squad FSFormingUnplaced = traceM $ "[enter] FSSquadForming " ++ show (squadId squad)
-formingOnEnter _ _ = pure ()
+formingOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
+formingOnEnter squad = traceFSM squad "enter"
 
-formingOnExit :: (HasArmy d, HasGrid d) => FSMSquad SquadState -> FSForming -> StepMonad d ()
-formingOnExit s FSFormingUnplaced = traceM $ "[exit] FSSquadForming " ++ show (squadId s)
-formingOnExit s (FSFormingPlaced (center, fprint)) = do
-    traceM $ "[exit] FSSquadForming " ++ show (squadId s)
-    void $ removeMarkSM fprint center
+formingOnExit :: (HasArmy d, HasGrid d) => FSMSquad SquadState -> StepMonad d ()
+formingOnExit s = do
+    traceFSM s "exit"
+    case squadState s of
+        SSForming (FSFormingPlaced (center, fprint)) -> void $ removeMarkSM fprint center
+        _ -> pure ()
