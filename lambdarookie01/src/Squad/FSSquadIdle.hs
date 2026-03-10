@@ -11,8 +11,8 @@ import Debug.Trace (traceM)
 idleStep :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 idleStep _ = traceM "[step] idle"
 
-idleUpdate :: (HasArmy d) => FSMSquad SquadState -> StepMonad d (Bool, FSIdle)
-idleUpdate _ = pure (False, FSIdle)
+idleUpdate :: (HasArmy d) => FSMSquad SquadState -> StepMonad d UpdateResult
+idleUpdate _ = pure (Continue SSIdle)
 
 idleOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 idleOnEnter s = traceM $ "[enter] Idle " ++ show (squadId s)

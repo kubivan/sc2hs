@@ -133,17 +133,28 @@ engageCloseStep _ _ = pure ()
 -- ---------------------------------------------------------------------------
 -- Update
 
-engageCloseUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d (Bool, FSEngage)
-engageCloseUpdate _ st@(FSEngageClose enemyTag) = do
+engageCloseUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d UpdateResult
+engageCloseUpdate squad st@(FSEngageClose enemyTag) = do
     obs <- agentObs
-    case getUnit obs enemyTag of
-        Nothing -> do
-            traceM ("no more unit with tag " ++ show enemyTag)
-            return (True, st)
-        _ -> return (False, st)
-engageCloseUpdate _ st = pure (False, st)
+    ds <- agentGet
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
+        leader = fromJust $ unitByTag (head (squadUnits squad))
+        damaged = leader ^. #shield  <=  leader ^. #shieldMax / 2
+    if damaged then do
+      traceM ("[fsm][engage]" ++ show (squadId squad) ++ " leader damaged " ++ show enemyTag)
+      return (Transition (SSRetreat Nothing))
+    else do
+      case getUnit obs enemyTag of
+          Nothing -> do
+              traceM ("no more unit with tag " ++ show enemyTag)
+              full <- isSquadFull squad
+              pure $ if full
+                  then Transition SSIdle
+                  else Transition (SSForming FSFormingUnplaced)
+          _ -> pure (Continue (SSEngage st))
+engageCloseUpdate _ st = pure (Continue (SSEngage st))
 
-engageFarUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d (Bool, FSEngage)
+engageFarUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d UpdateResult
 engageFarUpdate squad st@(FSEngageFar enemyTag) = do
     ds <- agentGet
     obs <- agentObs
@@ -156,9 +167,12 @@ engageFarUpdate squad st@(FSEngageFar enemyTag) = do
     case enemy of
         Nothing -> do
             traceM ("no more unit with tag " ++ show enemyTag)
-            return (True, st)
-        _ -> return (False, if inRange then FSEngageClose enemyTag else st)
-engageFarUpdate _ st = pure (False, st)
+            full <- isSquadFull squad
+            pure $ if full
+                then Transition SSIdle
+                else Transition (SSForming FSFormingUnplaced)
+        _ -> pure $ Continue (SSEngage (if inRange then FSEngageClose enemyTag else st))
+engageFarUpdate _ st = pure (Continue (SSEngage st))
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition
@@ -168,8 +182,3 @@ engageOnEnter s = traceM $ "[enter] FSEngage " ++ show (squadId s)
 
 engageOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
 engageOnExit s = traceM $ "[exit] FSEngage " ++ show (squadId s)
-
-engageTransitionNext :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d SquadState
-engageTransitionNext squad = do
-    full <- isSquadFull squad
-    pure $ if full then SSIdle FSIdle else SSForming FSFormingUnplaced

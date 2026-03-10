@@ -529,7 +529,7 @@ agentArmyControl = do
     ds <- agentGet
     let army = dsArmy ds
         squads = armySquads army
-    squads' <- mapM (processSquad squadTransitionChooser) squads
+    squads' <- mapM processSquad squads
     let army' = army{armySquads = squads'}
     agentPut $ setArmy army' ds
 
