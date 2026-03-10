@@ -100,6 +100,7 @@ data StaticInfo = StaticInfo
     , unitTraits :: UnitTraits
     , heightMap :: Grid
     , expandsPos :: [TilePos]
+    , startLocation :: TilePos
     , enemyStartLocation :: TilePos
     , siAsyncStaticInfo :: !(Maybe AsyncStaticInfo)
     }
