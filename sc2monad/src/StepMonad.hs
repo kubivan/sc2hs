@@ -160,5 +160,7 @@ runStepM staticInfo abilities dynamicState stepMonad =
         ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
      in (a, stepPlan, dyn')
 
-type StepMonad d r = WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities))) r
-type MaybeStepMonad d a = MaybeT (WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))) a
+type StepMonad d =
+  WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))
+
+type MaybeStepMonad d a = MaybeT (StepMonad d) a

@@ -24,12 +24,14 @@ import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
+
 import Squad
 import Squad.Behavior
 import Squad.State
 import SC2.TechTree
 import SC2.Utils
 import StepMonad
+import PlanM
 import Units (
     Unit,
     closestC,
@@ -76,6 +78,7 @@ import Control.Concurrent.STM
 
 deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
+
 
 stepTowardsTechGoal :: (HasObs d, HasGrid d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
@@ -137,7 +140,6 @@ stepTowardsTechGoal goal = do
             _ -> error "not implemented"
 
 
-type BuildOrder = [UnitTypeId]
 
 data BotPhase
     = Opening
@@ -155,84 +157,6 @@ unitsData raw =
         yieldMany raw
             .| mapC (\a -> (toEnum . fromIntegral $ a ^. #unitId, a))
             .| sinkList
-
-inBuildThechTree :: UnitTypeId -> StepMonad d Bool
-inBuildThechTree id = do
-    abilities <- agentAbilities
-    si <- agentStatic
-    let ability = unitToAbility (unitTraits si) id -- `Utils.dbg` ("abilities: " ++ show abilities)
-    return $ ability `elem` (abilities HashMap.! ProtossProbe)
-
-buildAction :: (HasObs d, HasGrid d) => UnitTypeId -> Grid -> Cost -> MaybeStepMonad d (Action, Cost, Grid)
-buildAction ProtossAssimilator grid reservedRes = do
-    (isAffordable, cost) <- lift $ canAfford ProtossAssimilator reservedRes
-    guard isAffordable
-    obs <- lift agentObs
-    builder <- MaybeT . return $ findBuilder obs
-    geyser <- MaybeT . return $ findFreeGeyser obs
-
-    let res = UnitCommand PROTOSSBUILDASSIMILATOR [builder] geyser
-
-    return (res, cost, grid) -- `Utils.dbg` ("building Assimilator target " ++ show geyser ++ " builder " ++ show builder ++ " putting to the grid!!!!")
-buildAction order grid reservedRes = do
-    enabled <- lift . inBuildThechTree $ order
-    guard enabled -- `Utils.dbg` (show order ++ " enabled " ++ show enabled)
-    (isAffordable, cost) <- lift $ canAfford order reservedRes
-    guard isAffordable
-
-    si <- lift agentStatic
-    ds <- lift agentGet
-    obs <- lift agentObs
-    grid <- lift agentGrid
-    let ability = unitToAbility (unitTraits si) order
-        footprint = getFootprint order
-    guard (isBuildAbility ability)
-    builder <- MaybeT . return $ findBuilder obs
-    pos <- MaybeT . return $ findPlacementPos obs (expandsPos si) grid (heightMap si) order
-    let grid' = addMark grid footprint pos
-        obs' = addOrder (builder ^. #tag) ability . addUnit order $ obs
-    traceM $ (show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!")
-    -- or lift $ agentModify (obsL .~ obs' . gridL .~ grid')
-    lift $ agentModifyObs (const obs')
-    lift $ agentModifyGrid (const grid')
-
-    let res = PointCommand ability [builder] (fromTuple pos)
-
-    return (res, cost, grid') `Utils.dbg` ("builder orders " ++ show (builder ^. #orders))
-
-distantEnough :: (Foldable t, Pointable p1, Pointable p2) => t p2 -> Float -> p1 -> Bool
-distantEnough units radius pos = all (\p -> distSquared pos p >= radius * radius) units
-
-pylonBuildAction :: (HasObs d, HasGrid d) => Grid -> Cost -> MaybeStepMonad d (Action, Cost, Grid)
-pylonBuildAction grid reservedRes = do
-    (isAffordable, cost) <- lift $ canAfford ProtossPylon reservedRes
-    guard isAffordable
-
-    si <- lift agentStatic
-    ds <- lift agentGet
-    obs <- lift agentObs
-    let hasPylonsInProgress = not $ Prelude.null $ runC $ unitsSelf obs .| unitTypeC ProtossPylon .| filterC (\u -> u ^. #buildProgress < 1)
-    guard (not hasPylonsInProgress) -- `Utils.dbg` ("hasPylonsInProgress: " ++ show hasPylonsInProgress)
-    builder <- MaybeT . return $ findBuilder obs
-    let nexus = findNexus obs `Utils.dbg` ("builder: " ++ show builder)
-        footprint = getFootprint ProtossPylon
-        findPylonPlacementPoint = findPlacementPoint grid (heightMap si) footprint (tilePos (builder ^. #pos))
-        pylonsPos = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
-        pylonCriteria = distantEnough pylonsPos
-    pylonPos <- MaybeT . return $ findPylonPlacementPoint (pylonCriteria pylonRadius)
-    -- <|> findPylonPlacementPoint (pylonCriteria (pylonRadius / 2))
-    -- <|> findPylonPlacementPoint (const True)
-
-    let grid' = addMark grid footprint pylonPos
-    let obs' = addOrder (builder ^. #tag) PROTOSSBUILDPYLON obs
-    lift $ agentModify ((obsL .~ obs') . (gridL .~ grid'))
-    return (PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos), cost, grid') `Utils.dbg` ("pylonPos: " ++ show pylonPos)
-
-createAction :: (HasObs d, HasGrid d) => Grid -> Cost -> UnitTypeId -> MaybeStepMonad d (Action, Cost, Grid)
-createAction grid reserved order = do
-    (isAffordable, cost) <- lift $ canAfford order reserved
-    guard isAffordable -- `Utils.dbg` (show order ++ " affordable " ++ show isAffordable ++ " cost: " ++ show cost)
-    buildAction order grid reserved <|> pylonBuildAction grid reserved
 
 trainProbes :: (HasObs d) => StepMonad d ()
 trainProbes = do
@@ -369,24 +293,6 @@ processQueue (a : as) (q', interrupted) = do
                 else processQueue as (q', interrupted)
 processQueue [] res = return res
 
---TODO: very old, reimplement normally in stepmonad manner
-splitAffordable :: (HasObs d, HasGrid d) => BuildOrder -> Cost -> StepMonad d ([Action], BuildOrder)
-splitAffordable bo reserved = agentGet >>= (\ds -> agentGrid >>= \grid -> go bo Data.Sequence.empty grid reserved) -- `Utils.dbg` ("splitAffordable " ++ show bo ++ " reserved" ++ show reserved)
-  where
-    go :: (HasObs d, HasGrid d) => BuildOrder -> Seq Action -> Grid -> Cost -> StepMonad d ([Action], BuildOrder)
-    go bo@(uid : remaining) acc grid reservedCost = do
-        (si, _) <- agentAsk
-        cres <- tryCreate grid reservedCost uid
-        case cres of
-            Just (action, cost, grid') -> go remainingOrBo (acc |> action) grid' (cost + reserved)
-              where
-                -- if we fallback to the BuildPylon, don't remove the order from BO
-                remainingOrBo = if getCmd action == unitToAbility (unitTraits si) uid then remaining else bo
-            Nothing -> return (toList acc, bo)
-    go [] acc _ _ = return (toList acc, [])
-
-tryCreate :: (HasObs d, HasGrid d) => Grid -> Cost -> UnitTypeId -> StepMonad d (Maybe (Action, Cost, Grid))
-tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
