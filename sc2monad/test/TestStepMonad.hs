@@ -3,7 +3,8 @@
 
 module TestStepMonad (stepMonadUnitTests) where
 
-import Actions (Action (..), DebugCommand (..))
+import StepMonad (HasObs(..), HasGrid(..))
+import Actions (Action (SelfCommand), DebugCommand (DebugText))
 import Data.HashMap.Strict qualified as HashMap
 import Data.ProtoLens (defMessage)
 import Data.Text qualified as T
@@ -20,6 +21,7 @@ import Test.Hspec
 import Units (Unit)
 import Units qualified
 import SC2.Proto.Data (Alliance (Self), Point)
+import Lens.Micro (lens)
 
 -- Small dynamic state for exercising StepMonad helpers.
 data DummyState = DummyState
@@ -27,13 +29,12 @@ data DummyState = DummyState
     , dummyGrid :: Grid
     }
 
-instance AgentDynamicState DummyState where
-    getObs = dummyObs
-    getGrid = dummyGrid
-    setObs obs st = st {dummyObs = obs}
-    setGrid grid st = st {dummyGrid = grid}
-    dsUpdate obs grid st = st {dummyObs = obs, dummyGrid = grid}
+-- Provide instances for the new typeclasses
+instance HasObs DummyState where
+    obsL = lens dummyObs (\st obs -> st {dummyObs = obs})
 
+instance HasGrid DummyState where
+    gridL = lens dummyGrid (\st grid -> st {dummyGrid = grid})
 stepMonadUnitTests :: Spec
 stepMonadUnitTests =
     describe "StepMonad" $ do
