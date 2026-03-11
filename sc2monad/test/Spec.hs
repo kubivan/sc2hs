@@ -54,6 +54,7 @@ import TestGrid(gridUnitTests)
 import TestTechTree
 import TestObservation (observationUnitTests)
 import TestStepMonad (stepMonadUnitTests)
+import TestSegmentation (segmentationIntegrationTests)
 import TestUnits (unitsUnitTests)
 import TestUtils (utilsUnitTests)
 
@@ -315,4 +316,5 @@ main =
             >> stepMonadUnitTests
             >> unitsUnitTests
             >> observationUnitTests
+            >> segmentationIntegrationTests
             >> utilsUnitTests
