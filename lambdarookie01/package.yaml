@@ -49,3 +49,34 @@ executables:
       - -threaded
       - -rtsopts
       - -with-rtsopts=-N
+
+tests:
+  lambdarookie01-test:
+    main: Spec.hs
+    source-dirs:
+      - src
+      - test
+    dependencies:
+      - base
+      - sc2api
+      - sc2monad
+      - proto-lens
+      - microlens
+      - text
+      - containers
+      - unordered-containers
+      - hashable
+      - safe
+      - random
+      - conduit
+      - split
+      - transformers
+      - mtl
+      - stm
+      - hspec
+      - process
+      - directory
+      - filepath
+      - websockets
+    ghc-options:
+      - -Wno-missing-home-modules
