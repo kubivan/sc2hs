@@ -61,3 +61,65 @@ executable lambdarookie01
     , transformers
     , unordered-containers
   default-language: Haskell2010
+
+test-suite lambdarookie01-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      AgentBulidUtils
+      Army.Army
+      Army.Class
+      ArmyLogic
+      BotDynamicState
+      Intent
+      Main
+      PlanM
+      Squad
+      Squad.Behavior
+      Squad.Class
+      Squad.FSEngage
+      Squad.FSExploreRegion
+      Squad.FSM
+      Squad.FSMLog
+      Squad.FSSquadForming
+      Squad.FSSquadIdle
+      Squad.Micro
+      Squad.Squad
+      Squad.State
+      SquadRetreat
+      TestBot
+      TestFixtures
+      TestIntegrationRealGame
+      TestStepFlow
+      Paths_lambdarookie01
+  hs-source-dirs:
+      src
+      test
+  default-extensions:
+      OverloadedStrings
+      OverloadedLabels
+      ImportQualifiedPost
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-home-modules
+  build-depends:
+      base
+    , conduit
+    , containers
+    , directory
+    , filepath
+    , hashable
+    , hspec
+    , microlens
+    , mtl
+    , process
+    , proto-lens
+    , random
+    , safe
+    , sc2api
+    , sc2monad
+    , split
+    , stm
+    , text
+    , transformers
+    , unordered-containers
+    , websockets
+  default-language: Haskell2010
