@@ -2,7 +2,7 @@
 module PlanM where
 
 import Actions
-import AgentBulidUtils (canAfford, findBuilder, findFreeGeyser, findPlacementPos, pylonRadius)
+import AgentBulidUtils (canAfford, findBuilder, findFreeGeyser, findPlacementPos, pylonRadius, agentUnitCost)
 import Conduit (filterC, (.|))
 import Control.Applicative ((<|>))
 import Control.Monad (guard)
@@ -12,7 +12,7 @@ import Control.Monad.Writer.Strict (WriterT, listen, runWriterT, tell)
 import Data.HashMap.Strict qualified as HashMap
 import Debug.Trace (traceM)
 import Footprint (getFootprint)
-import Lens.Micro ((.~), (^.))
+import Lens.Micro ((.~), (^.), (&))
 import Observation
 import SC2.Geometry (Pointable, distSquared, fromTuple)
 import SC2.Grid
@@ -22,80 +22,67 @@ import SC2.TechTree (unitToAbility)
 import StepMonad
 import Units (mapTilePosC, runC, unitTypeC)
 import Utils
+import Squad (Target)
+
+-- import Control.Monad
+-- import Control.Monad.Trans.Maybe
+-- import Control.Monad.Trans.Reader
+-- import Control.Monad.Trans.State
+-- import Control.Monad.Writer.Strict
 
 
-data SimState = SimState
-  { simGrid :: Grid
-  , simReserved :: Cost
-  -- , simSupply :: Int
-  -- , simWorkersCount :: Int
+data ActionCtx = ActionCtx
+  { actCtxId :: AbilityId
+  --, actCtxKind  :: ActionKind
+  , actCtxExec :: UnitTag
+  , actCtxTarget :: Target
+  , actCtxState :: ActionState
   }
+
+data ActionState
+  = Planned
+  | Issued
+  | InProgress
+  | Failed --ActionFailure
+
 
 type BuildOrder = [UnitTypeId]
 
--- PlanM stacks WriterT [Action] and StateT SimState on top of StepMonad:
---
---   PlanM d
---    ├─ WriterT [Action]          (accumulated build actions)
---    ├─ StateT SimState           (simulated grid + reserved resources)
---    └─ StepMonad d               (agent environment)
---         ├─ WriterT StepPlan
---         ├─ StateT d
---         └─ Reader (StaticInfo, UnitAbilities)
-type PlanM d a =
-  WriterT [Action] (StateT SimState (StepMonad d)) a
+reserveResources :: (HasObs d) => UnitTypeId -> StepMonad d ()
+reserveResources uid = do
+    obs <- agentObs
+    cost <- agentUnitCost uid
+    let minerals = obs ^. #playerCommon . #minerals
+        vespene  = obs ^. #playerCommon . #vespene
+        obs' = obs
+          & (#playerCommon . #minerals .~ (minerals - fromIntegral (mineralCost cost)))
+          & (#playerCommon . #vespene .~ (vespene - fromIntegral (gasCost cost)))
+    agentModifyObs (const obs')
+
+reserveLand :: (HasGrid d) => UnitTypeId ->TilePos -> StepMonad d ()
+reserveLand uid pos = do
+  agentModifyGrid (\g -> addMark g (getFootprint uid) pos)
 
 splitAffordable
   :: (HasObs d, HasGrid d)
   => BuildOrder
-  -> Cost
-  -> StepMonad d ([Action], BuildOrder)
-splitAffordable bo reserved = do
-  grid <- agentGrid
-  let initState = SimState grid reserved
-  ((remainingBO, actions), _) <-
-    runStateT
-      (runWriterT (runBO bo))
-      initState
-  return (actions, remainingBO)
+  -> StepMonad d BuildOrder
+splitAffordable bo = runBO bo
 
-planStep :: (HasObs d, HasGrid d) => UnitTypeId -> PlanM d Bool
-planStep uid = do
-  (si, _) <- lift . lift $ agentAsk
-  SimState grid reserved <- lift get
-  cres <- lift . lift $ tryCreate grid reserved uid
-  case cres of
-    Nothing ->
-      return False
-    Just (action, cost, grid') -> do
-      tell [action]
-      lift $ put SimState
-        { simGrid = grid'
-        , simReserved = reserved + cost
-        }
-      return $
-        getCmd action == unitToAbility (unitTraits si) uid
+runBO :: (HasObs d, HasGrid d) => BuildOrder -> StepMonad d BuildOrder
+runBO [] = pure []
+runBO (u:us) = do
+  ok <- tryCreate u
+  case ok of
+    Nothing -> pure (u:us)
+    Just _  -> runBO us
 
-runBO :: (HasObs d, HasGrid d) => BuildOrder -> PlanM d BuildOrder
-runBO [] = return []
-runBO bo@(uid:rest) = do
-  consumed <- planStep uid
-  if consumed
-    then runBO rest
-    else do
-      actions <- listen (return ()) --TODO: pattern match(r,R)
-      case snd actions of
-        [] -> return bo
-        _ -> runBO bo
+tryCreate :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe ())
+tryCreate uid = runMaybeT $ createAction uid
 
-tryCreate :: (HasObs d, HasGrid d) => Grid -> Cost -> UnitTypeId -> StepMonad d (Maybe (Action, Cost, Grid))
-tryCreate grid reserved uid = runMaybeT $ createAction grid reserved uid
-
-createAction :: (HasObs d, HasGrid d) => Grid -> Cost -> UnitTypeId -> MaybeStepMonad d (Action, Cost, Grid)
-createAction grid reserved order = do
-  (isAffordable, cost) <- lift $ canAfford order reserved
-  guard isAffordable
-  buildAction order grid reserved <|> pylonBuildAction grid reserved
+createAction :: (HasObs d, HasGrid d) => UnitTypeId -> MaybeStepMonad d ()
+createAction order = do
+  buildAction order <|> pylonBuildAction
 
 inBuildThechTree :: UnitTypeId -> StepMonad d Bool
 inBuildThechTree uid = do
@@ -107,53 +94,48 @@ inBuildThechTree uid = do
 distantEnough :: (Foldable t, Pointable p1, Pointable p2) => t p2 -> Float -> p1 -> Bool
 distantEnough units radius pos = all (\p -> distSquared pos p >= radius * radius) units
 
-pylonBuildAction :: (HasObs d, HasGrid d) => Grid -> Cost -> MaybeStepMonad d (Action, Cost, Grid)
-pylonBuildAction grid reservedRes = do
-  (isAffordable, cost) <- lift $ canAfford ProtossPylon reservedRes
-  guard isAffordable
+guardStepM :: StepMonad d Bool -> MaybeStepMonad d ()
+guardStepM action = lift action >>= guard
+
+pylonBuildAction :: (HasObs d, HasGrid d) => MaybeStepMonad d ()
+pylonBuildAction = do
+  guardStepM (canAfford ProtossPylon)
   si      <- lift agentStatic
   obs     <- lift agentObs
+  grid <- lift agentGrid
   let hasPylonsInProgress = not $ Prelude.null $ runC $
         unitsSelf obs .| unitTypeC ProtossPylon .| filterC (\u -> u ^. #buildProgress < 1)
   guard (not hasPylonsInProgress)
   builder <- MaybeT . return $ findBuilder obs
-  let footprint          = getFootprint ProtossPylon
-      findPylonPlacement = findPlacementPoint grid (heightMap si) footprint (tilePos (builder ^. #pos))
+  let findPylonPlacement = findPlacementPoint grid (heightMap si) (getFootprint ProtossPylon) (tilePos (builder ^. #pos))
       pylonsPos          = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
       pylonCriteria      = distantEnough pylonsPos
   pylonPos <- MaybeT . return $ findPylonPlacement (pylonCriteria pylonRadius)
-  let grid' = addMark grid footprint pylonPos
-      obs'  = addOrder (builder ^. #tag) PROTOSSBUILDPYLON obs
-  lift $ agentModify ((obsL .~ obs') . (gridL .~ grid'))
-  return (PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos), cost, grid')
-    `Utils.dbg` ("pylonPos: " ++ show pylonPos)
+  lift $ reserveLand ProtossPylon pylonPos
+  lift $ reserveResources ProtossPylon
+  lift $ command [PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos)]
+  -- `Utils.dbg` ("pylonPos: " ++ show pylonPos)
 
-buildAction :: (HasObs d, HasGrid d) => UnitTypeId -> Grid -> Cost -> MaybeStepMonad d (Action, Cost, Grid)
-buildAction ProtossAssimilator grid reservedRes = do
-  (isAffordable, cost) <- lift $ canAfford ProtossAssimilator reservedRes
-  guard isAffordable
+buildAction :: (HasObs d, HasGrid d) => UnitTypeId -> MaybeStepMonad d ()
+buildAction ProtossAssimilator = do
+  guardStepM (canAfford ProtossAssimilator)
   obs     <- lift agentObs
   builder <- MaybeT . return $ findBuilder obs
   geyser  <- MaybeT . return $ findFreeGeyser obs
-  let res = UnitCommand PROTOSSBUILDASSIMILATOR [builder] geyser
-  return (res, cost, grid)
-buildAction order _ reservedRes = do
-  enabled <- lift $ inBuildThechTree order
-  guard enabled
-  (isAffordable, cost) <- lift $ canAfford order reservedRes
-  guard isAffordable
+  lift $ reserveResources ProtossAssimilator
+  lift $ command [UnitCommand PROTOSSBUILDASSIMILATOR [builder] geyser]
+
+buildAction order = do
+  guardStepM (inBuildThechTree order)
+  guardStepM (canAfford order)
   si      <- lift agentStatic
   obs     <- lift agentObs
   grid    <- lift agentGrid
   let ability   = unitToAbility (unitTraits si) order
-      footprint = getFootprint order
   guard (isBuildAbility ability)
   builder <- MaybeT . return $ findBuilder obs
   pos     <- MaybeT . return $ findPlacementPos obs (expandsPos si) grid (heightMap si) order
-  let grid' = addMark grid footprint pos
-      obs'  = addOrder (builder ^. #tag) ability . addUnit order $ obs
   traceM $ show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!"
-  lift $ agentModifyObs (const obs')
-  lift $ agentModifyGrid (const grid')
-  let res = PointCommand ability [builder] (fromTuple pos)
-  return (res, cost, grid') `Utils.dbg` ("builder orders " ++ show (builder ^. #orders))
+  lift $ reserveResources order
+  lift $ reserveLand order pos
+  lift $ command[PointCommand ability [builder] (fromTuple pos)]

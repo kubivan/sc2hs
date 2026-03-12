@@ -71,13 +71,11 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-canAffordTech :: (HasObs d) => Tech -> StepMonad d (Bool, Cost)
-canAffordTech (TechUnit u) = canAfford u (Cost 0 0)
-canAffordTech _ = error "not implemented"
+agentUnitCost :: UnitTypeId -> StepMonad d Cost
+agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
 
-
-canAfford :: (HasObs d) => UnitTypeId -> Cost -> StepMonad d (Bool, Cost)
-canAfford uid r = do
+canAfford :: (HasObs d) => UnitTypeId -> StepMonad d Bool
+canAfford uid = do
     si <- agentStatic
     obs <- agentObs
 
@@ -85,7 +83,10 @@ canAfford uid r = do
         vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
         resources = Cost minerals vespene
         cost = unitCost (unitTraits si) uid
-    return (resources >= cost + r, cost) --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
+    return $ resources >= cost --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
+
+
+
 
 findBuilder :: Observation -> Maybe Unit
 findBuilder obs =

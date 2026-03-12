@@ -58,7 +58,7 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, partition, sortOn)
+import Data.List (find, partition, sortOn, (\\))
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
 import Data.ProtoLens (defMessage)
@@ -119,10 +119,8 @@ stepTowardsTechGoal goal = do
         case toBuild of
             TechUnit u -> do
                 if isUnitStructure u then do
-                    grid <- agentGrid
-                    cres <- tryCreate grid (Cost 0 0) u
+                    cres <- tryCreate u
                     case cres of
-                        Just (action, cost, grid') -> command [action]
                         _ -> return ()
                 else do -- Unit training
                     let trainAbility = trainDeps HashMap.! u
@@ -279,8 +277,7 @@ buildPylons = do
 
     -- TODO:
     guard (foodCap + expectedFoodCap - foodUsed < 2)
-    (act, _, _) <- pylonBuildAction grid (Cost 0 0)
-    lift $ command [act]
+    pylonBuildAction
 
 processQueue :: (HasObs d) => [Action] -> ([Action], [Action]) -> StepMonad d ([Action], [Action])
 processQueue (a : as) (q', interrupted) = do
@@ -569,28 +566,27 @@ agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
                     g
                     [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
             )
-        let reservedResources = actionsCost si queue'
-            interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
+        let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
         unless (null interruptedOrders) $
             agentChat ("interrupted: " ++ show interruptedOrders)
 
-        (affordableActions, orders') <- splitAffordable (interruptedOrders ++ buildOrder) reservedResources
+        orders' <- splitAffordable (interruptedOrders ++ buildOrder)
+        (_, StepPlan plannedActs _ _) <- listen (return ())
         -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
 
-        unless (null affordableActions) $ do
-            agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
+        -- unless (null affordableActions) $ do
+        --     agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
 
-        debugTexts
-            [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
-            | a <- affordableActions
-            ]
-        command affordableActions
+        -- debugTexts
+        --     [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
+        --     | a <- affordableActions
+        --     ]
         if null orders'
             then do
                 -- transit
                 return $ BuildArmyAndWin obs deathBall
             else
-                return $ BuildOrderExecutor orders' (queue' ++ affordableActions) obs abilities
+                return $ BuildOrderExecutor orders' (queue' ++ plannedActs) obs abilities
 agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     {-# SCC "agentStep:BuildArmyAndWin" #-}
     do
