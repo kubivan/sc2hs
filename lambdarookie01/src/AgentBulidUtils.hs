@@ -10,6 +10,8 @@
 module AgentBulidUtils where
 
 import Actions
+import BotDynamicState (HasBuildIntents, agentGetBuildIntents)
+import Intent (BuildIntentState (IntentIssued), biReservedCost, biState)
 import SC2.Grid(
     Grid,
     canPlaceBuilding,
@@ -25,6 +27,7 @@ import Observation (
     Cost (Cost),
     Observation,
     findNexus,
+  obsResources,
     obsUnitsC,
     unitsSelf,
  )
@@ -74,14 +77,14 @@ actionsCost si xs = sum $ actionCost si <$> xs
 agentUnitCost :: UnitTypeId -> StepMonad d Cost
 agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
 
-canAfford :: (HasObs d) => UnitTypeId -> StepMonad d Bool
+canAfford :: (HasObs d, HasBuildIntents d) => UnitTypeId -> StepMonad d Bool
 canAfford uid = do
     si <- agentStatic
     obs <- agentObs
+    intents <- agentGetBuildIntents
 
-    let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals)
-        vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-        resources = Cost minerals vespene
+    let reservedCost = sum [biReservedCost intent | intent <- HashMap.elems intents, biState intent == IntentIssued]
+        resources = obsResources obs - reservedCost
         cost = unitCost (unitTraits si) uid
     return $ resources >= cost --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
 
