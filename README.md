@@ -94,6 +94,27 @@ stack build sc2mapdump      # Fixture generator from live SC2 map
 stack test
 ```
 
+Run only the `lambdarookie01` StepMonad-oriented suite:
+
+```bash
+stack test lambdarookie01:lambdarookie01-test
+```
+
+Run Docker-backed integration scenarios (opt-in):
+
+```bash
+SC2_INTEGRATION=1 \
+SC2_TEST_MAP_PATH=/absolute/path/to/MyMap.SC2Map \
+stack test lambdarookie01:lambdarookie01-test
+```
+
+Optional integration env overrides:
+
+- `SC2_HOST` (default `127.0.0.1`)
+- `SC2_PORT` (default `5555`)
+- `SC2_DOCKER_IMAGE` (default `ghcr.io/kubivan/aiurgaze-sc2:latest`)
+- `SC2_CONTAINER_NAME` (default `sc2-int-test`)
+
 ### Generate Segmentation Fixtures from SC2 Map
 
 Use `sc2mapdump` to start SC2 in Docker, create a game from a map file, fetch game info, build merged traversal grid (placement + pathing + ramps), and dump it as ASCII.
