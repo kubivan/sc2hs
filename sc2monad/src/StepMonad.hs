@@ -56,6 +56,8 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text (pack)
 import Lens.Micro ((^.), (%~), Lens')
+import Debug.Trace (traceM)
+import Control.Monad (unless)
 
 
 obsApplyAction :: Action -> Observation -> Observation
@@ -65,10 +67,8 @@ obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) 
     ability = getCmd a
 
 command :: (HasObs d) => [Action] -> StepMonad d ()
-command acts = do
-    -- unless (null acts) $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
-    dyn <- agentGet
-
+command acts = unless (null acts) $ do -- $ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+    traceM $ "command: "  ++ show acts
     agentModifyObs $ \obs -> foldl' (flip obsApplyAction) obs acts
 
     tell (StepPlan acts [] [])
