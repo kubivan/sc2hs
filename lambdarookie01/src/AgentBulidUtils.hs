@@ -10,8 +10,6 @@
 module AgentBulidUtils where
 
 import Actions
-import BotDynamicState (HasBuildIntents, agentGetBuildIntents)
-import Intent (BuildIntentState (IntentIssued), biReservedCost, biState)
 import SC2.Grid(
     Grid,
     canPlaceBuilding,
@@ -59,6 +57,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
+import StepMonad (agentGetReservedCost)
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
@@ -77,18 +76,16 @@ actionsCost si xs = sum $ actionCost si <$> xs
 agentUnitCost :: UnitTypeId -> StepMonad d Cost
 agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
 
-canAfford :: (HasObs d, HasBuildIntents d) => UnitTypeId -> StepMonad d Bool
+canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
 canAfford uid = do
-    si <- agentStatic
-    obs <- agentObs
-    intents <- agentGetBuildIntents
-
-    let reservedCost = sum [biReservedCost intent | intent <- HashMap.elems intents, biState intent == IntentIssued]
-        resources = obsResources obs - reservedCost
-        cost = unitCost (unitTraits si) uid
-    return $ resources >= cost --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
+  si <- agentStatic
+  obs <- agentObs
+  reservedCost <- agentGetReservedCost
+  return $ (obsResources obs - reservedCost) >= unitCost (unitTraits si) uid
 
 
+agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
+agentFindBuilder = findBuilder <$> agentObs
 
 
 findBuilder :: Observation -> Maybe Unit

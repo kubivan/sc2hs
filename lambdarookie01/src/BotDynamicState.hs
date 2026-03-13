@@ -6,7 +6,8 @@ import Actions (UnitTag)
 import Army.Army
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Intent (BuildIntentStore)
+import Data.Map (Map)
+import Intent (HasBuildIntents (..), IntentId, IntentRuntime, IntentStore)
 import Lens.Micro (Lens', (%~), (^.))
 import Observation
 import SC2.Grid
@@ -17,13 +18,12 @@ import System.Random (Random, StdGen, randomR)
 data BotDynamicState = BotDynamicState
     { dsObs :: Observation
     , dsGrid :: Grid
+    , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
-    , dsBuildIntents :: BuildIntentStore
+    , dsIntents :: IntentStore BotDynamicState
     }
 
-class HasBuildIntents d where
-  buildIntentsL :: Lens' d BuildIntentStore
 
 instance HasObs BotDynamicState where
   obsL f s = f (dsObs s) <&> \o -> s { dsObs = o }
@@ -31,25 +31,29 @@ instance HasObs BotDynamicState where
 instance HasGrid BotDynamicState where
   gridL f s = f (dsGrid s) <&> \g -> s { dsGrid = g }
 
+instance HasReservedCost BotDynamicState where
+  reservedCostL f s = f (dsReservedCost s) <&> \c -> s { dsReservedCost = c }
+
 instance HasBuildIntents BotDynamicState where
-  buildIntentsL f s = f (dsBuildIntents s) <&> \intents -> s { dsBuildIntents = intents }
+  buildIntentsL f s = f (dsIntents s) <&> \intents -> s { dsIntents = intents }
 
 instance HasArmy BotDynamicState where
   getUnitMap bds = armyUnits $ dsArmy bds
 
-agentGetBuildIntents :: (HasBuildIntents d) => StepMonad d BuildIntentStore
+agentGetBuildIntents :: (HasBuildIntents d) => StepMonad d (IntentStore d)
 agentGetBuildIntents = agentGet <&> (^. buildIntentsL)
 
-agentModifyBuildIntents :: (HasBuildIntents d) => (BuildIntentStore -> BuildIntentStore) -> StepMonad d ()
+agentModifyBuildIntents :: (HasBuildIntents d) => (IntentStore d -> IntentStore d) -> StepMonad d ()
 agentModifyBuildIntents f = agentModify (buildIntentsL %~ f)
 
+
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
-setRandGen gen (BotDynamicState obs grid _ army intents) = BotDynamicState obs grid gen army intents
+setRandGen gen (BotDynamicState obs grid reserved _ army intents) = BotDynamicState obs grid reserved gen army intents
 
 getRandValue :: (Random a) => (a, a) -> BotDynamicState -> (a, BotDynamicState)
-getRandValue range (BotDynamicState obs grid gen army intents) =
+getRandValue range (BotDynamicState obs grid reserved gen army intents) =
     let (value, newGen) = randomR range gen
-     in (value, BotDynamicState obs grid newGen army intents)
+  in (value, BotDynamicState obs grid reserved newGen army intents)
 
 bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynamicState
 bdsUpdateArmyUnitData ds tag newUnitData = ds{dsArmy = dsArmy'}
