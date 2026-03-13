@@ -23,6 +23,7 @@ dependencies:
   - transformers
   - mtl
   - stm
+  - free
 
 ghc-options:
   - -Wall

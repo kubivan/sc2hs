@@ -20,18 +20,21 @@ import Observation
 import Army.Army
 import SC2.Geometry
 import SC2.Grid
+import SC2.Spatial qualified as Spatial
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
 
 import Squad
+import Squad qualified as Squad
 import Squad.Behavior
 import Squad.State
 import SC2.TechTree
 import SC2.Utils
 import StepMonad
 import PlanM
+import Intent hiding (unitHasOrder)
 import Units (
     Unit,
     closestC,
@@ -58,7 +61,8 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, partition, sortOn, (\\))
+import Data.List (find, nub, partition, sortOn, (\\))
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
 import Data.ProtoLens (defMessage)
@@ -80,7 +84,7 @@ deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
 
 
-stepTowardsTechGoal :: (HasObs d, HasGrid d) => [Tech] -> StepMonad d ()
+stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
     (si, abilities) <- agentAsk
 
@@ -141,7 +145,7 @@ stepTowardsTechGoal goal = do
 
 data BotPhase
     = Opening
-    | BuildOrderExecutor BuildOrder [Action] Observation UnitAbilities
+    | BuildOrderExecutor BuildOrder Observation UnitAbilities
     | BuildArmyAndWin Observation [Tech]
 
 strBotPhase :: BotPhase -> String
@@ -242,7 +246,7 @@ reassignIdleProbes = do
                         closestMineralTo nexus =
                             fromJust $
                                 runConduitPure $
-                                    obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
+                                    obsUnitsC obs .| filterC isMineral .| findC (\m -> Spatial.distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
                     command
                         [ UnitCommand HARVESTGATHERPROBE [harvester] (closestMineralTo nexus)
                         | (nexus, harvester) <- zip nexusesUnder probePool
@@ -253,7 +257,7 @@ reassignIdleProbes = do
                     -- TODO: obsolete, rewrite
                     command [UnitCommand HARVESTGATHERPROBE [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
-buildPylons :: (HasObs d, HasGrid d) => MaybeStepMonad d ()
+buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => MaybeStepMonad d ()
 buildPylons = do
     obs <- lift agentObs
     grid <- lift agentGrid
@@ -278,18 +282,6 @@ buildPylons = do
     -- TODO:
     guard (foodCap + expectedFoodCap - foodUsed < 2)
     pylonBuildAction
-
-processQueue :: (HasObs d) => [Action] -> ([Action], [Action]) -> StepMonad d ([Action], [Action])
-processQueue (a : as) (q', interrupted) = do
-    obs <- agentObs
-    case findAssignee obs a of
-        Nothing -> processQueue as (q', interrupted ++ [a])
-        Just u ->
-            if fromEnum (getCmd a) `elem` (u ^. #orders ^.. traverse . (Proto.abilityId . to fromIntegral))
-                then processQueue as (q' ++ [a], interrupted)
-                else processQueue as (q', interrupted)
-processQueue [] res = return res
-
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
@@ -330,11 +322,9 @@ agentResetGrid =
         agentModifyGrid (const grid')
 
 agentUpdateGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
-agentUpdateGrid f = 
+agentUpdateGrid f =
   {-# SCC "agentUpdateGrid" #-}
   agentModifyGrid f
-
-setArmy a st = st{dsArmy = a}
 
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
@@ -357,9 +347,7 @@ squadSeek squad = case squadState squad of
             Nothing -> return False
             (Just enemy) -> do
                 let squad' = squad{squadState = SSEngage (FSEngageFar (enemy ^. #tag))}
-                    squads' = replaceSquad squad' (armySquads (dsArmy ds))
-                    army' = (dsArmy ds){armySquads = squads'}
-                agentPut $ setArmy army' ds
+                agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
                 return True
 
 squadAssignToExploreBlind :: Squad -> StepMonad BotDynamicState Bool
@@ -371,7 +359,7 @@ squadAssignToExploreBlind squad = do
     case units of
         [] -> return False
         _ -> do
-            command [PointCommand ATTACKATTACK units (toPoint2D (enemyStartLocation si))]
+            command [PointCommand ATTACKATTACK units (fromTuple (enemyStartLocation si))]
             return True
 
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
@@ -398,9 +386,7 @@ squadAssignToExplore s = do
         rid <- MaybeT . pure $ listToMaybe availableRegionIds
         let region = regionsById HashMap.! rid
             squad' = squad{squadState = SSExploreRegion (FSExploreRegion rid region)}
-            squads' = replaceSquad squad' (armySquads (dsArmy ds))
-            army' = (dsArmy ds){armySquads = squads'}
-        lift $ agentPut $ setArmy army' ds
+        lift $ agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
         pure True
 
 squadAssignToExplore' :: Squad -> StepMonad BotDynamicState Bool
@@ -433,8 +419,7 @@ agentArmyControl = do
     let army = dsArmy ds
         squads = armySquads army
     squads' <- mapM processSquad squads
-    let army' = army{armySquads = squads'}
-    agentPut $ setArmy army' ds
+    agentModifyArmy (\current -> current{armySquads = squads'})
 
 data Env = Env
   { chokeQueue :: TQueue ()
@@ -481,8 +466,11 @@ data BotAgent
 
 makeDynamicState :: Observation -> Grid -> IO BotDynamicState
 makeDynamicState obs grid = do
-    gen <- newStdGen -- Initialize a new random generator
-    return $ BotDynamicState obs grid gen emptyArmy
+    gen <- newStdGen
+    return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy Map.empty
+
+rollbackIntentFromActionError :: BotDynamicState -> Proto.ActionError -> BotDynamicState
+rollbackIntentFromActionError ds _ = ds
 
 instance Agent BotAgent where
     makeAgent :: BotAgent -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO BotAgent
@@ -496,8 +484,8 @@ instance Agent BotAgent where
             grid = gridMerge pixelIsRamp gridPlacement gridPathing
             nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
             -- TODO: sort expands based on region connectivity: closest is not always the next one
-            expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
-            enemyStart = tilePos $ enemyBaseLocation gi obsRaw
+            expands = sortOn (Spatial.distSquared nexusPos) $ findExpands obsRaw grid heightMap
+            enemyStart = Spatial.toTilePos $ enemyBaseLocation gi obsRaw
 
             playerInfos = gi ^. #playerInfo
             playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
@@ -518,15 +506,15 @@ instance Agent BotAgent where
     agentStep EmptyBotAgent _ _ = error ("agent FSM broken")
     agentStep (BotAgent phase si ds env) obs abilities = do
         asyncResult <- readTVarIO (chokeVar env)
-        let si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
+        let errors = obs ^. #actionErrors
+            si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
             sm = agentStepPhase phase
-            (phase', plan, ds') = runStepM si' abilities ds { dsObs = obs ^. #observation } sm
+            dsPrepared = foldl rollbackIntentFromActionError (ds{dsObs = obs ^. #observation}) errors
+            (phase', plan, ds') = runStepM si' abilities dsPrepared sm
             actions = obs ^. #actions
-            errors = obs ^. #actionErrors
             tracedResult =
                 if not (null actions) || not (null errors)
-                    then -- trace ("taken actions " ++ show actions ++ "\nerrors " ++ show errors)
-                        (BotAgent phase' si' ds' env, plan)
+                    then (BotAgent phase' si' ds' env, plan)
                     else (BotAgent phase' si' ds' env, plan)
         pure tracedResult
 
@@ -542,51 +530,25 @@ agentStepPhase Opening =
             expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
         command [SelfCommand NEXUSTRAINPROBE [nexus]]
-        return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
-agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
+        return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
+agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}
     do
         debugUnitPos
         reassignIdleProbes
         trainProbes
-        si <- agentStatic
         obs <- agentObs
         abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
-            -- abilities /= abilitiesPrev then do
-            -- agentChat "buildingsSelfChanged !!!: "
             agentResetGrid
-        (queue', interruptedAbilities) <- processQueue queue ([], [])
-
-        -- add phantom building from the planner queue
-        agentUpdateGrid
-            ( \g ->
-                foldl
-                    (\ga (u, p) -> gridPlace ga u p)
-                    g
-                    [(abilityToUnit (unitTraits si) . getCmd $ a, tilePos . getTarget $ a) | a <- queue']
-            )
-        let interruptedOrders = abilityToUnit (unitTraits si) . getCmd <$> interruptedAbilities
-        unless (null interruptedOrders) $
-            agentChat ("interrupted: " ++ show interruptedOrders)
-
-        orders' <- splitAffordable (interruptedOrders ++ buildOrder)
-        (_, StepPlan plannedActs _ _) <- listen (return ())
-        -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
-
-        -- unless (null affordableActions) $ do
-        --     agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
-
-        -- debugTexts
-        --     [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
-        --     | a <- affordableActions
-        --     ]
-        if null orders'
+        void $ runMaybeT buildPylons
+        buildOrder' <- runBO buildOrder
+        if null buildOrder'
             then do
                 -- transit
                 return $ BuildArmyAndWin obs deathBall
             else
-                return $ BuildOrderExecutor orders' (queue' ++ plannedActs) obs abilities
+                return $ BuildOrderExecutor buildOrder' obs abilities
 agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     {-# SCC "agentStep:BuildArmyAndWin" #-}
     do

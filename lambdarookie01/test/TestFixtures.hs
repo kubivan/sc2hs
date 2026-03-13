@@ -12,9 +12,10 @@ module TestFixtures (
 import Army.Army (emptyArmy)
 import BotDynamicState (BotDynamicState (..))
 import Data.HashMap.Strict qualified as HashMap
+import Data.Map qualified as Map
 import Data.ProtoLens (defMessage)
 import Data.Word (Word32, Word64)
-import Observation (Observation)
+import Observation (Cost (..), Observation)
 import SC2.Grid (Grid, gridFromLines)
 import SC2.Ids.UnitTypeId (UnitTypeId)
 import SC2.Proto.Data (Alliance, Point)
@@ -60,9 +61,10 @@ mkDynamicState obs grid =
     BotDynamicState
         { dsObs = obs
         , dsGrid = grid
+        , dsReservedCost = Cost 0 0
         , dsRandGen = mkStdGen 7
         , dsArmy = emptyArmy
-        , dsBuildIntents = HashMap.empty
+        , dsIntents = Map.empty
         }
 
 gridFromFile :: FilePath -> IO Grid

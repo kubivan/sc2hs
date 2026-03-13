@@ -19,12 +19,14 @@ import SC2.Grid(
     tilePos
  )
 import SC2.TechTree
+import SC2.Spatial qualified as Spatial
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Observation (
-    Cost (Cost),
+    Cost,
     Observation,
     findNexus,
+    obsResources,
     obsUnitsC,
     unitsSelf,
  )
@@ -32,6 +34,7 @@ import Proto.S2clientprotocol.Raw qualified as R
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import StepMonad
+import StepMonadUtils (unitCost)
 import Units (
     Unit,
     UnitOrder,
@@ -43,14 +46,9 @@ import Units (
     toEnum',
     unitTypeC,
  )
-import SC2.Geometry (
-    distManhattan,
-    distSquared,
- )
 
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
-import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sortBy)
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
@@ -60,32 +58,22 @@ import Safe (headMay)
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
 
-unitCost :: UnitTraits -> UnitTypeId -> Cost
-unitCost traits uid = case traits HashMap.!? uid of
-    Just t -> Cost (fromIntegral $ t ^. #mineralCost) (fromIntegral $ t ^. #vespeneCost)
-    Nothing -> Cost 0 0
-
 actionCost :: StaticInfo -> Action -> Cost
 actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCmd
 
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-agentUnitCost :: UnitTypeId -> StepMonad d Cost
-agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
-
-canAfford :: (HasObs d) => UnitTypeId -> StepMonad d Bool
+canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
 canAfford uid = do
-    si <- agentStatic
-    obs <- agentObs
-
-    let minerals = fromIntegral $ obs ^. (#playerCommon . #minerals)
-        vespene = fromIntegral $ obs ^. (#playerCommon . #vespene)
-        resources = Cost minerals vespene
-        cost = unitCost (unitTraits si) uid
-    return $ resources >= cost --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
+  si <- agentStatic
+  obs <- agentObs
+  reservedCost <- agentGetReservedCost
+  return $ (obsResources obs - reservedCost) >= unitCost (unitTraits si) uid
 
 
+agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
+agentFindBuilder = findBuilder <$> agentObs
 
 
 findBuilder :: Observation -> Maybe Unit
@@ -130,7 +118,7 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
     assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
     nexusPos = tilePos $ findNexus obs ^. #pos
     geysers = runC $ obsUnitsC obs .| filterC isGeyser
-    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
+    geysersSorted = sortBy (compare `on` (\x -> Spatial.distSquared x nexusPos)) geysers
 
 -- ##################################### UNIT UTILS #####################################################################
 
@@ -153,7 +141,7 @@ unitIsAssignedTo building unit
     | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
   where
     targets = mapMaybe getTargetUnitTag (unit ^. #orders)
-    closeEnough = distManhattan (building ^. #pos) (unit ^. #pos) <= 12
+    closeEnough = Spatial.distManhattan building unit <= 12
     withoutVespene = unit ^. #vespeneContents == 0
 
 unitIsAssignedToAny :: [Units.Unit] -> Units.Unit -> Bool
