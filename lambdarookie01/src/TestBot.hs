@@ -26,6 +26,7 @@ import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
 
 import Squad
+import Squad qualified as Squad
 import Squad.Behavior
 import Squad.State
 import SC2.TechTree
@@ -59,7 +60,8 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, partition, sortOn, (\\))
+import Data.List (find, nub, partition, sortOn, (\\))
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
 import Data.ProtoLens (defMessage)
@@ -81,7 +83,7 @@ deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
 
 
-stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d) => [Tech] -> StepMonad d ()
+stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
     (si, abilities) <- agentAsk
 
@@ -142,7 +144,7 @@ stepTowardsTechGoal goal = do
 
 data BotPhase
     = Opening
-    | BuildOrderExecutor BuildOrder [BuildIntentId] Observation UnitAbilities
+    | BuildOrderExecutor BuildOrder Observation UnitAbilities
     | BuildArmyAndWin Observation [Tech]
 
 strBotPhase :: BotPhase -> String
@@ -254,7 +256,7 @@ reassignIdleProbes = do
                     -- TODO: obsolete, rewrite
                     command [UnitCommand HARVESTGATHERPROBE [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
-buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d) => MaybeStepMonad d ()
+buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => MaybeStepMonad d ()
 buildPylons = do
     obs <- lift agentObs
     grid <- lift agentGrid
@@ -272,38 +274,13 @@ buildPylons = do
                 runC $
                     unitsSelf obs
                         .| unitTypeC ProtossProbe
-                        .| filterC (unitHasOrder PROTOSSBUILDPYLON)
+                        .| filterC (TestBot.unitHasOrder PROTOSSBUILDPYLON)
 
         expectedFoodCap = 8 * incompletePylonsCount + 8 * orderedPylonsCount
 
     -- TODO:
     guard (foodCap + expectedFoodCap - foodUsed < 2)
     pylonBuildAction
-
-processQueue :: [BuildIntentId] -> ([BuildIntentId], [UnitTypeId]) -> StepMonad BotDynamicState ([BuildIntentId], [UnitTypeId])
-processQueue (intentId : rest) (active, interrupted) = do
-    obs <- agentObs
-    store <- agentGetBuildIntents
-    case HashMap.lookup intentId store of
-        Nothing -> processQueue rest (active, interrupted)
-        Just intent ->
-            if biState intent == IntentRolledBack
-                then processQueue rest (active, interrupted ++ [biUnitType intent])
-                else
-                    case find (\u -> u ^. #tag == biExecutor intent) (obs ^. (#rawData . #units)) of
-                        Nothing -> do
-                            rollbackBuildIntent RollbackExecutorMissing intentId
-                            processQueue rest (active, interrupted ++ [biUnitType intent])
-                        Just executor ->
-                            if fromEnum (biAbility intent) `elem` (executor ^. #orders ^.. traverse . (Proto.abilityId . to fromIntegral))
-                                then do
-                                    confirmBuildIntent intentId
-                                    processQueue rest (active ++ [intentId], interrupted)
-                                else do
-                                    rollbackBuildIntent RollbackInterrupted intentId
-                                    processQueue rest (active, interrupted ++ [biUnitType intent])
-processQueue [] res = pure res
-
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
@@ -496,27 +473,10 @@ data BotAgent
 makeDynamicState :: Observation -> Grid -> IO BotDynamicState
 makeDynamicState obs grid = do
     gen <- newStdGen
-    return $ BotDynamicState obs grid gen emptyArmy HashMap.empty
+    return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy Map.empty
 
 rollbackIntentFromActionError :: BotDynamicState -> Proto.ActionError -> BotDynamicState
-rollbackIntentFromActionError ds err = case (err ^. #maybe'unitTag, err ^. #maybe'abilityId) of
-    (Just unitTag, Just abilityRaw) ->
-        let intentId = (unitTag, toEnum (fromIntegral abilityRaw) :: AbilityId)
-         in case HashMap.lookup intentId (dsBuildIntents ds) of
-                Nothing -> ds
-                Just intent ->
-                    let grid' =
-                            foldl
-                                (\acc markRef -> removeMark acc (getFootprint (gmrUnitType markRef)) (gmrPos markRef))
-                                (dsGrid ds)
-                                (biGhostMarks intent)
-                        intents' =
-                            HashMap.adjust
-                                (\bi -> bi{biState = IntentRolledBack, biRollbackReason = Just RollbackActionError})
-                                intentId
-                                (dsBuildIntents ds)
-                     in ds{dsGrid = grid', dsBuildIntents = intents'}
-    _ -> ds
+rollbackIntentFromActionError ds _ = ds
 
 instance Agent BotAgent where
     makeAgent :: BotAgent -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO BotAgent
@@ -576,56 +536,24 @@ agentStepPhase Opening =
             expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
         command [SelfCommand NEXUSTRAINPROBE [nexus]]
-        return $ BuildOrderExecutor (fourGateBuild ++ expandBuild) [] obs (HashMap.fromList [])
-agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
+        return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
+agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}
     do
         debugUnitPos
         reassignIdleProbes
         trainProbes
-        si <- agentStatic
         obs <- agentObs
         abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
-            -- abilities /= abilitiesPrev then do
-            -- agentChat "buildingsSelfChanged !!!: "
             agentResetGrid
-        (queue', interruptedOrders) <- processQueue queue ([], [])
-        store <- agentGetBuildIntents
-
-        -- add phantom building from active intents
-        agentUpdateGrid
-            ( \g ->
-                foldl
-                    (\ga (u, p) -> gridPlace ga u p)
-                    g
-                    [ (gmrUnitType markRef, gmrPos markRef)
-                    | intentId <- queue'
-                    , Just intent <- [HashMap.lookup intentId store]
-                    , markRef <- biGhostMarks intent
-                    ]
-            )
-        unless (null interruptedOrders) $
-            agentChat ("interrupted: " ++ show interruptedOrders)
-
-        orders' <- splitAffordable (interruptedOrders ++ buildOrder)
-        (_, StepPlan plannedActs _ _) <- listen (return ())
-        let plannedIntentIds = mapMaybe actionIntentId plannedActs
-        -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
-
-        -- unless (null affordableActions) $ do
-        --     agentChat ("scheduling: " ++ show affordableActions `dbg` ("!!! affordable " ++ show affordableActions))
-
-        -- debugTexts
-        --     [ ("planned " ++ show (getCmd a), defMessage & #x .~ getTarget a ^. #x & #y .~ getTarget a ^. #y & #z .~ 10)
-        --     | a <- affordableActions
-        --     ]
-        if null orders'
+        void $ runMaybeT buildPylons
+        buildOrder' <- runBO buildOrder
+        if null buildOrder'
             then do
-                -- transit
                 return $ BuildArmyAndWin obs deathBall
             else
-                return $ BuildOrderExecutor orders' (queue' ++ plannedIntentIds) obs abilities
+                return $ BuildOrderExecutor buildOrder' obs abilities
 agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     {-# SCC "agentStep:BuildArmyAndWin" #-}
     do
