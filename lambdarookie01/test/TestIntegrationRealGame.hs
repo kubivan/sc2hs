@@ -26,6 +26,7 @@ import SC2.Ids.AbilityId (AbilityId (NEXUSTRAINPROBE, PROTOSSBUILDPYLON))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossCyberneticsCore, ProtossGateway, ProtossNexus, ProtossProbe, ProtossPylon, ProtossRoboticsFacility))
 import SC2.Launcher.Participant (Participant (..))
 import SC2.Proto.Data (Alliance (Self), Map (LocalMap))
+import Squad (Target (..))
 import SC2.Proto.Requests qualified as Proto
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
@@ -186,14 +187,9 @@ testPreserveIntents conn = do
             let intentId = (u ^. #tag, NEXUSTRAINPROBE)
                 intent =
                     BuildIntent
-                        { biId = intentId
-                        , biExecutor = u ^. #tag
-                        , biAbility = NEXUSTRAINPROBE
-                        , biActions = [IntentReserveAction (Cost 50 0), IntentBuildAction (IntentBuildCommand (u ^. #tag) NEXUSTRAINPROBE IntentBuildNoTarget)]
+                        { biActions = [IntentReserveAction (Cost 50 0), IntentBuildAction (IntentBuildCommand (u ^. #tag) NEXUSTRAINPROBE ProtossProbe Nothing)]
                         , biRollbackStack = [IntentReserveAction (Cost 50 0)]
-                        , biUnitType = ProtossProbe
                         , biReservedCost = Cost 50 0
-                        , biGhostMarks = []
                         , biIssuedAtFrame = obs ^. #gameLoop
                         , biState = IntentIssued
                         , biRollbackReason = Nothing
@@ -223,14 +219,9 @@ testRollbackAndInterrupt conn = do
             let intentId = (probe ^. #tag, PROTOSSBUILDPYLON)
                 intent =
                     BuildIntent
-                        { biId = intentId
-                        , biExecutor = probe ^. #tag
-                        , biAbility = PROTOSSBUILDPYLON
-                        , biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand (probe ^. #tag) PROTOSSBUILDPYLON (IntentBuildAt (30, 30)))]
+                        { biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand (probe ^. #tag) PROTOSSBUILDPYLON ProtossPylon (Just (TargetPos (30, 30))))]
                         , biRollbackStack = [IntentReserveAction (Cost 100 0)]
-                        , biUnitType = ProtossPylon
                         , biReservedCost = Cost 100 0
-                        , biGhostMarks = []
                         , biIssuedAtFrame = obs ^. #gameLoop
                         , biState = IntentIssued
                         , biRollbackReason = Nothing

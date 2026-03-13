@@ -26,6 +26,7 @@ import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
 
 import Squad
+import Squad qualified as Squad
 import Squad.Behavior
 import Squad.State
 import SC2.TechTree
@@ -81,7 +82,7 @@ deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
 
 
-stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d) => [Tech] -> StepMonad d ()
+stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
     (si, abilities) <- agentAsk
 
@@ -254,7 +255,7 @@ reassignIdleProbes = do
                     -- TODO: obsolete, rewrite
                     command [UnitCommand HARVESTGATHERPROBE [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
-buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d) => MaybeStepMonad d ()
+buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => MaybeStepMonad d ()
 buildPylons = do
     obs <- lift agentObs
     grid <- lift agentGrid
@@ -284,24 +285,26 @@ processQueue :: [BuildIntentId] -> ([BuildIntentId], [UnitTypeId]) -> StepMonad 
 processQueue (intentId : rest) (active, interrupted) = do
     obs <- agentObs
     store <- agentGetBuildIntents
+    let (executorTag, ability) = intentId
+        interruptedWith intent = maybe interrupted (\u -> interrupted ++ [u]) (intentUnitType intent)
     case HashMap.lookup intentId store of
         Nothing -> processQueue rest (active, interrupted)
         Just intent ->
             if biState intent == IntentRolledBack
-                then processQueue rest (active, interrupted ++ [biUnitType intent])
+                then processQueue rest (active, interruptedWith intent)
                 else
-                    case find (\u -> u ^. #tag == biExecutor intent) (obs ^. (#rawData . #units)) of
+                    case find (\u -> u ^. #tag == executorTag) (obs ^. (#rawData . #units)) of
                         Nothing -> do
                             rollbackBuildIntent RollbackExecutorMissing intentId
-                            processQueue rest (active, interrupted ++ [biUnitType intent])
+                            processQueue rest (active, interruptedWith intent)
                         Just executor ->
-                            if fromEnum (biAbility intent) `elem` (executor ^. #orders ^.. traverse . (Proto.abilityId . to fromIntegral))
+                            if fromEnum ability `elem` (executor ^. #orders ^.. traverse . (Proto.abilityId . to fromIntegral))
                                 then do
                                     confirmBuildIntent intentId
                                     processQueue rest (active ++ [intentId], interrupted)
                                 else do
                                     rollbackBuildIntent RollbackInterrupted intentId
-                                    processQueue rest (active, interrupted ++ [biUnitType intent])
+                                    processQueue rest (active, interruptedWith intent)
 processQueue [] res = pure res
 
 
@@ -505,17 +508,18 @@ rollbackIntentFromActionError ds err = case (err ^. #maybe'unitTag, err ^. #mayb
          in case HashMap.lookup intentId (dsBuildIntents ds) of
                 Nothing -> ds
                 Just intent ->
-                    let grid' =
-                            foldl
-                                (\acc markRef -> removeMark acc (getFootprint (gmrUnitType markRef)) (gmrPos markRef))
-                                (dsGrid ds)
-                                (biGhostMarks intent)
+                    let rollbackState dyn (IntentReserveAction cost) = dyn{dsReservedCost = dsReservedCost dyn - cost}
+                        rollbackState dyn (IntentBuildAction cmd) =
+                            case ibcTarget cmd of
+                                Just (Squad.TargetPos pos) -> dyn{dsGrid = removeMark (dsGrid dyn) (getFootprint (ibcUnitType cmd)) pos}
+                                _ -> dyn
+                        dsRolled = foldl rollbackState ds (biRollbackStack intent)
                         intents' =
                             HashMap.adjust
                                 (\bi -> bi{biState = IntentRolledBack, biRollbackReason = Just RollbackActionError})
                                 intentId
-                                (dsBuildIntents ds)
-                     in ds{dsGrid = grid', dsBuildIntents = intents'}
+                                (dsBuildIntents dsRolled)
+                     in dsRolled{dsBuildIntents = intents'}
     _ -> ds
 
 instance Agent BotAgent where
@@ -599,10 +603,11 @@ agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
                 foldl
                     (\ga (u, p) -> gridPlace ga u p)
                     g
-                    [ (gmrUnitType markRef, gmrPos markRef)
+                    [ (ibcUnitType cmd, pos)
                     | intentId <- queue'
                     , Just intent <- [HashMap.lookup intentId store]
-                    , markRef <- biGhostMarks intent
+                    , cmd <- intentBuildCommands intent
+                    , Just (Squad.TargetPos pos) <- [ibcTarget cmd]
                     ]
             )
         unless (null interruptedOrders) $

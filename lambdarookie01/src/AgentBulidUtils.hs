@@ -10,8 +10,7 @@
 module AgentBulidUtils where
 
 import Actions
-import BotDynamicState (HasBuildIntents, agentGetBuildIntents)
-import Intent (BuildIntentState (IntentIssued), biReservedCost, biState)
+import BotDynamicState (HasReservedCost, agentGetReservedCost)
 import SC2.Grid(
     Grid,
     canPlaceBuilding,
@@ -77,16 +76,12 @@ actionsCost si xs = sum $ actionCost si <$> xs
 agentUnitCost :: UnitTypeId -> StepMonad d Cost
 agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
 
-canAfford :: (HasObs d, HasBuildIntents d) => UnitTypeId -> StepMonad d Bool
+canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
 canAfford uid = do
-    si <- agentStatic
-    obs <- agentObs
-    intents <- agentGetBuildIntents
-
-    let reservedCost = sum [biReservedCost intent | intent <- HashMap.elems intents, biState intent == IntentIssued]
-        resources = obsResources obs - reservedCost
-        cost = unitCost (unitTraits si) uid
-    return $ resources >= cost --`Utils.dbg` show ("canAfford: cost of ", r, "is ", cost, "we have ", resources )
+  si <- agentStatic
+  obs <- agentObs
+  reservedCost <- agentGetReservedCost
+  return $ (obsResources obs - reservedCost) >= unitCost (unitTraits si) uid
 
 
 
@@ -131,19 +126,9 @@ findFreeGeyser :: Observation -> Maybe Units.Unit
 findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
   where
     assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-    nexusPositions =
-        runC $
-            unitsSelf obs
-                .| unitTypeC ProtossNexus
-                .| filterC (\n -> n ^. #buildProgress == 1)
-                .| mapC (tilePos . view #pos)
-    geysersNearNexus geyser = any (\nPos -> distManhattan (geyser ^. #pos) nPos <= 12) nexusPositions
-    geysers = runC $ obsUnitsC obs .| filterC isGeyser .| filterC geysersNearNexus
-    nearestNexusDistSq geyser = minimum $ map (distSquared (geyser ^. #pos)) nexusPositions
-    geysersSorted =
-        if null nexusPositions
-            then []
-            else sortBy (compare `on` nearestNexusDistSq) geysers
+    nexusPos = tilePos $ findNexus obs ^. #pos
+    geysers = runC $ obsUnitsC obs .| filterC isGeyser
+    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
 
 -- ##################################### UNIT UTILS #####################################################################
 

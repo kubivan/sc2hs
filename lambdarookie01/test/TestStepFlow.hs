@@ -14,6 +14,7 @@ import SC2.Grid (addMark, gridFromLines, removeMark)
 import SC2.Ids.AbilityId (AbilityId (NEXUSTRAINPROBE, PROTOSSBUILDPYLON))
 import SC2.Ids.UnitTypeId (UnitTypeId (NeutralMineralField, ProtossNexus, ProtossProbe, ProtossPylon))
 import SC2.Proto.Data (Alliance (Neutral, Self))
+import Squad (Target (..))
 import StepMonad (runStepM)
 import Test.Hspec
 import TestBot (BotPhase (..), agentStepPhase, processQueue, rollbackIntentFromActionError)
@@ -44,14 +45,9 @@ stepFlowTests = describe "Step flow (mocked)" $ do
             bid = (11, PROTOSSBUILDPYLON)
             rolledBackIntent =
                 BuildIntent
-                    { biId = bid
-                    , biExecutor = 11
-                    , biAbility = PROTOSSBUILDPYLON
-                    , biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand 11 PROTOSSBUILDPYLON IntentBuildNoTarget)]
+                    { biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand 11 PROTOSSBUILDPYLON ProtossPylon Nothing)]
                     , biRollbackStack = [IntentReserveAction (Cost 100 0)]
-                    , biUnitType = ProtossPylon
                     , biReservedCost = Cost 100 0
-                    , biGhostMarks = []
                     , biIssuedAtFrame = 9
                     , biState = IntentRolledBack
                     , biRollbackReason = Just RollbackActionError
@@ -71,14 +67,9 @@ stepFlowTests = describe "Step flow (mocked)" $ do
             gridMarked = addMark baseGrid (getFootprint ProtossPylon) markedPos
             intent =
                 BuildIntent
-                    { biId = bid
-                    , biExecutor = 77
-                    , biAbility = PROTOSSBUILDPYLON
-                    , biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand 77 PROTOSSBUILDPYLON (IntentBuildAt markedPos))]
-                    , biRollbackStack = [IntentBuildAction (IntentBuildCommand 77 PROTOSSBUILDPYLON (IntentBuildAt markedPos)), IntentReserveAction (Cost 100 0)]
-                    , biUnitType = ProtossPylon
+                    { biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand 77 PROTOSSBUILDPYLON ProtossPylon (Just (TargetPos markedPos)))]
+                    , biRollbackStack = [IntentBuildAction (IntentBuildCommand 77 PROTOSSBUILDPYLON ProtossPylon (Just (TargetPos markedPos))), IntentReserveAction (Cost 100 0)]
                     , biReservedCost = Cost 100 0
-                    , biGhostMarks = [GhostMarkRef ProtossPylon markedPos]
                     , biIssuedAtFrame = 20
                     , biState = IntentIssued
                     , biRollbackReason = Nothing
