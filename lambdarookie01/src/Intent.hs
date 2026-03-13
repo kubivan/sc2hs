@@ -28,13 +28,31 @@ data GhostMarkRef = GhostMarkRef
   }
   deriving (Eq, Show)
 
+data IntentAction
+  = IntentReserveAction Cost
+  | IntentBuildAction IntentBuildCommand
+  deriving (Show)
+
+data IntentBuildTarget
+  = IntentBuildNoTarget
+  | IntentBuildAt TilePos
+  deriving (Eq, Show)
+
+data IntentBuildCommand = IntentBuildCommand
+  { ibcExecutor :: UnitTag
+  , ibcAbility :: AbilityId
+  , ibcTarget :: IntentBuildTarget
+  }
+  deriving (Eq, Show)
+
 type BuildIntentId = (UnitTag, AbilityId)
 
 data BuildIntent = BuildIntent
   { biId :: BuildIntentId
   , biExecutor :: UnitTag
   , biAbility :: AbilityId
-  , biAction :: Action
+  , biActions :: [IntentAction]
+  , biRollbackStack :: [IntentAction]
   , biUnitType :: UnitTypeId
   , biReservedCost :: Cost
   , biGhostMarks :: [GhostMarkRef]
@@ -45,6 +63,8 @@ data BuildIntent = BuildIntent
   deriving (Show)
 
 type BuildIntentStore = HashMap BuildIntentId BuildIntent
+
+type IntentOrder = [BuildIntent]
 
 actionIntentId :: Action -> Maybe BuildIntentId
 actionIntentId action = case getExecutors action of

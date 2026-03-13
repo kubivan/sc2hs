@@ -35,12 +35,20 @@ issueBuildIntent uid ability builder maybePos action = do
     let frameIssued = obs ^. #gameLoop
         intentId = (builder ^. #tag, ability)
         markRefs = maybe [] (\pos -> [GhostMarkRef uid pos]) maybePos
+        buildCmd =
+            IntentBuildCommand
+                { ibcExecutor = builder ^. #tag
+                , ibcAbility = ability
+                , ibcTarget = maybe IntentBuildNoTarget IntentBuildAt maybePos
+                }
+        rollbackStack = [IntentBuildAction buildCmd, IntentReserveAction cost]
         intent =
             BuildIntent
                 { biId = intentId
                 , biExecutor = builder ^. #tag
                 , biAbility = ability
-                , biAction = action
+                , biActions = [IntentReserveAction cost, IntentBuildAction buildCmd]
+                , biRollbackStack = rollbackStack
                 , biUnitType = uid
                 , biReservedCost = cost
                 , biGhostMarks = markRefs

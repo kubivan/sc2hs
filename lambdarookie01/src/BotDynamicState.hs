@@ -17,7 +17,7 @@ import System.Random (Random, StdGen, randomR)
 data BotDynamicState = BotDynamicState
     { dsObs :: Observation
     , dsGrid :: Grid
-  , dsReservedCost :: Cost
+    , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
     , dsBuildIntents :: BuildIntentStore
