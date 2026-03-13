@@ -59,7 +59,7 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, partition, sortOn, (\\))
+import Data.List (find, nub, partition, sortOn, (\\))
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
 import Data.ProtoLens (defMessage)
@@ -496,7 +496,7 @@ data BotAgent
 makeDynamicState :: Observation -> Grid -> IO BotDynamicState
 makeDynamicState obs grid = do
     gen <- newStdGen
-    return $ BotDynamicState obs grid gen emptyArmy HashMap.empty
+    return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy HashMap.empty
 
 rollbackIntentFromActionError :: BotDynamicState -> Proto.ActionError -> BotDynamicState
 rollbackIntentFromActionError ds err = case (err ^. #maybe'unitTag, err ^. #maybe'abilityId) of
@@ -608,8 +608,8 @@ agentStepPhase (BuildOrderExecutor buildOrder queue obsPrev abilitiesPrev) =
         unless (null interruptedOrders) $
             agentChat ("interrupted: " ++ show interruptedOrders)
 
-        orders' <- splitAffordable (interruptedOrders ++ buildOrder)
-        (_, StepPlan plannedActs _ _) <- listen (return ())
+        let retriedOrders = nub interruptedOrders
+        (orders', StepPlan plannedActs _ _) <- listen (splitAffordable (buildOrder ++ retriedOrders))
         let plannedIntentIds = mapMaybe actionIntentId plannedActs
         -- trace ("affordableActions : " ++ (show . length $ affordableActions) ++ " orders': " ++ (show . length $ orders')) (return ())
 

@@ -9,7 +9,7 @@ import BotDynamicState (BotDynamicState (..), dsBuildIntents)
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, bracket, catch)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (isInfixOf)
+import Data.List (foldl', isInfixOf)
 import Data.Maybe (listToMaybe)
 import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()
@@ -270,10 +270,10 @@ testBuildOrderCompletesBuildings conn = do
         BotAgent _ staticInfo ds env ->
             pure $ BotAgent (BuildOrderExecutor targetBuildOrder [] obs abilityMap) staticInfo ds{dsObs = obs} env
 
-    waitUntilBuildOrderComplete conn 60000 injected
+    waitUntilBuildOrderComplete conn 8000 injected
 
 waitUntilBuildOrderComplete :: WS.Connection -> Int -> BotAgent -> IO ()
-waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent
+waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
   where
     requiredCounts =
         HashMap.fromList
@@ -285,7 +285,40 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent
             , (ProtossNexus, 2)
             ]
 
-    go n agent
+    interestingTypes =
+        [ ProtossPylon
+        , ProtossAssimilator
+        , ProtossGateway
+        , ProtossCyberneticsCore
+        , ProtossRoboticsFacility
+        , ProtossNexus
+        ]
+
+    phaseName :: BotPhase -> String
+    phaseName Opening = "Opening"
+    phaseName BuildOrderExecutor{} = "BuildOrderExecutor"
+    phaseName BuildArmyAndWin{} = "BuildArmyAndWin"
+
+    formatCounts :: HashMap.HashMap UnitTypeId Int -> String
+    formatCounts counts =
+        show
+            [ (u, HashMap.lookupDefault 0 u counts)
+            | u <- interestingTypes
+            ]
+
+    intentStats :: BuildIntentStore -> (Int, Int, Int)
+    intentStats store =
+        foldl'
+            (\(issued, confirmed, rolled) bi ->
+                case biState bi of
+                    IntentIssued -> (issued + 1, confirmed, rolled)
+                    IntentConfirmed -> (issued, confirmed + 1, rolled)
+                    IntentRolledBack -> (issued, confirmed, rolled + 1)
+            )
+            (0, 0, 0)
+            (HashMap.elems store)
+
+    go n agent prevStatus
         | n >= maxTicks =
             expectationFailure $ "Timed out waiting for build-order completion after " <> show maxTicks <> " ticks"
         | otherwise = do
@@ -296,16 +329,49 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent
                     let obs = dsObs ds
                         counts = countCompletedSelfBuildings obs
                         allBuildingsPresent = allRequiredPresent requiredCounts counts
-                        intentsCompleted = all ((/= IntentIssued) . biState) (HashMap.elems (dsBuildIntents ds))
+                        (issuedCount, confirmedCount, rolledBackCount) = intentStats (dsBuildIntents ds)
+                        intentsCompleted = issuedCount == 0
                         queueCompleted =
                             case phase of
                                 BuildArmyAndWin{} -> True
                                 BuildOrderExecutor bo queue _ _ -> null bo && null queue
                                 Opening -> False
+                        queueLens =
+                            case phase of
+                                BuildOrderExecutor bo queue _ _ -> (length bo, length queue)
+                                _ -> (0, 0)
+                        status =
+                            ( phaseName phase
+                            , fst queueLens
+                            , snd queueLens
+                            , issuedCount
+                            , confirmedCount
+                            , rolledBackCount
+                            , allBuildingsPresent
+                            )
+
+                    if n `mod` 100 == 0 || Just status /= prevStatus
+                        then
+                            putStrLn $
+                                "[build-order-progress] tick="
+                                    <> show n
+                                    <> " phase="
+                                    <> phaseName phase
+                                    <> " boLeft="
+                                    <> show (fst queueLens)
+                                    <> " queue="
+                                    <> show (snd queueLens)
+                                    <> " intents(issued/confirmed/rolled)="
+                                    <> show (issuedCount, confirmedCount, rolledBackCount)
+                                    <> " allBuildingsPresent="
+                                    <> show allBuildingsPresent
+                                    <> " counts="
+                                    <> formatCounts counts
+                        else pure ()
 
                     if queueCompleted && intentsCompleted && allBuildingsPresent
                         then pure ()
-                        else go (n + 1) agent'
+                        else go (n + 1) agent' (Just status)
 
 countCompletedSelfBuildings :: Observation -> HashMap.HashMap UnitTypeId Int
 countCompletedSelfBuildings obs =

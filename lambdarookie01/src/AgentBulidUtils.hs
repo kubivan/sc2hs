@@ -131,9 +131,19 @@ findFreeGeyser :: Observation -> Maybe Units.Unit
 findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
   where
     assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-    nexusPos = tilePos $ findNexus obs ^. #pos
-    geysers = runC $ obsUnitsC obs .| filterC isGeyser
-    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
+    nexusPositions =
+        runC $
+            unitsSelf obs
+                .| unitTypeC ProtossNexus
+                .| filterC (\n -> n ^. #buildProgress == 1)
+                .| mapC (tilePos . view #pos)
+    geysersNearNexus geyser = any (\nPos -> distManhattan (geyser ^. #pos) nPos <= 12) nexusPositions
+    geysers = runC $ obsUnitsC obs .| filterC isGeyser .| filterC geysersNearNexus
+    nearestNexusDistSq geyser = minimum $ map (distSquared (geyser ^. #pos)) nexusPositions
+    geysersSorted =
+        if null nexusPositions
+            then []
+            else sortBy (compare `on` nearestNexusDistSq) geysers
 
 -- ##################################### UNIT UTILS #####################################################################
 

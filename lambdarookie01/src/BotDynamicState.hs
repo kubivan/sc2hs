@@ -17,6 +17,7 @@ import System.Random (Random, StdGen, randomR)
 data BotDynamicState = BotDynamicState
     { dsObs :: Observation
     , dsGrid :: Grid
+  , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
     , dsBuildIntents :: BuildIntentStore
@@ -25,11 +26,17 @@ data BotDynamicState = BotDynamicState
 class HasBuildIntents d where
   buildIntentsL :: Lens' d BuildIntentStore
 
+class HasReservedCost d where
+  reservedCostL :: Lens' d Cost
+
 instance HasObs BotDynamicState where
   obsL f s = f (dsObs s) <&> \o -> s { dsObs = o }
 
 instance HasGrid BotDynamicState where
   gridL f s = f (dsGrid s) <&> \g -> s { dsGrid = g }
+
+instance HasReservedCost BotDynamicState where
+  reservedCostL f s = f (dsReservedCost s) <&> \c -> s { dsReservedCost = c }
 
 instance HasBuildIntents BotDynamicState where
   buildIntentsL f s = f (dsBuildIntents s) <&> \intents -> s { dsBuildIntents = intents }
@@ -43,13 +50,19 @@ agentGetBuildIntents = agentGet <&> (^. buildIntentsL)
 agentModifyBuildIntents :: (HasBuildIntents d) => (BuildIntentStore -> BuildIntentStore) -> StepMonad d ()
 agentModifyBuildIntents f = agentModify (buildIntentsL %~ f)
 
+agentGetReservedCost :: (HasReservedCost d) => StepMonad d Cost
+agentGetReservedCost = agentGet <&> (^. reservedCostL)
+
+agentModifyReservedCost :: (HasReservedCost d) => (Cost -> Cost) -> StepMonad d ()
+agentModifyReservedCost f = agentModify (reservedCostL %~ f)
+
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
-setRandGen gen (BotDynamicState obs grid _ army intents) = BotDynamicState obs grid gen army intents
+setRandGen gen (BotDynamicState obs grid reserved _ army intents) = BotDynamicState obs grid reserved gen army intents
 
 getRandValue :: (Random a) => (a, a) -> BotDynamicState -> (a, BotDynamicState)
-getRandValue range (BotDynamicState obs grid gen army intents) =
+getRandValue range (BotDynamicState obs grid reserved gen army intents) =
     let (value, newGen) = randomR range gen
-     in (value, BotDynamicState obs grid newGen army intents)
+  in (value, BotDynamicState obs grid reserved newGen army intents)
 
 bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynamicState
 bdsUpdateArmyUnitData ds tag newUnitData = ds{dsArmy = dsArmy'}

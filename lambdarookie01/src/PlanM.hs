@@ -83,9 +83,7 @@ runBO (u : us) = do
     ok <- tryCreate u
     case ok of
         Nothing -> pure (u : us)
-        Just _ -> runBO us
-
-tryCreate :: (HasObs d, HasGrid d, HasBuildIntents d) => UnitTypeId -> StepMonad d (Maybe ())
+        Just _ -> pure us
 tryCreate uid = runMaybeT $ createAction uid
 
 createAction :: (HasObs d, HasGrid d, HasBuildIntents d) => UnitTypeId -> MaybeStepMonad d ()
