@@ -34,6 +34,7 @@ module StepMonad (
     debugText,
     debugTexts,
     command,
+    HasReservedCost(..),
 )
 where
 
@@ -54,7 +55,7 @@ import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Text (pack)
+import Data.Text (pack, Text)
 import Lens.Micro ((^.), (%~), Lens')
 import Debug.Trace (traceM)
 import Control.Monad (unless)
@@ -122,6 +123,11 @@ class HasObs s where
 
 class HasGrid s where
   gridL :: Lens' s Grid
+
+
+class HasReservedCost d where
+  reservedCostL :: Lens' d Cost
+
 
 agentAsk :: StepMonad dyn (StaticInfo, UnitAbilities)
 agentAsk = lift $ lift ask

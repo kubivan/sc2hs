@@ -84,6 +84,8 @@ canAfford uid = do
   return $ (obsResources obs - reservedCost) >= unitCost (unitTraits si) uid
 
 
+agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
+agentFindBuilder = agentObs >>= findBuilder
 
 
 findBuilder :: Observation -> Maybe Unit

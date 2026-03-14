@@ -6,13 +6,14 @@ import Actions (UnitTag)
 import Army.Army
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Intent (BuildIntentStore)
+import Intent (BuildIntentStore, IntentId)
 import Lens.Micro (Lens', (%~), (^.))
 import Observation
 import SC2.Grid
 import Squad.Class
 import StepMonad
 import System.Random (Random, StdGen, randomR)
+import Data.Map (Map)
 
 data BotDynamicState = BotDynamicState
     { dsObs :: Observation
@@ -20,14 +21,9 @@ data BotDynamicState = BotDynamicState
     , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
-    , dsBuildIntents :: BuildIntentStore
+    , dsIntents :: Map IntentId (Intent d)
     }
 
-class HasBuildIntents d where
-  buildIntentsL :: Lens' d BuildIntentStore
-
-class HasReservedCost d where
-  reservedCostL :: Lens' d Cost
 
 instance HasObs BotDynamicState where
   obsL f s = f (dsObs s) <&> \o -> s { dsObs = o }
