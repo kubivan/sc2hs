@@ -21,7 +21,7 @@ data BotDynamicState = BotDynamicState
     , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
-  , dsIntents :: IntentStore BotDynamicState
+    , dsIntents :: IntentStore BotDynamicState
     }
 
 

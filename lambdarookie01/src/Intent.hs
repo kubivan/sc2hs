@@ -2,6 +2,7 @@ module Intent where
 
 import Actions (Action (PointCommand, SelfCommand, UnitCommand), UnitTag)
 import Conduit (filterC, (.|))
+import Control.Monad.Free (Free (..), liftF)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Function (on)
@@ -24,7 +25,6 @@ import StepMonad
   , HasObs
   , MaybeStepMonad
   , StepMonad
-  , UnitTraits
   , agentGet
   , agentAbilities
   , agentGrid
@@ -43,26 +43,6 @@ import Data.Set qualified as Set
 
 newtype IntentId = IntentId Text
   deriving (Eq, Ord, Show)
-
-data Free f a
-  = Pure a
-  | Free (f (Free f a))
-
-instance Functor f => Functor (Free f) where
-  fmap f (Pure a) = Pure (f a)
-  fmap f (Free next) = Free (fmap (fmap f) next)
-
-instance Functor f => Applicative (Free f) where
-  pure = Pure
-  Pure f <*> mx = fmap f mx
-  Free next <*> mx = Free (fmap (<*> mx) next)
-
-instance Functor f => Monad (Free f) where
-  Pure a >>= k = k a
-  Free next >>= k = Free (fmap (>>= k) next)
-
-liftF :: Functor f => f a -> Free f a
-liftF fa = Free (Pure <$> fa)
 
 data IntentStatus
   = IntentRunning
