@@ -6,14 +6,14 @@ import Actions (UnitTag)
 import Army.Army
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Intent (BuildIntentStore, IntentId)
+import Data.Map (Map)
+import Intent (HasBuildIntents (..), IntentId, IntentRuntime, IntentStore)
 import Lens.Micro (Lens', (%~), (^.))
 import Observation
 import SC2.Grid
 import Squad.Class
 import StepMonad
 import System.Random (Random, StdGen, randomR)
-import Data.Map (Map)
 
 data BotDynamicState = BotDynamicState
     { dsObs :: Observation
@@ -21,7 +21,7 @@ data BotDynamicState = BotDynamicState
     , dsReservedCost :: Cost
     , dsRandGen :: StdGen
     , dsArmy :: Army
-    , dsIntents :: Map IntentId (Intent d)
+  , dsIntents :: IntentStore BotDynamicState
     }
 
 
@@ -35,15 +35,15 @@ instance HasReservedCost BotDynamicState where
   reservedCostL f s = f (dsReservedCost s) <&> \c -> s { dsReservedCost = c }
 
 instance HasBuildIntents BotDynamicState where
-  buildIntentsL f s = f (dsBuildIntents s) <&> \intents -> s { dsBuildIntents = intents }
+  buildIntentsL f s = f (dsIntents s) <&> \intents -> s { dsIntents = intents }
 
 instance HasArmy BotDynamicState where
   getUnitMap bds = armyUnits $ dsArmy bds
 
-agentGetBuildIntents :: (HasBuildIntents d) => StepMonad d BuildIntentStore
+agentGetBuildIntents :: (HasBuildIntents d) => StepMonad d (IntentStore d)
 agentGetBuildIntents = agentGet <&> (^. buildIntentsL)
 
-agentModifyBuildIntents :: (HasBuildIntents d) => (BuildIntentStore -> BuildIntentStore) -> StepMonad d ()
+agentModifyBuildIntents :: (HasBuildIntents d) => (IntentStore d -> IntentStore d) -> StepMonad d ()
 agentModifyBuildIntents f = agentModify (buildIntentsL %~ f)
 
 agentGetReservedCost :: (HasReservedCost d) => StepMonad d Cost

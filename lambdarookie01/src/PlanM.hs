@@ -1,87 +1,61 @@
 module PlanM where
 
-import Actions
-import AgentBulidUtils (agentUnitCost, canAfford, findBuilder, findFreeGeyser, findPlacementPos, pylonRadius)
-import BotDynamicState (HasBuildIntents, HasReservedCost, agentGetBuildIntents, agentModifyBuildIntents, agentModifyReservedCost)
-import Conduit (filterC, (.|))
-import Control.Applicative ((<|>))
-import Control.Monad (guard, when)
-import Control.Monad.State
+import Control.Monad (void)
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
-import Data.HashMap.Strict qualified as HashMap
-import Debug.Trace (traceM)
-import Footprint (getFootprint)
+import Data.Text (pack)
 import Intent
-import Lens.Micro ((&), (.~), (^.))
-import Observation
-import SC2.Geometry (Pointable, distSquared, fromTuple)
-import SC2.Grid
-import SC2.Ids.AbilityId (AbilityId, isBuildAbility)
-import SC2.Ids.Ids
-import SC2.TechTree (unitToAbility)
-import Squad (Target (..))
+import SC2.Ids.UnitTypeId (UnitTypeId)
 import StepMonad
-import Units (Unit, mapTilePosC, runC, unitTypeC)
-import Utils
 
 data BOStep
-  = BOTrain UnitTypeId
-  | BOBuild UnitTypeId
-  deriving (Show)
+  = BOBuild UnitTypeId
+  | BOTrain UnitTypeId
+  deriving (Eq, Show)
 
-data BuildOrder = BuildOrder
-  { boSteps :: Vector BOStep
-  , boIndex :: Int
-  }
+type BuildOrder = [BOStep]
+
+boFromUnits :: [UnitTypeId] -> BuildOrder
+boFromUnits = map BOBuild
 
 boCurrentStep :: BuildOrder -> Maybe BOStep
-boCurrentStep bo =
-  boSteps bo !? boIndex bo
+boCurrentStep [] = Nothing
+boCurrentStep (step : _) = Just step
 
+boIntentId :: IntentId
+boIntentId = IntentId (pack "bo/current")
+
+stepProgram :: (HasObs d, HasReservedCost d) => BOStep -> IntentDSL d ()
+stepProgram (BOBuild uid) = ensureStructure uid
+stepProgram (BOTrain uid) = ensureUnit uid
 
 runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => BuildOrder -> StepMonad d BuildOrder
 runBO [] = pure []
-runBO (u : us) =
-  case boCurrentStep bo of
-    Nothing -> pure bo
-    Just boStep -> do
-      let boIID = "bo-" ++ show boStep ++ show (boIndex boStep)
-      exists <- intentExists boIID
-      if exists then 
-        pure bo
-      else do
-        spawnBoIntent boIID boStep
+runBO order@(step : rest) = do
+  active <- intentExists boIntentId
+  if active
+    then do
+      status <- stepIntent boIntentId
+      case status of
+        IntentCompleted -> pure rest
+        IntentRunning -> pure order
+        IntentFailed -> pure order
+    else do
+      spawnIntent boIntentId (stepProgram step)
+      status <- stepIntent boIntentId
+      case status of
+        IntentCompleted -> pure rest
+        IntentRunning -> pure order
+        IntentFailed -> pure order
 
-      spawned <- trySpawnBoIntent boIID boStep
+tryCreate :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d (Maybe ())
+tryCreate uid = runMaybeT (createAction uid)
 
-trySpawnBoIntent
-  :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d)
-  => BOStep
-  -> StepMonad d Bool
-trySpawnBoIntent step = let boIID = "bo-" ++ show boStep ++ show (boIndex boStep) in
-  case step of
+createAction :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> MaybeStepMonad d ()
+createAction uid = do
+  _ <- lift $ transientStep (ensureStructure uid)
+  pure ()
 
-    BOTrain ut -> do
-      exists <- intentExists boIID
-
-      if exists
-        then pure False
-        else do
-          spawnIntent (IntentId boIID) (ensureUnit ut)
-          pure True
-
-    BOBuild ut pos -> do
-      exists <- intentExists boIID
-      if exists
-        then pure False
-        else do
-          spawnIntent (IntentId boIID) (ensureStructure ut)
-          pure True
-
-
-
-tryCreate uid = runMaybeT $ createAction uid
-
-createAction :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => UnitTypeId -> MaybeStepMonad d ()
-createAction order = buildAction order -- <|> pylonBuildAction
+tryTrain :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d ()
+tryTrain uid = void (transientStep (ensureUnit uid))
 

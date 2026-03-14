@@ -12,6 +12,7 @@ module TestFixtures (
 import Army.Army (emptyArmy)
 import BotDynamicState (BotDynamicState (..))
 import Data.HashMap.Strict qualified as HashMap
+import Data.Map qualified as Map
 import Data.ProtoLens (defMessage)
 import Data.Word (Word32, Word64)
 import Observation (Cost (..), Observation)
@@ -63,7 +64,7 @@ mkDynamicState obs grid =
         , dsReservedCost = Cost 0 0
         , dsRandGen = mkStdGen 7
         , dsArmy = emptyArmy
-        , dsBuildIntents = HashMap.empty
+        , dsIntents = Map.empty
         }
 
 gridFromFile :: FilePath -> IO Grid

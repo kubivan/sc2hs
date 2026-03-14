@@ -3,30 +3,25 @@
 
 module TestIntegrationRealGame (integrationRealGameTests) where
 
-import Actions (Action (PointCommand, SelfCommand))
 import Agent (Agent (..), StepPlan (..))
-import BotDynamicState (BotDynamicState (..), dsBuildIntents)
+import BotDynamicState (BotDynamicState (..))
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, bracket, catch)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (foldl', isInfixOf)
-import Data.Maybe (listToMaybe)
-import Data.ProtoLens (defMessage)
+import Data.Map qualified as Map
 import Data.ProtoLens.Labels ()
 import Data.Text qualified as Text
-import Intent
 import Lens.Micro ((&), (.~), (^.))
 import Network.WebSockets qualified as WS
-import Observation (Cost (..), Observation)
-import PlanM (BuildOrder)
+import Observation (Observation)
+import PlanM (BuildOrder, boFromUnits)
 import Proto.S2clientprotocol.Common qualified as C
 import Proto.S2clientprotocol.Sc2api qualified as A
 import SC2.Client (unitAbilities, unitAbilitiesRaw)
-import SC2.Ids.AbilityId (AbilityId (NEXUSTRAINPROBE, PROTOSSBUILDPYLON))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossCyberneticsCore, ProtossGateway, ProtossNexus, ProtossProbe, ProtossPylon, ProtossRoboticsFacility))
 import SC2.Launcher.Participant (Participant (..))
 import SC2.Proto.Data (Alliance (Self), Map (LocalMap))
-import Squad (Target (..))
 import SC2.Proto.Requests qualified as Proto
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
@@ -40,19 +35,7 @@ import Units (toEnum')
 integrationRealGameTests :: Spec
 integrationRealGameTests =
     describe "Real game integration (opt-in)" $ do
-        it "does not lose intent data between ticks" $ do
-            env <- integrationEnv
-            case env of
-                Nothing -> pendingWith "Set SC2_INTEGRATION=1 and SC2_TEST_MAP_PATH to run integration tests"
-                Just cfg -> withGame cfg testPreserveIntents
-
-        it "gracefully rolls back invalid schedule and interrupts queue" $ do
-            env <- integrationEnv
-            case env of
-                Nothing -> pendingWith "Set SC2_INTEGRATION=1 and SC2_TEST_MAP_PATH to run integration tests"
-                Just cfg -> withGame cfg testRollbackAndInterrupt
-
-        it "executes configured build order until intents complete and buildings exist" $ do
+        it "executes configured build order until buildings exist" $ do
             env <- integrationEnv
             case env of
                 Nothing -> pendingWith "Set SC2_INTEGRATION=1 and SC2_TEST_MAP_PATH to run integration tests"
@@ -174,78 +157,6 @@ waitForSc2 host port = loop (120 :: Int)
             then pure ()
             else threadDelay 1000000 >> loop (attemptsLeft - 1)
 
-testPreserveIntents :: WS.Connection -> IO ()
-testPreserveIntents conn = do
-    agent <- initAgent conn
-    (agent1, _) <- runSingleTick conn agent
-
-    responseObs <- Proto.sendRequestSync conn Proto.requestObservation
-    let obs = responseObs ^. #observation . #observation
-        maybeUnit = listToMaybe (obs ^. #rawData . #units)
-    case (agent1, maybeUnit) of
-        (BotAgent phase staticInfo ds env, Just u) -> do
-            let intentId = (u ^. #tag, NEXUSTRAINPROBE)
-                intent =
-                    BuildIntent
-                        { biActions = [IntentReserveAction (Cost 50 0), IntentBuildAction (IntentBuildCommand (u ^. #tag) NEXUSTRAINPROBE ProtossProbe Nothing)]
-                        , biRollbackStack = [IntentReserveAction (Cost 50 0)]
-                        , biReservedCost = Cost 50 0
-                        , biIssuedAtFrame = obs ^. #gameLoop
-                        , biState = IntentIssued
-                        , biRollbackReason = Nothing
-                        }
-                agentInjected = BotAgent phase staticInfo ds{dsBuildIntents = HashMap.insert intentId intent (dsBuildIntents ds)} env
-
-            (agent2, _) <- runSingleTick conn agentInjected
-            case agent2 of
-                BotAgent _ _ ds2 _ -> HashMap.member intentId (dsBuildIntents ds2) `shouldBe` True
-                EmptyBotAgent -> expectationFailure "agent unexpectedly became EmptyBotAgent"
-        _ -> expectationFailure "failed to prepare intent persistence scenario"
-
-testRollbackAndInterrupt :: WS.Connection -> IO ()
-testRollbackAndInterrupt conn = do
-    agent <- initAgent conn
-    (agent1, _) <- runSingleTick conn agent
-
-    responseObs <- Proto.sendRequestSync conn Proto.requestObservation
-    let respObs = responseObs ^. #observation
-    abilityRaw <- unitAbilitiesRaw conn respObs
-    let abilityMap = unitAbilities abilityRaw
-        obs = respObs ^. #observation
-        maybeProbe = listToMaybe [u | u <- obs ^. #rawData . #units, u ^. #alliance == Self]
-
-    case (agent1, maybeProbe) of
-        (BotAgent _ staticInfo ds env, Just probe) -> do
-            let intentId = (probe ^. #tag, PROTOSSBUILDPYLON)
-                intent =
-                    BuildIntent
-                        { biActions = [IntentReserveAction (Cost 100 0), IntentBuildAction (IntentBuildCommand (probe ^. #tag) PROTOSSBUILDPYLON ProtossPylon (Just (TargetPos (30, 30))))]
-                        , biRollbackStack = [IntentReserveAction (Cost 100 0)]
-                        , biReservedCost = Cost 100 0
-                        , biIssuedAtFrame = obs ^. #gameLoop
-                        , biState = IntentIssued
-                        , biRollbackReason = Nothing
-                        }
-                dsInjected = ds{dsBuildIntents = HashMap.insert intentId intent (dsBuildIntents ds)}
-                phaseInjected = BuildOrderExecutor ([] :: BuildOrder) [intentId] obs abilityMap
-                agentInjected = BotAgent phaseInjected staticInfo dsInjected env
-                responseWithError =
-                    respObs
-                        & #actionErrors
-                            .~ [ defMessage
-                                    & #maybe'unitTag .~ Just (probe ^. #tag)
-                                    & #maybe'abilityId .~ Just (fromIntegral $ fromEnum PROTOSSBUILDPYLON)
-                               ]
-
-            (agent2, StepPlan _ chats _) <- agentStep agentInjected responseWithError abilityMap
-            case agent2 of
-                BotAgent _ _ ds2 _ -> do
-                    fmap biState (HashMap.lookup intentId (dsBuildIntents ds2)) `shouldBe` Just IntentRolledBack
-                    fmap biRollbackReason (HashMap.lookup intentId (dsBuildIntents ds2)) `shouldBe` Just (Just RollbackActionError)
-                    (not . null) chats `shouldBe` True
-                EmptyBotAgent -> expectationFailure "agent unexpectedly became EmptyBotAgent"
-        _ -> expectationFailure "failed to prepare rollback scenario"
-
 testBuildOrderCompletesBuildings :: WS.Connection -> IO ()
 testBuildOrderCompletesBuildings conn = do
     agent0 <- initAgent conn
@@ -261,7 +172,7 @@ testBuildOrderCompletesBuildings conn = do
     injected <- case agent0 of
         EmptyBotAgent -> expectationFailure "agent unexpectedly became EmptyBotAgent" >> pure EmptyBotAgent
         BotAgent _ staticInfo ds env ->
-            pure $ BotAgent (BuildOrderExecutor targetBuildOrder [] obs abilityMap) staticInfo ds{dsObs = obs} env
+            pure $ BotAgent (BuildOrderExecutor (boFromUnits targetBuildOrder) obs abilityMap) staticInfo ds{dsObs = obs} env
 
     waitUntilBuildOrderComplete conn 8000 injected
 
@@ -299,18 +210,6 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
             | u <- interestingTypes
             ]
 
-    intentStats :: BuildIntentStore -> (Int, Int, Int)
-    intentStats store =
-        foldl'
-            (\(issued, confirmed, rolled) bi ->
-                case biState bi of
-                    IntentIssued -> (issued + 1, confirmed, rolled)
-                    IntentConfirmed -> (issued, confirmed + 1, rolled)
-                    IntentRolledBack -> (issued, confirmed, rolled + 1)
-            )
-            (0, 0, 0)
-            (HashMap.elems store)
-
     go n agent prevStatus
         | n >= maxTicks =
             expectationFailure $ "Timed out waiting for build-order completion after " <> show maxTicks <> " ticks"
@@ -322,24 +221,21 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
                     let obs = dsObs ds
                         counts = countCompletedSelfBuildings obs
                         allBuildingsPresent = allRequiredPresent requiredCounts counts
-                        (issuedCount, confirmedCount, rolledBackCount) = intentStats (dsBuildIntents ds)
-                        intentsCompleted = issuedCount == 0
+                        activeIntentCount = Map.size (dsIntents ds)
+                        intentsCompleted = activeIntentCount == 0
                         queueCompleted =
                             case phase of
                                 BuildArmyAndWin{} -> True
-                                BuildOrderExecutor bo queue _ _ -> null bo && null queue
+                                BuildOrderExecutor bo _ _ -> null bo
                                 Opening -> False
                         queueLens =
                             case phase of
-                                BuildOrderExecutor bo queue _ _ -> (length bo, length queue)
-                                _ -> (0, 0)
+                                BuildOrderExecutor bo _ _ -> (length bo, activeIntentCount)
+                                _ -> (0, activeIntentCount)
                         status =
                             ( phaseName phase
                             , fst queueLens
                             , snd queueLens
-                            , issuedCount
-                            , confirmedCount
-                            , rolledBackCount
                             , allBuildingsPresent
                             )
 
@@ -352,10 +248,8 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
                                     <> phaseName phase
                                     <> " boLeft="
                                     <> show (fst queueLens)
-                                    <> " queue="
+                                    <> " activeIntents="
                                     <> show (snd queueLens)
-                                    <> " intents(issued/confirmed/rolled)="
-                                    <> show (issuedCount, confirmedCount, rolledBackCount)
                                     <> " allBuildingsPresent="
                                     <> show allBuildingsPresent
                                     <> " counts="

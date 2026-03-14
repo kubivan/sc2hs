@@ -10,7 +10,7 @@
 module AgentBulidUtils where
 
 import Actions
-import BotDynamicState (HasReservedCost, agentGetReservedCost)
+import BotDynamicState (agentGetReservedCost)
 import SC2.Grid(
     Grid,
     canPlaceBuilding,
@@ -85,7 +85,7 @@ canAfford uid = do
 
 
 agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
-agentFindBuilder = agentObs >>= findBuilder
+agentFindBuilder = findBuilder <$> agentObs
 
 
 findBuilder :: Observation -> Maybe Unit
