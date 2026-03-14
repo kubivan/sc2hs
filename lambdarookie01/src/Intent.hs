@@ -16,11 +16,21 @@ import SC2.Geometry (Pointable)
 import Data.Map
 import StepMonad (HasReservedCost)
 
+import Control.Monad.Free
+
 newtype IntentId = IntentId Text
   deriving (Eq, Ord, Show)
 
 class HasBuildIntents d where
   buildIntentsL :: Lens' d Map IntentId (Intent d)
+
+reserveLand :: (HasGrid d) => UnitTypeId -> TilePos -> StepMonad d ()
+reserveLand uid pos = agentModifyGrid (\g -> addMark g (getFootprint uid) pos)
+
+reserveCost :: (HasReservedCost d) => UnitTypeId -> StepMonad d ()
+reserveCost uid = do 
+  c <- agentUnitCost uid
+  agentModifyReservedCost (\rc -> rc + c)
 
 data IntentStatus 
   = IntentSpawned 
@@ -29,8 +39,80 @@ data IntentStatus
   | IntentFailed
   deriving (Eq, Show)
 
-newtype IntentDSL d =
-  IntentDSL { runIntentDSL :: StepMonad d IntentStatus }
+type IntentDSL d = Free (IntentF)
+
+data IntentF next 
+  = WaitUntil (StepMonad d Bool) next
+  | FindBuilder (UnitTag -> next)
+  | FindPlacement UnitTypeId (TileTos -> next)
+  | IssueBuild UnitTag UnitTypeID TilePos next
+  | ReserveCost UnitTypeID next
+  | Guard (StepMonad d Bool) next
+  | Complete
+
+waitUntil cond = liftF (WaitUntil cond ())
+
+findBuilder = liftF (FindBuilder id)
+
+findPlacement = liftF (FindPlacement b id)
+
+issueBuild b uid pos =
+  liftF (IssueBuild b uid pos ())
+
+reserveCost uid =
+  liftF (ReserveCost uid ())
+
+guardTech cond =
+  liftF (Guard cond ())
+
+data IntentRuntime d =
+  IntentRuntime 
+    { intentID :: IntentId
+    , intentProg :: IntentDSL d () -- intentProg is the remaining program.
+    }
+
+runIntentStep
+ :: IntentRuntime d
+ -> StepMonad d (IntentRuntime d, IntentStatus)
+runIntentStep (IntentRuntime iid prog) =
+  case prog of
+    Pure _ ->
+      pure (IntentRuntime iid prog, IntentCompleted)
+
+    Free instr ->
+      case instr of
+        WaitUntil cond next -> do
+          ok <- cond
+          if ok
+            then pure (IntentRuntime iid next, IntentRunning)
+            else pure (IntentRuntime iid prog, IntentRunning)
+
+        ReserveCost uid next -> do
+          reserveCost uid
+          pure (IntentRuntime iid next, IntentRunning)
+
+        FindBuilder k -> do
+          mb <- agentFindBuilder
+
+          case mb of
+            Nothing -> 
+              pure (IntentRuntime iid prog, IntentRunning) --TOD0: error handling
+            Just b ->
+              pure (IntentRuntime iid (k b), IntentRunning)
+
+        IssueBuild b uid pos next -> do
+          issueBuild b uid pos
+          pure (IntentRuntime iid next, IntentRunning)
+
+        Guard cond next -> do
+          ok <- cond
+
+          if ok
+            then pure (IntentRuntime iid next, IntentRunning)
+            else pure (IntentRuntime iid prog, IntentFailed)
+
+        Complete ->
+          pure (IntentRuntime iid prog, IntentCompleted)
 
 data Intent d = Intent
   { intentId :: IntentId
@@ -55,7 +137,8 @@ intentProcess :: StepMonad d ()
 intentProcess = do
   intents <- gets dsIntents
   forM_ (Map.toList intents) $ \(iid, intent) -> do
-    status <- runIntentDSL (intentProgram intent)
+    (intent', status) <- runIntentStep intent
+    updateIntent intent'
 
     case status of
       IntentRunning -> pure ()
@@ -66,34 +149,6 @@ removeIntent :: IntentId -> StepMonad d ()
 removeIntent iid =
   modify $ \ds ->
     ds { dsIntents = Map.delete iid (dsIntents ds) }
-
-data IntentEnv = IntentEnvBuild UnitTypeId AbilityId UnitTag (Maybe Target)
-
-reserveLand :: (HasGrid d) => UnitTypeId -> TilePos -> StepMonad d ()
-reserveLand uid pos = agentModifyGrid (\g -> addMark g (getFootprint uid) pos)
-
-reserveCost :: (HasReservedCost d) => UnitTypeId -> StepMonad d ()
-reserveCost uid = do 
-  c <- agentUnitCost uid
-  agentModifyReservedCost (\rc -> rc + c)
-
-intentToBuild
-  :: (HasObs d, HasGrid d)
-  => UnitTypeId
-  -> MaybeStepMonad IntentEnv -- correct ret value should be determined
-intentToBuild uid = do
-  checkTimeout -- return if stepcount limit is over
-  reserveCost -- should also modify intentenv - we reserved the cost for it
-  waitUntil(canAfford uid) -- we should return Pending until res avail
-
-  builder <- MaybeT $ agentFindBuilder -- return pending if builder not avail
-  --here we need to update the intent: add builder tag to the intentCtx
-  ability <- abilityForUnit ut
-  let env = IntentEnv (builder ^. #unitTag) uid ability -- we have all 
-  --issueBuild worker ability pos
-  command [..]
-
-      pure IntentRunning
 
 
 inBuildThechTree :: UnitTypeId -> StepMonad d Bool
@@ -128,28 +183,20 @@ pylonBuildAction = do
         pylonsPos = runC $ unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC
         pylonCriteria = distantEnough pylonsPos
     pylonPos <- MaybeT . return $ findPylonPlacement (pylonCriteria pylonRadius)
-    let action = PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos)
-    lift $ issueBuildIntent ProtossPylon PROTOSSBUILDPYLON builder (Just pylonPos) action
+    command [PointCommand PROTOSSBUILDPYLON [builder] (fromTuple pylonPos)]
 
-buildAction :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => UnitTypeId -> MaybeStepMonad d ()
-buildAction ProtossAssimilator = do
-    guardStepM (canAfford ProtossAssimilator)
-    obs <- lift agentObs
-    builder <- MaybeT . return $ findBuilder obs
-    geyser <- MaybeT . return $ findFreeGeyser obs
-    let action = UnitCommand PROTOSSBUILDASSIMILATOR [builder] geyser
-    lift $ issueBuildIntent ProtossAssimilator PROTOSSBUILDASSIMILATOR builder Nothing action
+            b uid pos
+issueBuild :: Unit -> UnitTypeId -> TilePos -> StepMonad d ()
+issueBuild ProtossAssimilator = do
+    geyser <- findFreeGeyser obs
+    --TODO: issue build should work with Target
+    command [UnitCommand PROTOSSBUILDASSIMILATOR [builder] (fromJust geyser)]
 
-buildAction order = do
-    guardStepM (inBuildThechTree order)
-    guardStepM (canAfford order)
-    si <- lift agentStatic
-    obs <- lift agentObs
-    grid <- lift agentGrid
-    let ability = unitToAbility (unitTraits si) order
-    guard (isBuildAbility ability)
-    builder <- MaybeT . return $ findBuilder obs
-    pos <- MaybeT . return $ findPlacementPos obs (expandsPos si) grid (heightMap si) order
+issueBuild builder order pos = do
+    si <- agentStatic
+    -- obs <- agentObs
+    -- let ability = unitToAbility (unitTraits si) order
+    -- --guard (isBuildAbility ability)
+    -- --pos <- MaybeT . return $ findPlacementPos obs (expandsPos si) grid (heightMap si) order
     traceM $ show order ++ " buildPos " ++ show pos ++ " builder " ++ show builder ++ " putting to the grid!!!!"
-    let action = PointCommand ability [builder] (fromTuple pos)
-    lift $ issueBuildIntent order ability builder (Just pos) action
+    command [PointCommand ability [builder] (fromTuple pos)]
