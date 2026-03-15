@@ -17,7 +17,7 @@ import Lens.Micro (Lens', (%~), (^.))
 import Observation (Cost (..), Observation, findNexus, obsResources, obsUnitsC, unitsSelf, getUnit)
 import SC2.Geometry (fromTuple)
 import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, tilePos)
-import SC2.Grid.Distance qualified as GridDistance
+import SC2.Spatial qualified as Spatial
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
 import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
@@ -190,7 +190,7 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
     assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
     nexusPos = tilePos $ findNexus obs ^. #pos
     geysersSorted =
-      sortBy (compare `on` (\u -> GridDistance.distSquared u nexusPos))
+      sortBy (compare `on` (\u -> Spatial.distSquared u nexusPos))
         (runC $ obsUnitsC obs .| filterC isGeyser)
 
 findPlacementTarget :: UnitTypeId -> Observation -> [TilePos] -> Grid -> Grid -> Maybe Target

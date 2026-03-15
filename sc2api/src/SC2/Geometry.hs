@@ -5,75 +5,57 @@ import Proto.S2clientprotocol.Common_Fields ( x, y, z )
 
 import Data.ProtoLens (defMessage)
 import Lens.Micro((&), (.~), (^.))
-import Lens.Micro.Extras ( view )
+import Lens.Micro.Extras (view)
 
-toPoint2D :: Pointable a => a -> Point2D
-toPoint2D p = defMessage & x .~ getX p & y .~ getY p
+toPoint2D :: Point -> Point2D
+toPoint2D p = defMessage & x .~ (p ^. x) & y .~ (p ^. y)
 
-toPoint3D :: Pointable a => a -> Point
-toPoint3D p = defMessage & x .~ getX p & y .~ getY p & z .~ 0
-
-class Pointable p where
-  getX :: p -> Float
-  getY :: p -> Float
-  makePoint :: Float -> Float -> p
-
-  pointPlus :: p -> p -> p
-  a `pointPlus` b = makePoint (getX a + getX b) (getY a + getY b)
-
-  pointMinus :: p -> p -> p
-  a `pointMinus` b = makePoint (getX a - getX b) (getY a - getY b)
+toPoint3D :: Point2D -> Point
+toPoint3D p = defMessage & x .~ (p ^. x) & y .~ (p ^. y) & z .~ 0
 
 instance Num Point2D where
-  (+) = pointPlus  -- Use the + operator from Pointable
-  (-) = pointMinus  -- Use the - operator from Pointable
-  (*) = undefined  -- Multiplication may not make sense, so leave it undefined or customize it
-  abs p = makePoint (abs $ getX p) (abs $ getY p)
-  signum p = makePoint (signum $ getX p) (signum $ getY p)
-  fromInteger n = makePoint (fromInteger n) (fromInteger n)
-  negate p = makePoint (negate $ getX p) (negate $ getY p)
+  (+) a b = defMessage & x .~ (a ^. x + b ^. x) & y .~ (a ^. y + b ^. y)
+  (-) a b = defMessage & x .~ (a ^. x - b ^. x) & y .~ (a ^. y - b ^. y)
+  (*) = undefined
+  abs p = defMessage & x .~ abs (p ^. x) & y .~ abs (p ^. y)
+  signum p = defMessage & x .~ signum (p ^. x) & y .~ signum (p ^. y)
+  fromInteger n = defMessage & x .~ fromInteger n & y .~ fromInteger n
+  negate p = defMessage & x .~ negate (p ^. x) & y .~ negate (p ^. y)
 
 instance Num Point where
   (+) a b = defMessage & x .~ (a ^. x + b ^. x) & y .~ (a ^. y + b ^. y) & z .~ (a ^. z + b ^. z)
   (-) a b = defMessage & x .~ (a ^. x - b ^. x) & y .~ (a ^. y - b ^. y) & z .~ (a ^. z - b ^. z)
-  (*) = undefined  -- Multiplication may not make sense, so leave it undefined or customize it
-  abs p = makePoint (abs $ getX p) (abs $ getY p)
-  signum p = makePoint (signum $ getX p) (signum $ getY p)
-  fromInteger n = makePoint (fromInteger n) (fromInteger n)
-  negate p = makePoint (negate $ getX p) (negate $ getY p)
+  (*) = undefined
+  abs p = defMessage & x .~ abs (p ^. x) & y .~ abs (p ^. y) & z .~ abs (p ^. z)
+  signum p = defMessage & x .~ signum (p ^. x) & y .~ signum (p ^. y) & z .~ signum (p ^. z)
+  fromInteger n = defMessage & x .~ fromInteger n & y .~ fromInteger n & z .~ fromInteger n
+  negate p = defMessage & x .~ negate (p ^. x) & y .~ negate (p ^. y) & z .~ negate (p ^. z)
 
 
-dot :: Pointable p => p -> p -> Float
-dot a b = getX a * getX b + getY a * getY b
+dot :: Point2D -> Point2D -> Float
+dot a b = (a ^. x) * (b ^. x) + (a ^. y) * (b ^. y)
 
-distSquared :: (Pointable p1, Pointable p2) => p1 -> p2 -> Float
---distSquared :: (Pointable p) => p -> p -> Float
+distSquared :: Point2D -> Point2D -> Float
 distSquared a b = dot diff diff where
-  diff = toPoint2D a - toPoint2D b
+  diff = a - b
 
-distManhattan :: (Pointable p1, Pointable p2) => p1 -> p2 -> Int
+distManhattan :: Point2D -> Point2D -> Int
 distManhattan p1 p2 = abs (tileX p1 - tileX p2) + abs (tileY p1 - tileY p2)
 
 fromTuple :: (Integral a) => (a, a) -> Point2D
 fromTuple (px, py) = defMessage & x .~ fromIntegral px & y .~ fromIntegral py
 
-tileX :: Pointable a => a -> Int
-tileX = floor . getX
+tileX :: Point2D -> Int
+tileX = floor . view x
 
-tileY :: Pointable a => a -> Int
-tileY = floor . getY
+tileY :: Point2D -> Int
+tileY = floor . view y
 
+tileX3D :: Point -> Int
+tileX3D = floor . view x
 
-instance Pointable Point2D where
-  getX = view x
-  getY = view y
-
-  makePoint px py = defMessage & x .~ px & y .~ py
-
-instance Pointable Point where
-  getX = view x
-  getY = view y
-  makePoint px py = defMessage & x .~ px & y .~ py & z .~ 0
+tileY3D :: Point -> Int
+tileY3D = floor . view y
 
 
 vecNormalize :: Point2D -> Point2D
