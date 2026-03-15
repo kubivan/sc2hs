@@ -22,6 +22,7 @@ library
       Utils
       SC2.TechTree
       SC2.Utils
+      SC2.Spatial
       SC2.Grid
       SC2.Grid.Core
       SC2.Grid.Algo

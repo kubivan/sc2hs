@@ -19,6 +19,7 @@ import SC2.Grid(
     tilePos
  )
 import SC2.TechTree
+import SC2.Spatial qualified as Spatial
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Observation (
@@ -44,10 +45,7 @@ import Units (
     toEnum',
     unitTypeC,
  )
-import SC2.Geometry (
-    distManhattan,
-    distSquared,
- )
+import SC2.Geometry
 
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
@@ -130,7 +128,7 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
     assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
     nexusPos = tilePos $ findNexus obs ^. #pos
     geysers = runC $ obsUnitsC obs .| filterC isGeyser
-    geysersSorted = sortBy (compare `on` (\x -> (x ^. #pos) `distSquared` nexusPos)) geysers
+    geysersSorted = sortBy (compare `on` (\x -> Spatial.distSquared x nexusPos)) geysers
 
 -- ##################################### UNIT UTILS #####################################################################
 
@@ -153,7 +151,7 @@ unitIsAssignedTo building unit
     | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
   where
     targets = mapMaybe getTargetUnitTag (unit ^. #orders)
-    closeEnough = distManhattan (building ^. #pos) (unit ^. #pos) <= 12
+    closeEnough = Spatial.distManhattan building unit <= 12
     withoutVespene = unit ^. #vespeneContents == 0
 
 unitIsAssignedToAny :: [Units.Unit] -> Units.Unit -> Bool
