@@ -12,6 +12,7 @@ import SC2.Grid.Algo
 import SC2.Grid.TilePos
 import Squad.Squad
 import Squad.Class
+import Target (Target)
 import Units
 import Utils
 import Footprint

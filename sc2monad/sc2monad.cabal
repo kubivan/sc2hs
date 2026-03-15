@@ -27,6 +27,7 @@ library
       SC2.Grid.Algo
       SC2.Grid.Utils
       SC2.Grid.TilePos
+      SC2.Grid.Distance
       SC2.Units.CombatEval
   other-modules:
       Paths_sc2monad
