@@ -54,7 +54,7 @@ agentUpdateArmyPositions = do
     let armyPoss = runC $ unitsSelf obs .| filterC isArmyUnit .| mapC (tilePos . view #pos)
         army' = (dsArmy ds){armyUnitsPos = Set.fromList armyPoss}
 
-    agentPut $ ds{dsArmy = army'}
+    agentModifyArmy (const army')
 
 agentUpdateDsArmy :: StepMonad BotDynamicState ()
 agentUpdateDsArmy = do
@@ -101,7 +101,7 @@ agentUpdateDsArmy = do
     --_ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
     --_ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
     --_ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
-    agentPut $ ds{dsArmy = army'}
+    agentModifyArmy (const army')
 
 -- Update the visited tiles for a unit in the army
 updateVisitedTile :: UnitTag -> TilePos -> StepMonad BotDynamicState ()
@@ -123,7 +123,7 @@ updateVisitedTile tag tile = do
 
         newUnitData = unitData{auVisitedTiles = newVisited, auUnvisitedEdge = newUnvisitedEdge}
 
-    agentPut $ bdsUpdateArmyUnitData ds tag newUnitData -- ds { dsArmy = {Army (HashMap.insert tag newUnitData army)} }
+    agentPutArmyUnitData tag newUnitData
 
 randomArmyFiddling :: StepMonad BotDynamicState ()
 randomArmyFiddling = do
@@ -153,7 +153,6 @@ randCmd2 grid udata u = do
                 then return ()
                 else do
                     -- Move to a random neighboring position if no enemy is in range
-                    si <- agentStatic
                     ds <- agentGet
                     let army = dsArmy ds
                         allUnitPos = armyUnitsPos army
@@ -168,11 +167,8 @@ randCmd2 grid udata u = do
 
     calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
     calcMovePos candidates = do
-        ds <- agentGet
-        rnd <- dsRandGen <$> agentGet -- Retrieve the current random generator
         let scored = scoreMoveCandidates upos udata candidates
-            (wrandPos, rnd') = weightedRandomChoice scored rnd -- `Utils.dbg` ("scored: " ++ show scored)
-        agentPut $ setRandGen rnd' ds -- Update the random generator in the dynamic state
+        wrandPos <- agentWithRandGen (weightedRandomChoice scored)
         updateVisitedTile (u ^. #tag) wrandPos
         return wrandPos
 
