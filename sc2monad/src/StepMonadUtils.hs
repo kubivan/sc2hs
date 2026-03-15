@@ -5,6 +5,14 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module StepMonadUtils (
+    withObs,
+    withStatic,
+    withAbilities,
+    withStaticObs,
+    withStaticObsAbilities,
+    unitCost,
+    agentUnitCost,
+    abilityAvailableForUnit,
     findPlacementPointInRadiusSM,
     addMarkSM,
     removeMarkSM,
@@ -22,6 +30,7 @@ import SC2.Grid
 import Observation
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData, Point2D)
+import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
 import UnitAbilities
 import Utils
 import Units
@@ -50,6 +59,48 @@ import Lens.Micro.Extras(view)
 import Debug.Trace
 import SC2.Proto.Data qualified as D
 import Proto.S2clientprotocol.Data_Fields (sightRange)
+
+
+withObs :: (HasObs d) => (Observation -> a) -> StepMonad d a
+withObs f = f <$> agentObs
+
+withStatic :: (StaticInfo -> a) -> StepMonad d a
+withStatic f = f <$> agentStatic
+
+withAbilities :: (UnitAbilities -> a) -> StepMonad d a
+withAbilities f = f <$> agentAbilities
+
+withStaticObs :: (HasObs d) => (StaticInfo -> Observation -> a) -> StepMonad d a
+withStaticObs f = do
+    si <- agentStatic
+    obs <- agentObs
+    pure $ f si obs
+
+withStaticObsAbilities :: (HasObs d) => (StaticInfo -> Observation -> UnitAbilities -> a) -> StepMonad d a
+withStaticObsAbilities f = do
+    si <- agentStatic
+    obs <- agentObs
+    abilities <- agentAbilities
+    pure $ f si obs abilities
+
+unitCost :: UnitTraits -> UnitTypeId -> Cost
+unitCost traits uid =
+    case traits HashMap.!? uid of
+        Just trait -> Cost (fromIntegral $ trait ^. #mineralCost) (fromIntegral $ trait ^. #vespeneCost)
+        Nothing -> Cost 0 0
+
+agentUnitCost :: UnitTypeId -> StepMonad d Cost
+agentUnitCost uid = do
+    si <- agentStatic
+    pure $ unitCost (unitTraits si) uid
+
+abilityAvailableForUnit :: UnitTypeId -> StepMonad d Bool
+abilityAvailableForUnit uid = do
+    si <- agentStatic
+    abilities <- agentAbilities
+    let ability = unitToAbility (unitTraits si) uid
+        executor = abilityExecutor HashMap.! ability
+    pure $ ability `elem` HashMap.lookupDefault [] executor abilities
 
 
 -- findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
