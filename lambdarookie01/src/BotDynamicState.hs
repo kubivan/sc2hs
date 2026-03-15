@@ -6,9 +6,8 @@ import Actions (UnitTag)
 import Army.Army
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Data.Map (Map)
-import Intent (HasBuildIntents (..), IntentId, IntentRuntime, IntentStore)
-import Lens.Micro (Lens', (%~), (^.))
+import Intent (HasBuildIntents (..), IntentStore)
+import Lens.Micro ((%~), (^.))
 import Observation
 import SC2.Grid
 import Squad.Class
