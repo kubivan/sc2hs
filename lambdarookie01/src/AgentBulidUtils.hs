@@ -23,10 +23,10 @@ import SC2.Spatial qualified as Spatial
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Observation (
-    Cost (Cost),
+    Cost,
     Observation,
     findNexus,
-  obsResources,
+    obsResources,
     obsUnitsC,
     unitsSelf,
  )
@@ -46,17 +46,14 @@ import Units (
     toEnum',
     unitTypeC,
  )
-import SC2.Geometry
 
 import Conduit (filterC, mapC, (.|))
 import Data.Function (on)
-import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sortBy)
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
-import StepMonad (agentGetReservedCost)
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
