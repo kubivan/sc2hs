@@ -16,30 +16,20 @@ import SC2.Spatial qualified as Spatial
 import SC2.Geometry
 import Observation
 import SC2.Ids.AbilityId
-import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (Alliance (..), Point, Point2D)
-import SC2.Proto.Data qualified as Proto
 import StepMonad
 import Units
-import Utils
 
 import Conduit (filterC, mapC)
-import Control.Applicative ((<|>))
-import Control.Monad (filterM, void, when)
+import Control.Monad (void, when)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
-import Data.HashMap.Strict(HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.HashSet qualified as HashSet
-import Data.Set(Set)
 import Data.Set qualified as Set
-import Data.Maybe (catMaybes, fromJust, isJust, isNothing, mapMaybe)
-import Data.Ord (comparing)
+import Data.Maybe (catMaybes, fromJust)
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
-import Safe (headMay, minimumByMay)
 import System.Random (StdGen, randomR)
 
 import Debug.Trace (traceM)
