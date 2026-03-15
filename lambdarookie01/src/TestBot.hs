@@ -274,7 +274,7 @@ buildPylons = do
                 runC $
                     unitsSelf obs
                         .| unitTypeC ProtossProbe
-                        .| filterC (unitHasOrder PROTOSSBUILDPYLON)
+                        .| filterC (TestBot.unitHasOrder PROTOSSBUILDPYLON)
 
         expectedFoodCap = 8 * incompletePylonsCount + 8 * orderedPylonsCount
 

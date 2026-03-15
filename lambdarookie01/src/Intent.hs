@@ -14,12 +14,13 @@ import Data.Text (Text, pack)
 import Data.Word (Word32)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (^.))
-import Observation (Cost (..), Observation, findNexus, obsResources, obsUnitsC, unitsSelf)
+import Observation (Cost (..), Observation, findNexus, obsResources, obsUnitsC, unitsSelf, getUnit)
 import SC2.Geometry (distSquared, fromTuple)
 import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, tilePos)
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
 import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
+import Squad (Target (..))
 import StepMonad
   ( HasGrid
   , HasObs
@@ -37,9 +38,13 @@ import StepMonad
   , heightMap
   , unitTraits
   )
+import StepMonad
 import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
 
 import Data.Set qualified as Set
+import Control.Monad (guard)
+import Lens.Micro.Extras (view)
+import StepMonad (agentModifyReservedCost)
 
 newtype IntentId = IntentId Text
   deriving (Eq, Ord, Show)
@@ -55,31 +60,34 @@ data IntentF d next
   | ReserveCost UnitTypeId next
   | ReleaseCost UnitTypeId next
   | FindBuilder (UnitTag -> next)
-  | FindPlacement UnitTypeId (TilePos -> next)
-  | FindGeyser (UnitTag -> next)
+  | FindPlacementTarget UnitTypeId (Target -> next)
   | FindProducerForUnit UnitTypeId (UnitTag -> next)
-  | IssuePointBuild UnitTag UnitTypeId TilePos next
-  | IssueUnitBuild UnitTag UnitTypeId UnitTag next
+  | IssueBuild UnitTag UnitTypeId Target next
   | IssueSelfCommand UnitTag UnitTypeId next
+  -- | WaitForStart UnitTag AbilityId Target next
 
 instance Functor (IntentF d) where
   fmap f (WaitUntil cond next) = WaitUntil cond (f next)
   fmap f (ReserveCost uid next) = ReserveCost uid (f next)
   fmap f (ReleaseCost uid next) = ReleaseCost uid (f next)
   fmap f (FindBuilder k) = FindBuilder (f . k)
-  fmap f (FindPlacement uid k) = FindPlacement uid (f . k)
-  fmap f (FindGeyser k) = FindGeyser (f . k)
+  fmap f (FindPlacementTarget uid k) = FindPlacementTarget uid (f . k)
   fmap f (FindProducerForUnit uid k) = FindProducerForUnit uid (f . k)
-  fmap f (IssuePointBuild builder uid pos next) = IssuePointBuild builder uid pos (f next)
-  fmap f (IssueUnitBuild builder uid target next) = IssueUnitBuild builder uid target (f next)
-  fmap f (IssueSelfCommand producer uid next) = IssueSelfCommand producer uid (f next)
+  fmap f (IssueBuild builder uid target next) = IssueBuild builder uid target (f next) 
+  fmap f (IssueSelfCommand producer uid next) = IssueSelfCommand producer uid (f next) -- fmap f (WaitForStart producer ability target next) = WaitForStart producer ability target (f next)
 
 type IntentDSL d a = Free (IntentF d) a
+
+data IntentTickResult d
+  = Continue (IntentRuntime d)
+  | Block (IntentRuntime d)
+  | Done (IntentRuntime d) IntentStatus
 
 data IntentRuntime d = IntentRuntime
   { intentId :: IntentId
   , intentProgram :: IntentDSL d ()
   , intentStartedFrame :: Word32
+  , intentReserve :: Cost
   }
 
 type IntentStore d = Map IntentId (IntentRuntime d)
@@ -99,26 +107,17 @@ releaseCostI uid = liftF (ReleaseCost uid ())
 findBuilderI :: IntentDSL d UnitTag
 findBuilderI = liftF (FindBuilder id)
 
-findPlacementI :: UnitTypeId -> IntentDSL d TilePos
-findPlacementI uid = liftF (FindPlacement uid id)
-
-findGeyserI :: IntentDSL d UnitTag
-findGeyserI = liftF (FindGeyser id)
+findPlacementTargetI :: UnitTypeId -> IntentDSL d Target
+findPlacementTargetI uid = liftF (FindPlacementTarget uid id)
 
 findProducerForI :: UnitTypeId -> IntentDSL d UnitTag
 findProducerForI uid = liftF (FindProducerForUnit uid id)
 
-issuePointBuildI :: UnitTag -> UnitTypeId -> TilePos -> IntentDSL d ()
-issuePointBuildI builder uid pos = liftF (IssuePointBuild builder uid pos ())
-
-issueUnitBuildI :: UnitTag -> UnitTypeId -> UnitTag -> IntentDSL d ()
-issueUnitBuildI builder uid target = liftF (IssueUnitBuild builder uid target ())
+issueBuildI :: UnitTag -> UnitTypeId -> Target -> IntentDSL d ()
+issueBuildI builder uid target = liftF (IssueBuild builder uid target ())
 
 issueSelfCommandI :: UnitTag -> UnitTypeId -> IntentDSL d ()
 issueSelfCommandI producer uid = liftF (IssueSelfCommand producer uid ())
-
-reserveCostStep :: UnitTypeId -> StepMonad d ()
-reserveCostStep _ = pure ()
 
 releaseCostStep :: UnitTypeId -> StepMonad d ()
 releaseCostStep _ = pure ()
@@ -193,48 +192,62 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
       sortBy (compare `on` (\u -> (u ^. #pos) `distSquared` nexusPos))
         (runC $ obsUnitsC obs .| filterC isGeyser)
 
-runIntentStep
-  :: (HasObs d, HasGrid d)
+findPlacementTarget :: UnitTypeId -> Observation -> [TilePos] -> Grid -> Grid -> Maybe Target
+findPlacementTarget uid obs expands grid gridHeight
+  | uid == ProtossAssimilator = TargetUnit . (^. #tag) <$> findFreeGeyser obs
+  | otherwise = TargetPos <$> findPlacementPos obs expands grid gridHeight uid
+
+
+runIntent
+  :: (HasObs d, HasGrid d, HasReservedCost d)
   => IntentRuntime d
   -> StepMonad d (IntentRuntime d, IntentStatus)
-runIntentStep runtime@(IntentRuntime iid program startedFrame) =
-  case program of
-    Pure _ -> pure (runtime, IntentCompleted)
+runIntent = stepLoop
+  where
+    stepLoop rt = do
+      result <- intentTick rt
+      case result of
+        Continue rt' -> stepLoop rt'
+        Block rt' -> pure (rt', IntentRunning)
+        Done rt' status -> pure (rt', status)
+
+intentTick :: (HasObs d, HasGrid d, HasReservedCost d) => IntentRuntime d -> StepMonad d (IntentTickResult d)
+intentTick rt =
+  case intentProgram rt of
+    Pure _ -> pure $ Done rt IntentCompleted
     Free instruction ->
       case instruction of
         WaitUntil cond next -> do
           ready <- cond
           if ready
-            then pure (IntentRuntime iid next startedFrame, IntentRunning)
-            else pure (runtime, IntentRunning)
+            then pure $ Continue (rt {intentProgram = next})
+            else pure $ Block rt
 
         ReserveCost uid next -> do
-          reserveCostStep uid
-          pure (IntentRuntime iid next startedFrame, IntentRunning)
+          ucost <- agentUnitCost uid
+          -- subtract from the global reserve, add to the local
+          _ <- agentModifyReservedCost (\c -> c - ucost)
+          pure $ Continue (rt {intentProgram = next, intentReserve = (intentReserve rt) + ucost })
 
         ReleaseCost uid next -> do
-          releaseCostStep uid
-          pure (IntentRuntime iid next startedFrame, IntentRunning)
+          ucost <- agentUnitCost uid
+          agentModifyReservedCost (+ ucost)
+          pure $ Continue (rt {intentProgram = next, intentReserve = (intentReserve rt) - ucost })
 
         FindBuilder k -> do
           mbBuilder <- agentFindBuilder
           case mbBuilder of
-            Nothing -> pure (runtime, IntentRunning)
-            Just builder -> pure (IntentRuntime iid (k (builder ^. #tag)) startedFrame, IntentRunning)
+            Nothing -> pure $ Block rt
+            Just builder -> pure $ Continue (rt {intentProgram = k (builder ^. #tag)}) --(IntentRuntime iid (k (builder ^. #tag)) startedFrame, IntentRunning)
 
-        FindPlacement uid k -> do
+        FindPlacementTarget uid k -> do
           obs <- agentObs
           grid <- agentGrid
           si <- agentStatic
-          case findPlacementPos obs (expandsPos si) grid (heightMap si) uid of
-            Nothing -> pure (runtime, IntentRunning)
-            Just pos -> pure (IntentRuntime iid (k pos) startedFrame, IntentRunning)
-
-        FindGeyser k -> do
-          obs <- agentObs
-          case findFreeGeyser obs of
-            Nothing -> pure (runtime, IntentRunning)
-            Just geyser -> pure (IntentRuntime iid (k (geyser ^. #tag)) startedFrame, IntentRunning)
+          case findPlacementTarget uid obs (expandsPos si) grid (heightMap si) of
+            Nothing -> pure $ Block rt
+             --IntentRuntime iid (k target) startedFrame, IntentRunning)
+            Just target -> pure $ Continue (rt { intentProgram = k target })
 
         FindProducerForUnit uid k -> do
           si <- agentStatic
@@ -242,46 +255,42 @@ runIntentStep runtime@(IntentRuntime iid program startedFrame) =
               producerType = abilityExecutor HashMap.! ability
           producer <- findProducerTag producerType
           case producer of
-            Nothing -> pure (runtime, IntentRunning)
-            Just tag -> pure (IntentRuntime iid (k tag) startedFrame, IntentRunning)
+            Nothing -> pure $ Block rt
+            Just tag -> pure $ Continue (rt {intentProgram = k tag})
 
-        IssuePointBuild builder uid pos next -> do
+        IssueBuild builder uid target next -> do
           si <- agentStatic
           obs <- agentObs
           let ability = unitToAbility (unitTraits si) uid
           case find ((== builder) . (^. #tag)) (obs ^. #rawData . #units) of
-            Nothing -> pure (runtime, IntentRunning)
+            Nothing -> pure $ Block rt --TODO: fail
             Just executor -> do
-              agentModifyGrid (\grid -> addMark grid (getFootprint uid) pos)
-              command [PointCommand ability [executor] (fromTuple pos)]
-              pure (IntentRuntime iid next startedFrame, IntentRunning)
-
-        IssueUnitBuild builder uid target next -> do
-          si <- agentStatic
-          obs <- agentObs
-          let ability = unitToAbility (unitTraits si) uid
-          case ( find ((== builder) . (^. #tag)) (obs ^. #rawData . #units)
-               , find ((== target) . (^. #tag)) (obs ^. #rawData . #units)
-               ) of
-            (Just executor, Just targetUnit) -> do
-              command [UnitCommand ability [executor] targetUnit]
-              pure (IntentRuntime iid next startedFrame, IntentRunning)
-            _ -> pure (runtime, IntentRunning)
+              case target of
+                TargetPos pos -> do
+                  agentModifyGrid (\grid -> addMark grid (getFootprint uid) pos)
+                  command [PointCommand ability [executor] (fromTuple pos)]
+                  pure $ Continue (rt {intentProgram = next})
+                TargetUnit targetTag ->
+                  case find ((== targetTag) . (^. #tag)) (obs ^. #rawData . #units) of
+                    Just targetUnit -> do
+                      command [UnitCommand ability [executor] targetUnit]
+                      pure $ Continue (rt {intentProgram = next})
+                    Nothing -> pure $ Block rt
 
         IssueSelfCommand producer uid next -> do
           si <- agentStatic
           obs <- agentObs
           let ability = unitToAbility (unitTraits si) uid
           case find ((== producer) . (^. #tag)) (obs ^. #rawData . #units) of
-            Nothing -> pure (runtime, IntentRunning)
+            Nothing -> pure $ Block rt --TODO: fail
             Just executor -> do
               command [SelfCommand ability [executor]]
-              pure (IntentRuntime iid next startedFrame, IntentRunning)
+              pure $ Continue (rt {intentProgram = next})
 
-spawnIntent :: (HasObs d, HasBuildIntents d) => IntentId -> IntentDSL d () -> StepMonad d ()
+spawnIntent :: (HasObs d, HasBuildIntents d, HasReservedCost d) => IntentId -> IntentDSL d () -> StepMonad d ()
 spawnIntent iid program = do
   frame <- (^. #gameLoop) <$> agentObs
-  agentModify (buildIntentsL %~ Map.insert iid (IntentRuntime iid program frame))
+  agentModify (buildIntentsL %~ Map.insert iid (IntentRuntime iid program frame (Cost 0 0)))
 
 intentExists :: HasBuildIntents d => IntentId -> StepMonad d Bool
 intentExists iid = Map.member iid . (^. buildIntentsL) <$> agentGet
@@ -298,7 +307,7 @@ removeIntent iid =
   agentModify (buildIntentsL %~ Map.delete iid)
 
 stepIntent
-  :: (HasObs d, HasGrid d, HasBuildIntents d)
+  :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d)
   => IntentId
   -> StepMonad d IntentStatus
 stepIntent iid = do
@@ -306,11 +315,17 @@ stepIntent iid = do
   case current of
     Nothing -> pure IntentFailed
     Just runtime -> do
-      (runtime', status) <- runIntentStep runtime
+      (runtime', status) <- runIntent runtime
       case status of
         IntentRunning -> updateIntent runtime' >> pure IntentRunning
         IntentCompleted -> removeIntent iid >> pure IntentCompleted
         IntentFailed -> removeIntent iid >> pure IntentFailed
+
+--TODO: duplicate
+unitHasOrder :: AbilityId -> Units.Unit -> Bool
+unitHasOrder order u = order `elem` orders
+  where
+    orders = toEnum' . view #abilityId <$> u ^. #orders
 
 ensureStructure :: HasObs d => UnitTypeId -> IntentDSL d ()
 ensureStructure uid = do
@@ -318,13 +333,27 @@ ensureStructure uid = do
   waitUntil (abilityAvailable uid)
   reserveCostI uid
   builder <- findBuilderI
-  if uid == ProtossAssimilator
-    then do
-      geyser <- findGeyserI
-      issueUnitBuildI builder uid geyser
-    else do
-      pos <- findPlacementI uid
-      issuePointBuildI builder uid pos
+  target <- findPlacementTargetI uid
+  issueBuildI builder uid target
+  waitUntil $ do 
+    obs <- agentObs 
+    si <- agentStatic
+    abilities <- agentAbilities
+    let ability = unitToAbility (unitTraits si) uid
+        mbuilder' = getUnit obs builder
+    case mbuilder' of
+      Just b -> return $ unitHasOrder ability b
+      _ -> pure False
+  -- waitUntil $ do 
+  --   obs <- agentObs 
+  --   si <- agentStatic
+  --   abilities <- agentAbilities
+  --   let ability = unitToAbility (unitTraits si) uid
+  --   mbuilder' <- getUnit obs (builder ^. #tag)
+  --   case mbuilder' of
+  --     Just b -> return $ unitHasOrder ability
+  --     _ -> pure False
+
   releaseCostI uid
 
 ensureUnit :: HasObs d => UnitTypeId -> IntentDSL d ()
@@ -337,12 +366,12 @@ ensureUnit uid = do
   releaseCostI uid
 
 transientStep
-  :: (HasObs d, HasGrid d)
+  :: (HasObs d, HasGrid d, HasReservedCost d)
   => IntentDSL d ()
   -> StepMonad d IntentStatus
-transientStep program = snd <$> runIntentStep (IntentRuntime (IntentId (pack "transient")) program 0)
+transientStep program = snd <$> runIntent (IntentRuntime (IntentId (pack "transient")) program 0 (Cost 0 0))
 
-pylonBuildAction :: (HasObs d, HasGrid d) => MaybeStepMonad d ()
+pylonBuildAction :: (HasObs d, HasGrid d, HasReservedCost d) => MaybeStepMonad d ()
 pylonBuildAction = do
   affordable <- lift $ canAffordNow ProtossPylon
   MaybeT $ pure (if affordable then Just () else Nothing)

@@ -46,11 +46,6 @@ agentGetBuildIntents = agentGet <&> (^. buildIntentsL)
 agentModifyBuildIntents :: (HasBuildIntents d) => (IntentStore d -> IntentStore d) -> StepMonad d ()
 agentModifyBuildIntents f = agentModify (buildIntentsL %~ f)
 
-agentGetReservedCost :: (HasReservedCost d) => StepMonad d Cost
-agentGetReservedCost = agentGet <&> (^. reservedCostL)
-
-agentModifyReservedCost :: (HasReservedCost d) => (Cost -> Cost) -> StepMonad d ()
-agentModifyReservedCost f = agentModify (reservedCostL %~ f)
 
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
 setRandGen gen (BotDynamicState obs grid reserved _ army intents) = BotDynamicState obs grid reserved gen army intents

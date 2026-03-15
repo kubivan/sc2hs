@@ -10,7 +10,6 @@
 module AgentBulidUtils where
 
 import Actions
-import BotDynamicState (agentGetReservedCost)
 import SC2.Grid(
     Grid,
     canPlaceBuilding,
@@ -58,6 +57,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
+import StepMonad (agentGetReservedCost)
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))

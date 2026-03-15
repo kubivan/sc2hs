@@ -35,6 +35,8 @@ module StepMonad (
     debugTexts,
     command,
     HasReservedCost(..),
+    agentGetReservedCost,
+    agentModifyReservedCost,
 )
 where
 
@@ -124,10 +126,14 @@ class HasObs s where
 class HasGrid s where
   gridL :: Lens' s Grid
 
-
 class HasReservedCost d where
   reservedCostL :: Lens' d Cost
 
+agentGetReservedCost :: (HasReservedCost d) => StepMonad d Cost
+agentGetReservedCost = agentGet <&> (^. reservedCostL)
+
+agentModifyReservedCost :: (HasReservedCost d) => (Cost -> Cost) -> StepMonad d ()
+agentModifyReservedCost f = agentModify (reservedCostL %~ f)
 
 agentAsk :: StepMonad dyn (StaticInfo, UnitAbilities)
 agentAsk = lift $ lift ask
