@@ -12,6 +12,7 @@ import Squad.State
 import Squad
 import SC2.Utils
 import SC2.Grid
+import SC2.Spatial qualified as Spatial
 import SC2.Geometry
 import Observation
 import SC2.Ids.AbilityId
@@ -159,12 +160,11 @@ randCmd2 grid udata u = do
                         unvisitedNeighbors = filter (`Set.notMember` allUnitPos) $ filter (\p -> p `Set.notMember` auVisitedTiles udata) (neighbors upos grid)
 
                     pos <- calcMovePos unvisitedNeighbors
-
-                    command [PointCommand MOVE [u] (toPoint2D pos)] -- Move to the random position
+                    command [PointCommand MOVE [u] (fromTuple pos)] -- Move to the random position
   where
     upos = tilePos (u ^. #pos)
-    nearest :: (Pointable p) => p -> [p] -> p
-    nearest p = minimumBy (compare `on` distSquared p)
+    nearest :: TilePos -> [TilePos] -> TilePos
+    nearest p = minimumBy (compare `on` Spatial.distSquared p)
 
     calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
     calcMovePos candidates = do
@@ -189,7 +189,7 @@ scoreMoveCandidates upos udata = map (\tile -> (tile, calcScore tile))
         Set.foldl'
             ( \score edgeTile ->
                 let distToEdge :: TilePos -> Float
-                    distToEdge = distSquared (edgeTile :: TilePos)
+                    distToEdge = fromIntegral . Spatial.distSquared (edgeTile :: TilePos)
                     isCloserToEdgeThen :: TilePos -> TilePos -> Bool
                     a `isCloserToEdgeThen` b = distToEdge a < distToEdge b
                  in if tile `isCloserToEdgeThen` upos then score + 5.0 else score

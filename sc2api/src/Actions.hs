@@ -102,7 +102,7 @@ toAction (PointCommand ability us target) =
             & #abilityId
             .~ fromIntegral (fromEnum ability)
             & #targetWorldSpacePos
-            .~ toPoint2D target
+        .~ target
             & #unitTags
             .~ [u ^. #tag | u <- us]
 toAction (UnitCommand ability us target) =

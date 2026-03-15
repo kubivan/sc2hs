@@ -20,6 +20,7 @@ import Observation
 import Army.Army
 import SC2.Geometry
 import SC2.Grid
+import SC2.Spatial qualified as Spatial
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
@@ -33,7 +34,7 @@ import SC2.TechTree
 import SC2.Utils
 import StepMonad
 import PlanM
-import Intent
+import Intent hiding (unitHasOrder)
 import Units (
     Unit,
     closestC,
@@ -245,7 +246,7 @@ reassignIdleProbes = do
                         closestMineralTo nexus =
                             fromJust $
                                 runConduitPure $
-                                    obsUnitsC obs .| filterC isMineral .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
+                                    obsUnitsC obs .| filterC isMineral .| findC (\m -> Spatial.distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
                     command
                         [ UnitCommand HARVESTGATHERPROBE [harvester] (closestMineralTo nexus)
                         | (nexus, harvester) <- zip nexusesUnder probePool
@@ -274,7 +275,7 @@ buildPylons = do
                 runC $
                     unitsSelf obs
                         .| unitTypeC ProtossProbe
-                        .| filterC (TestBot.unitHasOrder PROTOSSBUILDPYLON)
+                        .| filterC (unitHasOrder PROTOSSBUILDPYLON)
 
         expectedFoodCap = 8 * incompletePylonsCount + 8 * orderedPylonsCount
 
@@ -362,7 +363,7 @@ squadAssignToExploreBlind squad = do
     case units of
         [] -> return False
         _ -> do
-            command [PointCommand ATTACKATTACK units (toPoint2D (enemyStartLocation si))]
+            command [PointCommand ATTACKATTACK units (fromTuple (enemyStartLocation si))]
             return True
 
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
@@ -490,8 +491,8 @@ instance Agent BotAgent where
             grid = gridMerge pixelIsRamp gridPlacement gridPathing
             nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
             -- TODO: sort expands based on region connectivity: closest is not always the next one
-            expands = sortOn (distSquared nexusPos) $ findExpands obsRaw grid heightMap
-            enemyStart = tilePos $ enemyBaseLocation gi obsRaw
+            expands = sortOn (Spatial.distSquared nexusPos) $ findExpands obsRaw grid heightMap
+            enemyStart = Spatial.toTilePos $ enemyBaseLocation gi obsRaw
 
             playerInfos = gi ^. #playerInfo
             playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos
@@ -551,6 +552,7 @@ agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
         buildOrder' <- runBO buildOrder
         if null buildOrder'
             then do
+                -- transit
                 return $ BuildArmyAndWin obs deathBall
             else
                 return $ BuildOrderExecutor buildOrder' obs abilities

@@ -10,6 +10,7 @@ module Squad.Behavior where
 import Actions (Action (..), UnitTag)
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
+import SC2.Spatial qualified as Spatial
 import Squad.Squad
 import Squad.Class
 import Target (Target)
@@ -59,11 +60,11 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
         unitsWithPos = take (length units) unitsFormationPos `zip` units
 
     -- if all (\(p, u) -> p == (tilePos . view #pos $ u) ) unitsWithPos
-    if all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+    if all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos
         then return True
         else do
-            command [PointCommand ATTACKATTACK [leader] (toPoint2D center)]
-            command [PointCommand ATTACKATTACK [u] (toPoint2D p) | (p, u) <- unitsWithPos]
+            command [PointCommand ATTACKATTACK [leader] (fromTuple center)]
+            command [PointCommand ATTACKATTACK [u] (fromTuple p) | (p, u) <- unitsWithPos]
             return False
 
 squadExploreRegion :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad a -> Region -> StepMonad d ()
@@ -82,7 +83,7 @@ squadExploreRegion s region =
         if isNothing isFound
             then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
             else do
-                command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (toPoint2D posToGo)]
+                command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (fromTuple posToGo)]
 
 squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
@@ -97,4 +98,4 @@ isSquadFormed squad center formation = do
             unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) (pixels formation)
 
             unitsWithPos = take (length units) unitsFormationPos `zip` units
-        return $ all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+        return $ all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos

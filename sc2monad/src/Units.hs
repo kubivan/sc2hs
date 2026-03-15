@@ -134,12 +134,15 @@ runC x = runConduitPure (x .| sinkList)
 
 closestC :: (Monad m) => Unit -> ConduitT Unit Void m (Maybe Unit)
 closestC to = await >>= foldlC (\mu u -> closest <$> mu <*> pure u)
-  where
-    toPos = to ^. PR.pos
-    closest a b = if distSquared (a ^. PR.pos) toPos < distSquared (b ^. PR.pos) toPos then a else b
+    where
+        toPos = to ^. PR.pos
+        closest a b =
+            if distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D toPos) < distSquared (toPoint2D $ b ^. PR.pos) (toPoint2D toPos)
+                then a
+                else b
 
 unitsBoundingBox :: [Unit] -> (TilePos, TilePos)
-unitsBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
+unitsBoundingBox cluster = ((tileX3D minX, tileY3D minY), (tileX3D maxX, tileY3D maxY))
   where
     minX = minimumBy (compare `on` view C.x) points
     maxX = maximumBy (compare `on` view C.x) points
@@ -150,7 +153,7 @@ unitsBoundingBox cluster = ((tileX minX, tileY minY), (tileX maxX, tileY maxY))
     points = view PR.pos <$> cluster
 
 distSquaredU :: Unit -> Unit -> Float
-distSquaredU a b = distSquared (a ^. PR.pos) (b ^. PR.pos)
+distSquaredU a b = distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D $ b ^. PR.pos)
 
 type ClusterId = Int
 data PointLabel = Noise | Cluster ClusterId
