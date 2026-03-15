@@ -46,6 +46,21 @@ agentGetBuildIntents = agentGet <&> (^. buildIntentsL)
 agentModifyBuildIntents :: (HasBuildIntents d) => (IntentStore d -> IntentStore d) -> StepMonad d ()
 agentModifyBuildIntents f = agentModify (buildIntentsL %~ f)
 
+agentModifyArmy :: (Army -> Army) -> StepMonad BotDynamicState ()
+agentModifyArmy f =
+  agentModify $ \ds -> ds{dsArmy = f (dsArmy ds)}
+
+agentPutArmyUnitData :: UnitTag -> ArmyUnitData -> StepMonad BotDynamicState ()
+agentPutArmyUnitData tag newUnitData =
+  agentModify $ \ds -> bdsUpdateArmyUnitData ds tag newUnitData
+
+agentWithRandGen :: (StdGen -> (a, StdGen)) -> StepMonad BotDynamicState a
+agentWithRandGen f = do
+  ds <- agentGet
+  let (value, newGen) = f (dsRandGen ds)
+  agentPut $ ds{dsRandGen = newGen}
+  pure value
+
 
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
 setRandGen gen (BotDynamicState obs grid reserved _ army intents) = BotDynamicState obs grid reserved gen army intents

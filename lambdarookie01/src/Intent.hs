@@ -20,7 +20,7 @@ import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, f
 import SC2.Spatial qualified as Spatial
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
-import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
+import SC2.TechTree (abilityExecutor, unitToAbility)
 import Target (Target (..))
 import StepMonad
   ( HasGrid
@@ -41,6 +41,7 @@ import StepMonad
   )
 import StepMonad
 import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
+import StepMonadUtils (abilityAvailableForUnit, agentUnitCost)
 
 import Data.Set qualified as Set
 import Control.Monad (guard)
@@ -124,34 +125,18 @@ releaseCostStep :: UnitTypeId -> StepMonad d ()
 releaseCostStep _ = pure ()
 
 abilityAvailable :: UnitTypeId -> StepMonad d Bool
-abilityAvailable uid = do
-  si <- agentStatic
-  abilities <- agentAbilities
-  let ability = unitToAbility (unitTraits si) uid
-      executor = abilityExecutor HashMap.! ability
-  pure $ ability `elem` HashMap.lookupDefault [] executor abilities
+abilityAvailable = abilityAvailableForUnit
 
 findProducerTag :: HasObs d => UnitTypeId -> StepMonad d (Maybe UnitTag)
 findProducerTag producerType = do
   obs <- agentObs
   pure $ (^. #tag) <$> find ((== 1) . (^. #buildProgress)) (runC $ unitsSelf obs .| unitTypeC producerType)
 
-agentUnitCost :: UnitTypeId -> StepMonad d Cost
-agentUnitCost uid = do
-  si <- agentStatic
-  pure $ unitCost (unitTraits si) uid
-
-unitCost :: UnitTraits -> UnitTypeId -> Cost
-unitCost traits uid =
-  case traits HashMap.!? uid of
-    Just trait -> Cost (fromIntegral $ trait ^. #mineralCost) (fromIntegral $ trait ^. #vespeneCost)
-    Nothing -> Cost 0 0
-
 canAffordNow :: HasObs d => UnitTypeId -> StepMonad d Bool
 canAffordNow uid = do
-  si <- agentStatic
   obs <- agentObs
-  pure $ obsResources obs >= unitCost (unitTraits si) uid
+  cost <- agentUnitCost uid
+  pure $ obsResources obs >= cost
 
 agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs

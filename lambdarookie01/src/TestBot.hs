@@ -322,11 +322,9 @@ agentResetGrid =
         agentModifyGrid (const grid')
 
 agentUpdateGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
-agentUpdateGrid f = 
+agentUpdateGrid f =
   {-# SCC "agentUpdateGrid" #-}
   agentModifyGrid f
-
-setArmy a st = st{dsArmy = a}
 
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
@@ -349,9 +347,7 @@ squadSeek squad = case squadState squad of
             Nothing -> return False
             (Just enemy) -> do
                 let squad' = squad{squadState = SSEngage (FSEngageFar (enemy ^. #tag))}
-                    squads' = replaceSquad squad' (armySquads (dsArmy ds))
-                    army' = (dsArmy ds){armySquads = squads'}
-                agentPut $ setArmy army' ds
+                agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
                 return True
 
 squadAssignToExploreBlind :: Squad -> StepMonad BotDynamicState Bool
@@ -390,9 +386,7 @@ squadAssignToExplore s = do
         rid <- MaybeT . pure $ listToMaybe availableRegionIds
         let region = regionsById HashMap.! rid
             squad' = squad{squadState = SSExploreRegion (FSExploreRegion rid region)}
-            squads' = replaceSquad squad' (armySquads (dsArmy ds))
-            army' = (dsArmy ds){armySquads = squads'}
-        lift $ agentPut $ setArmy army' ds
+        lift $ agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
         pure True
 
 squadAssignToExplore' :: Squad -> StepMonad BotDynamicState Bool
@@ -425,8 +419,7 @@ agentArmyControl = do
     let army = dsArmy ds
         squads = armySquads army
     squads' <- mapM processSquad squads
-    let army' = army{armySquads = squads'}
-    agentPut $ setArmy army' ds
+    agentModifyArmy (\current -> current{armySquads = squads'})
 
 data Env = Env
   { chokeQueue :: TQueue ()

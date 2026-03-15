@@ -34,6 +34,7 @@ import Proto.S2clientprotocol.Raw qualified as R
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import StepMonad
+import StepMonadUtils (unitCost)
 import Units (
     Unit,
     UnitOrder,
@@ -60,19 +61,11 @@ import StepMonad (agentGetReservedCost)
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
 
-unitCost :: UnitTraits -> UnitTypeId -> Cost
-unitCost traits uid = case traits HashMap.!? uid of
-    Just t -> Cost (fromIntegral $ t ^. #mineralCost) (fromIntegral $ t ^. #vespeneCost)
-    Nothing -> Cost 0 0
-
 actionCost :: StaticInfo -> Action -> Cost
 actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCmd
 
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
-
-agentUnitCost :: UnitTypeId -> StepMonad d Cost
-agentUnitCost uid = agentStatic >>= \si -> return $ unitCost (unitTraits si) uid
 
 canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
 canAfford uid = do
