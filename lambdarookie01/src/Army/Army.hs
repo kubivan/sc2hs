@@ -16,11 +16,6 @@ import Data.Set qualified as Set
 import Data.Maybe
 import System.Random (Random, StdGen, randomR)
 
-data Target
-    = TargetPos TilePos
-    | TargetUnit UnitTag
-    deriving (Eq, Show)
-
 data ArmyUnitData = ArmyUnitData
     { auVisitedTiles :: Set TilePos
     , auUnvisitedEdge :: Set TilePos

@@ -64,6 +64,7 @@ library:
     - SC2.Grid.Algo
     - SC2.Grid.Utils
     - SC2.Grid.TilePos
+    - SC2.Grid.Distance
     # Units
     - SC2.Units.CombatEval
 

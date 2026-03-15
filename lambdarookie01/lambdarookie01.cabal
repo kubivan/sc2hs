@@ -34,6 +34,7 @@ executable lambdarookie01
       Squad.Squad
       Squad.State
       SquadRetreat
+      Target
       TestBot
       Paths_lambdarookie01
   hs-source-dirs:
@@ -88,6 +89,7 @@ test-suite lambdarookie01-test
       Squad.Squad
       Squad.State
       SquadRetreat
+      Target
       TestBot
       TestFixtures
       TestIntegrationRealGame
