@@ -15,12 +15,13 @@ import Data.Word (Word32)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (^.))
 import Observation (Cost (..), Observation, findNexus, obsResources, obsUnitsC, unitsSelf, getUnit)
-import SC2.Geometry (distSquared, fromTuple)
+import SC2.Geometry (fromTuple)
 import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, tilePos)
+import SC2.Grid.Distance qualified as GridDistance
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
 import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
-import Squad (Target (..))
+import Target (Target (..))
 import StepMonad
   ( HasGrid
   , HasObs
@@ -189,12 +190,12 @@ findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilat
     assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
     nexusPos = tilePos $ findNexus obs ^. #pos
     geysersSorted =
-      sortBy (compare `on` (\u -> (u ^. #pos) `distSquared` nexusPos))
+      sortBy (compare `on` (\u -> GridDistance.distSquared u nexusPos))
         (runC $ obsUnitsC obs .| filterC isGeyser)
 
 findPlacementTarget :: UnitTypeId -> Observation -> [TilePos] -> Grid -> Grid -> Maybe Target
 findPlacementTarget uid obs expands grid gridHeight
-  | uid == ProtossAssimilator = TargetUnit . (^. #tag) <$> findFreeGeyser obs
+  | uid == ProtossAssimilator = TargetUnit <$> findFreeGeyser obs
   | otherwise = TargetPos <$> findPlacementPos obs expands grid gridHeight uid
 
 
@@ -270,12 +271,9 @@ intentTick rt =
                   agentModifyGrid (\grid -> addMark grid (getFootprint uid) pos)
                   command [PointCommand ability [executor] (fromTuple pos)]
                   pure $ Continue (rt {intentProgram = next})
-                TargetUnit targetTag ->
-                  case find ((== targetTag) . (^. #tag)) (obs ^. #rawData . #units) of
-                    Just targetUnit -> do
-                      command [UnitCommand ability [executor] targetUnit]
-                      pure $ Continue (rt {intentProgram = next})
-                    Nothing -> pure $ Block rt
+                TargetUnit targetUnit -> do
+                  command [UnitCommand ability [executor] targetUnit]
+                  pure $ Continue (rt {intentProgram = next})
 
         IssueSelfCommand producer uid next -> do
           si <- agentStatic
