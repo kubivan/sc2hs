@@ -30,6 +30,7 @@ import Actions (UnitTag)
 import Footprint
 import SC2.Geometry
 import SC2.Grid
+import SC2.Spatial qualified as Spatial
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
@@ -93,7 +94,7 @@ findExpandPosInCluster grid heightMap cluster = bfsRes $ gridBfs grid (tilePos .
   where
     clusterTiles = tilePos . view #pos <$> cluster
     canPlaceDist69 p =
-        all (\c -> distSquared p c >= 6 * 6 && distSquared p c < 9 * 9) clusterTiles
+      all (\c -> Spatial.distSquared p c >= 6 * 6 && Spatial.distSquared p c < 9 * 9) clusterTiles
             && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 findExpands :: Observation -> Grid -> Grid -> [TilePos]
@@ -114,7 +115,7 @@ enemyBaseLocation :: Proto.ResponseGameInfo -> Observation -> Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases
   where
     nexus = findNexus obs
-    notCloseToNexus p = distSquared p (nexus ^. #pos) > 1
+    notCloseToNexus p = distSquared p (toPoint2D $ nexus ^. #pos) > 1
     enemyBases = gi ^. (#startRaw . #startLocations)
 
 -- TODO: move to a separate file

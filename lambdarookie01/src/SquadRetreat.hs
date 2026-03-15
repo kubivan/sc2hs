@@ -8,6 +8,7 @@ import Squad.FSMLog
 import SC2.Geometry
 import Observation
 import SC2.Grid
+import SC2.Spatial qualified as Spatial
 import StepMonad
 import Actions (Action (PointCommand), UnitTag)
 import SC2.Ids.AbilityId (AbilityId (ATTACKATTACK))
@@ -28,7 +29,7 @@ retreatStep squad (Just rallyPos) = do
         units = catMaybes [unitByTag t | t <- squadUnits squad]
     if null units
         then pure ()
-        else command [PointCommand ATTACKATTACK units (toPoint2D rallyPos)]
+      else command [PointCommand ATTACKATTACK units (fromTuple rallyPos)]
 
 -- ---------------------------------------------------------------------------
 -- Update
@@ -67,8 +68,8 @@ retreatUpdate squad st@(Just rallyPos) = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)
         leader = fromJust $ unitByTag (head (squadUnits squad))
-        arrived = distManhattan (tilePos (leader ^. #pos)) rallyPos <= 3
-        healed = leader ^. #shield  == leader ^. #shieldMax
+        arrived = Spatial.distManhattan (tilePos (leader ^. #pos)) rallyPos <= 3
+        healed = leader ^. #shield == leader ^. #shieldMax
 
     pure $ if arrived || healed
         then Transition SSIdle

@@ -58,13 +58,13 @@ library:
     # SC2 modules
     - SC2.TechTree
     - SC2.Utils
+    - SC2.Spatial
     # Grid system
     - SC2.Grid
     - SC2.Grid.Core
     - SC2.Grid.Algo
     - SC2.Grid.Utils
     - SC2.Grid.TilePos
-    - SC2.Grid.Distance
     # Units
     - SC2.Units.CombatEval
 

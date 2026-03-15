@@ -4,6 +4,7 @@ import Footprint
 import Observation
 import SC2.Geometry
 import SC2.Grid
+import SC2.Spatial (distSquared2D)
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
 import Units
@@ -58,7 +59,7 @@ backoffList xs n
 -- Check if an enemy is in range
 enemyInRange :: Unit -> [Unit] -> Maybe Unit
 enemyInRange u enemies =
-    headMay $ filter (\e -> distSquared (e ^. #pos) (u ^. #pos) <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
+    headMay $ filter (\e -> distSquared2D e u <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
 
 noneOf :: (a -> Bool) -> [a] -> Bool
 noneOf p = not . any p
@@ -69,10 +70,10 @@ directionTo p1 p2 = (round $ signum (p2 ^. #x - p1 ^. #x), round $ signum (p2 ^.
 
 -- Get the nearest enemy unit
 nearestEnemy :: Unit -> [Unit] -> Maybe Unit
-nearestEnemy u = minimumByMay (comparing (distSquared (u ^. #pos) . (^. #pos)))
+nearestEnemy u = minimumByMay (comparing (distSquared2D u))
 
 nearestTarget :: Unit -> [Point2D] -> Maybe Point2D
-nearestTarget u = minimumByMay (comparing (distSquared (toPoint2D $ u ^. #pos)))
+nearestTarget u = minimumByMay (comparing (distSquared2D u))
 
 selfBuildingsCount :: Observation -> Int
 selfBuildingsCount obs = length . runC $ unitsSelf obs .| filterC isBuilding
