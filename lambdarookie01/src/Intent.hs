@@ -47,8 +47,9 @@ import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWi
 import Data.Set qualified as Set
 import Control.Monad (guard)
 import Lens.Micro.Extras (view)
+import Debug.Trace (traceM)
 
-newtype IntentId = IntentId Text
+newtype IntentId = IntentId [Char]
   deriving (Eq, Ord, Show)
 
 data IntentStatus
@@ -57,9 +58,16 @@ data IntentStatus
   | IntentFailed
   deriving (Eq, Show)
 
+data AwaitResult
+  = AwaitContinue
+  | AwaitBlock
+  | AwaitFail
+  deriving (Eq, Show)
+
 data IntentF d next
   = WaitUntil (IntentRuntime d -> StepMonad d Bool) next
   | Guard (IntentRuntime d -> StepMonad d Bool) next
+  | AwaitWith (IntentRuntime d -> StepMonad d AwaitResult) next
   | ReserveCost UnitTypeId next
   | ReleaseCost UnitTypeId next
   | FindBuilder (UnitTag -> next)
@@ -68,9 +76,22 @@ data IntentF d next
   | IssueBuild UnitTag UnitTypeId Target next
   | IssueSelfCommand UnitTag UnitTypeId next
 
+instance Show (IntentF d next) where
+  show (WaitUntil _ _)         = "WaitUntil"
+  show (Guard _ _)             = "Guard"
+  show (AwaitWith _ _)         = "AwaitWith"
+  show (ReserveCost _ _)       = "ReserveCost"
+  show (ReleaseCost _ _)       = "ReleaseCost"
+  show (FindBuilder _)         = "FindBuilder"
+  show (FindPlacementTarget _ _) = "FindPlacementTarget"
+  show (FindProducerForUnit _ _) = "FindProducerForUnit"
+  show (IssueBuild _ _ _ _)    = "IssueBuild"
+  show (IssueSelfCommand _ _ _) = "IssueSelfCommand"
+
 instance Functor (IntentF d) where
   fmap f (WaitUntil cond next) = WaitUntil cond (f next)
-  fmap f (Guard cond next) = WaitUntil cond (f next)
+  fmap f (Guard cond next) = Guard cond (f next)
+  fmap f (AwaitWith cond next) = AwaitWith cond (f next)
   fmap f (ReserveCost uid next) = ReserveCost uid (f next)
   fmap f (ReleaseCost uid next) = ReleaseCost uid (f next)
   fmap f (FindBuilder k) = FindBuilder (f . k)
@@ -109,6 +130,9 @@ guardWithI cond = liftF (Guard cond ())
 
 guardI :: StepMonad d Bool -> IntentDSL d ()
 guardI cond = guardWithI (const cond)
+
+awaitWith :: (IntentRuntime d -> StepMonad d AwaitResult) -> IntentDSL d ()
+awaitWith cond = liftF (AwaitWith cond ())
 
 reserveCostI :: UnitTypeId -> IntentDSL d ()
 reserveCostI uid = liftF (ReserveCost uid ())
@@ -201,7 +225,8 @@ intentTick :: (HasObs d, HasGrid d, HasReservedCost d) => IntentRuntime d -> Ste
 intentTick rt =
   case intentProgram rt of
     Pure _ -> pure $ Done rt IntentCompleted
-    Free instruction ->
+    Free instruction -> do
+      traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ show instruction)
       case instruction of
         WaitUntil cond next -> do
           ready <- cond rt
@@ -213,6 +238,13 @@ intentTick rt =
           if ok 
             then pure $ Continue (rt {intentProgram = next})
             else pure $ Done rt IntentFailed
+
+        AwaitWith cond next -> do
+          result <- cond rt
+          case result of
+            AwaitContinue -> pure $ Continue (rt {intentProgram = next})
+            AwaitBlock -> pure $ Block rt
+            AwaitFail -> pure $ Done rt IntentFailed
 
         ReserveCost uid next -> do
           ucost <- agentUnitCost uid
@@ -304,6 +336,7 @@ stepIntent iid = do
     Nothing -> pure IntentFailed
     Just runtime -> do
       (runtime', status) <- runIntent runtime
+      traceM ("[intent][" ++ show iid ++ "] " ++ show status)
       case status of
         IntentRunning -> updateIntent runtime' >> pure IntentRunning
         IntentCompleted -> removeIntent iid >> pure IntentCompleted
@@ -318,36 +351,46 @@ unitHasOrder order u = order `elem` orders
   where
     orders = toEnum' . view #abilityId <$> u ^. #orders
 
+canAffordI uid rt = do 
+  traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ " can i afford " ++ show uid)
+  agentCanAffordWith (intentReserve rt) uid
+
+canProduceI uid rt = do
+  traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ " can i produce " ++ show uid)
+  abilityAvailableForUnit uid
+
 ensureStructure :: (HasObs d, HasReservedCost d) => UnitTypeId -> IntentDSL d ()
 ensureStructure uid = do
   reserveCostI uid
-  waitUntilWith (\rt -> agentCanAffordWith (intentReserve rt) uid)
-  waitUntil (abilityAvailableForUnit uid)
+  waitUntilWith (canAffordI uid)
+  waitUntilWith (canProduceI uid)
   builder <- findBuilderI
   target <- findPlacementTargetI uid
   issueBuildI builder uid target
-  guardI $ do 
+  awaitWith $ \rt -> do
     obs <- agentObs
     si <- agentStatic
     let ability = unitToAbility (unitTraits si) uid
-        mbuilder' = getUnit obs builder
-    case mbuilder' of
-      Just b -> pure $ unitHasOrder ability b
-      _ -> pure False
-  waitUntil $ do
-    obs <- agentObs
-    let targetInprogress = not . null $ runC $ unitsSelf obs .| unitTypeC uid .| filterC (\x -> (Spatial.distSquared (x ^. #pos) target ) <= 2)    
-    pure targetInprogress 
+        builderHasOrder =
+          case getUnit obs builder of
+            Just b  -> unitHasOrder ability b
+            Nothing -> False
 
-  -- waitUntil $ do 
-  --   obs <- agentObs 
-  --   si <- agentStatic
-  --   abilities <- agentAbilities
-  --   let ability = unitToAbility (unitTraits si) uid
-  --   mbuilder' <- getUnit obs (builder ^. #tag)
-  --   case mbuilder' of
-  --     Just b -> return $ unitHasOrder ability
-  --     _ -> pure False
+        targetInProgress =
+          not . null $
+            runC $
+              unitsSelf obs
+                .| unitTypeC uid
+                .| filterC (\x -> Spatial.distSquared (x ^. #pos) target <= 2 * 2)
+
+    traceM ("[intent][" ++ show (intentId rt) ++ "] waiting for build start " ++ show uid)
+
+    pure $
+      if not builderHasOrder
+        then AwaitFail
+        else if targetInProgress
+          then AwaitContinue
+          else AwaitBlock
 
   releaseCostI uid
 

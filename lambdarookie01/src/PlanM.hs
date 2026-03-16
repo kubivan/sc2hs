@@ -29,9 +29,10 @@ stepProgram (BOTrain uid) = ensureUnit uid
 runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => BuildOrder -> StepMonad d BuildOrder
 runBO [] = pure []
 runBO order@(step : rest) = do
-  let boIntentId = IntentId (pack $ "bo-" ++ (show $ length order ) ++ "-" ++ show step)
+  let boIntentId = IntentId ("bo-" ++ (show $ length order) ++ "-" ++ show step)
   active <- intentExists boIntentId
   if active
+    -- TODO: remove duplication
     then do
       status <- stepIntent boIntentId
       case status of
@@ -56,4 +57,3 @@ createAction uid = do
 
 tryTrain :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d ()
 tryTrain uid = void (transientStep (ensureUnit uid))
-
