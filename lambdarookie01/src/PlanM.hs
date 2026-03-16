@@ -22,9 +22,6 @@ boCurrentStep :: BuildOrder -> Maybe BOStep
 boCurrentStep [] = Nothing
 boCurrentStep (step : _) = Just step
 
-boIntentId :: IntentId
-boIntentId = IntentId (pack "bo/current")
-
 stepProgram :: (HasObs d, HasReservedCost d) => BOStep -> IntentDSL d ()
 stepProgram (BOBuild uid) = ensureStructure uid
 stepProgram (BOTrain uid) = ensureUnit uid
@@ -32,6 +29,7 @@ stepProgram (BOTrain uid) = ensureUnit uid
 runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => BuildOrder -> StepMonad d BuildOrder
 runBO [] = pure []
 runBO order@(step : rest) = do
+  let boIntentId = IntentId (pack $ "bo-" ++ (show $ length order ) ++ "-" ++ show step)
   active <- intentExists boIntentId
   if active
     then do
