@@ -14,7 +14,7 @@ import Data.Text (Text, pack)
 import Data.Word (Word32)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (^.))
-import Observation (Cost (..), Observation, findNexus, obsResources, obsUnitsC, unitsSelf, getUnit)
+import Observation (Cost (..), Observation, findNexus, obsUnitsC, unitsSelf, getUnit)
 import SC2.Geometry (fromTuple)
 import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, tilePos)
 import SC2.Spatial qualified as Spatial
@@ -25,6 +25,7 @@ import Target (Target (..))
 import StepMonad
   ( HasGrid
   , HasObs
+  , HasReservedCost
   , MaybeStepMonad
   , StepMonad
   , agentGet
@@ -41,12 +42,11 @@ import StepMonad
   )
 import StepMonad
 import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
-import StepMonadUtils (abilityAvailableForUnit, agentUnitCost)
+import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWith, agentUnitCost)
 
 import Data.Set qualified as Set
 import Control.Monad (guard)
 import Lens.Micro.Extras (view)
-import StepMonad (agentModifyReservedCost)
 
 newtype IntentId = IntentId Text
   deriving (Eq, Ord, Show)
@@ -58,7 +58,7 @@ data IntentStatus
   deriving (Eq, Show)
 
 data IntentF d next
-  = WaitUntil (StepMonad d Bool) next
+  = WaitUntil (IntentRuntime d -> StepMonad d Bool) next
   | ReserveCost UnitTypeId next
   | ReleaseCost UnitTypeId next
   | FindBuilder (UnitTag -> next)
@@ -98,7 +98,10 @@ class HasBuildIntents d where
   buildIntentsL :: Lens' d (IntentStore d)
 
 waitUntil :: StepMonad d Bool -> IntentDSL d ()
-waitUntil cond = liftF (WaitUntil cond ())
+waitUntil cond = waitUntilWith (const cond)
+
+waitUntilWith :: (IntentRuntime d -> StepMonad d Bool) -> IntentDSL d ()
+waitUntilWith cond = liftF (WaitUntil cond ())
 
 reserveCostI :: UnitTypeId -> IntentDSL d ()
 reserveCostI uid = liftF (ReserveCost uid ())
@@ -124,19 +127,10 @@ issueSelfCommandI producer uid = liftF (IssueSelfCommand producer uid ())
 releaseCostStep :: UnitTypeId -> StepMonad d ()
 releaseCostStep _ = pure ()
 
-abilityAvailable :: UnitTypeId -> StepMonad d Bool
-abilityAvailable = abilityAvailableForUnit
-
 findProducerTag :: HasObs d => UnitTypeId -> StepMonad d (Maybe UnitTag)
 findProducerTag producerType = do
   obs <- agentObs
   pure $ (^. #tag) <$> find ((== 1) . (^. #buildProgress)) (runC $ unitsSelf obs .| unitTypeC producerType)
-
-canAffordNow :: HasObs d => UnitTypeId -> StepMonad d Bool
-canAffordNow uid = do
-  obs <- agentObs
-  cost <- agentUnitCost uid
-  pure $ obsResources obs >= cost
 
 agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs
@@ -204,7 +198,7 @@ intentTick rt =
     Free instruction ->
       case instruction of
         WaitUntil cond next -> do
-          ready <- cond
+          ready <- cond rt
           if ready
             then pure $ Continue (rt {intentProgram = next})
             else pure $ Block rt
@@ -302,7 +296,10 @@ stepIntent iid = do
       case status of
         IntentRunning -> updateIntent runtime' >> pure IntentRunning
         IntentCompleted -> removeIntent iid >> pure IntentCompleted
-        IntentFailed -> removeIntent iid >> pure IntentFailed
+        IntentFailed -> do
+          agentModifyReservedCost (+ intentReserve runtime')
+          removeIntent iid
+          pure IntentFailed
 
 --TODO: duplicate
 unitHasOrder :: AbilityId -> Units.Unit -> Bool
@@ -310,11 +307,11 @@ unitHasOrder order u = order `elem` orders
   where
     orders = toEnum' . view #abilityId <$> u ^. #orders
 
-ensureStructure :: HasObs d => UnitTypeId -> IntentDSL d ()
+ensureStructure :: (HasObs d, HasReservedCost d) => UnitTypeId -> IntentDSL d ()
 ensureStructure uid = do
-  waitUntil (canAffordNow uid)
-  waitUntil (abilityAvailable uid)
   reserveCostI uid
+  waitUntilWith (\rt -> agentCanAffordWith (intentReserve rt) uid)
+  waitUntil (abilityAvailableForUnit uid)
   builder <- findBuilderI
   target <- findPlacementTargetI uid
   issueBuildI builder uid target
@@ -339,10 +336,10 @@ ensureStructure uid = do
 
   releaseCostI uid
 
-ensureUnit :: HasObs d => UnitTypeId -> IntentDSL d ()
+ensureUnit :: (HasObs d, HasReservedCost d) => UnitTypeId -> IntentDSL d ()
 ensureUnit uid = do
-  waitUntil (canAffordNow uid)
-  waitUntil (abilityAvailable uid)
+  waitUntilWith (\rt -> agentCanAffordWith (intentReserve rt) uid)
+  waitUntil (abilityAvailableForUnit uid)
   reserveCostI uid
   producer <- findProducerForI uid
   issueSelfCommandI producer uid
@@ -356,7 +353,7 @@ transientStep program = snd <$> runIntent (IntentRuntime (IntentId (pack "transi
 
 pylonBuildAction :: (HasObs d, HasGrid d, HasReservedCost d) => MaybeStepMonad d ()
 pylonBuildAction = do
-  affordable <- lift $ canAffordNow ProtossPylon
+  affordable <- lift $ agentCanAfford ProtossPylon
   MaybeT $ pure (if affordable then Just () else Nothing)
   lift $ do
     _ <- transientStep (ensureStructure ProtossPylon)

@@ -34,7 +34,7 @@ import Proto.S2clientprotocol.Raw qualified as R
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import StepMonad
-import StepMonadUtils (unitCost)
+import StepMonadUtils (agentCanAfford, unitCost)
 import Units (
     Unit,
     UnitOrder,
@@ -65,11 +65,7 @@ actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
 canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
-canAfford uid = do
-  si <- agentStatic
-  obs <- agentObs
-  reservedCost <- agentGetReservedCost
-  return $ (obsResources obs - reservedCost) >= unitCost (unitTraits si) uid
+canAfford = agentCanAfford
 
 
 agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)

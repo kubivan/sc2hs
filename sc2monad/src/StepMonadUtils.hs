@@ -12,6 +12,9 @@ module StepMonadUtils (
     withStaticObsAbilities,
     unitCost,
     agentUnitCost,
+    agentCanAfford,
+    agentCanAffordNow,
+    agentCanAffordWith,
     abilityAvailableForUnit,
     findPlacementPointInRadiusSM,
     addMarkSM,
@@ -93,6 +96,22 @@ agentUnitCost :: UnitTypeId -> StepMonad d Cost
 agentUnitCost uid = do
     si <- agentStatic
     pure $ unitCost (unitTraits si) uid
+
+agentCanAffordWith :: (HasObs d, HasReservedCost d) => Cost -> UnitTypeId -> StepMonad d Bool
+agentCanAffordWith localReserved uid = do
+    obs <- agentObs
+    reserved <- agentGetReservedCost
+    cost <- agentUnitCost uid
+    pure $ obsResources obs + reserved + localReserved >= cost
+
+agentCanAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
+agentCanAfford = agentCanAffordWith (Cost 0 0)
+
+agentCanAffordNow :: (HasObs d) => UnitTypeId -> StepMonad d Bool
+agentCanAffordNow uid = do
+    obs <- agentObs
+    cost <- agentUnitCost uid
+    pure $ obsResources obs >= cost
 
 abilityAvailableForUnit :: UnitTypeId -> StepMonad d Bool
 abilityAvailableForUnit uid = do
