@@ -59,6 +59,7 @@ data IntentStatus
 
 data IntentF d next
   = WaitUntil (IntentRuntime d -> StepMonad d Bool) next
+  | Guard (IntentRuntime d -> StepMonad d Bool) next
   | ReserveCost UnitTypeId next
   | ReleaseCost UnitTypeId next
   | FindBuilder (UnitTag -> next)
@@ -66,10 +67,10 @@ data IntentF d next
   | FindProducerForUnit UnitTypeId (UnitTag -> next)
   | IssueBuild UnitTag UnitTypeId Target next
   | IssueSelfCommand UnitTag UnitTypeId next
-  -- | WaitForStart UnitTag AbilityId Target next
 
 instance Functor (IntentF d) where
   fmap f (WaitUntil cond next) = WaitUntil cond (f next)
+  fmap f (Guard cond next) = WaitUntil cond (f next)
   fmap f (ReserveCost uid next) = ReserveCost uid (f next)
   fmap f (ReleaseCost uid next) = ReleaseCost uid (f next)
   fmap f (FindBuilder k) = FindBuilder (f . k)
@@ -102,6 +103,12 @@ waitUntil cond = waitUntilWith (const cond)
 
 waitUntilWith :: (IntentRuntime d -> StepMonad d Bool) -> IntentDSL d ()
 waitUntilWith cond = liftF (WaitUntil cond ())
+
+guardWithI :: (IntentRuntime d -> StepMonad d Bool) -> IntentDSL d ()
+guardWithI cond = liftF (Guard cond ())
+
+guardI :: StepMonad d Bool -> IntentDSL d ()
+guardI cond = guardWithI (const cond)
 
 reserveCostI :: UnitTypeId -> IntentDSL d ()
 reserveCostI uid = liftF (ReserveCost uid ())
@@ -177,7 +184,6 @@ findPlacementTarget uid obs expands grid gridHeight
   | uid == ProtossAssimilator = TargetUnit <$> findFreeGeyser obs
   | otherwise = TargetPos <$> findPlacementPos obs expands grid gridHeight uid
 
-
 runIntent
   :: (HasObs d, HasGrid d, HasReservedCost d)
   => IntentRuntime d
@@ -202,6 +208,11 @@ intentTick rt =
           if ready
             then pure $ Continue (rt {intentProgram = next})
             else pure $ Block rt
+        Guard cond next -> do
+          ok <- cond rt
+          if ok 
+            then pure $ Continue (rt {intentProgram = next})
+            else pure $ Done rt IntentFailed
 
         ReserveCost uid next -> do
           ucost <- agentUnitCost uid
@@ -315,15 +326,19 @@ ensureStructure uid = do
   builder <- findBuilderI
   target <- findPlacementTargetI uid
   issueBuildI builder uid target
-  waitUntil $ do 
-    obs <- agentObs 
+  guardI $ do 
+    obs <- agentObs
     si <- agentStatic
-    abilities <- agentAbilities
     let ability = unitToAbility (unitTraits si) uid
         mbuilder' = getUnit obs builder
     case mbuilder' of
-      Just b -> return $ unitHasOrder ability b
+      Just b -> pure $ unitHasOrder ability b
       _ -> pure False
+  waitUntil $ do
+    obs <- agentObs
+    let targetInprogress = not . null $ runC $ unitsSelf obs .| unitTypeC uid .| filterC (\x -> (Spatial.distSquared (x ^. #pos) target ) <= 2)    
+    pure targetInprogress 
+
   -- waitUntil $ do 
   --   obs <- agentObs 
   --   si <- agentStatic
