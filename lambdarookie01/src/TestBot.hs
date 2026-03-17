@@ -116,26 +116,17 @@ stepTowardsTechGoal goal = do
     traceM $ "availTech" ++ show availTechs
     traceM $ "Path towards goal" ++ show pathTobuild
     unless (null pathTobuild) $ do
-        ds <- agentGet
         obs <- agentObs
         let toBuild = head pathTobuild
+            simLoop = show $ obs ^. #gameLoop
         case toBuild of
             TechUnit u -> do
                 if isUnitStructure u
                     then do
-                        cres <- tryCreate u
-                        case cres of
-                            _ -> return ()
+                        spawnIntent (IntentId ("step-towards-goal-build-" <> show (u) <> "-" <> simLoop)) (ensureStructure u)
                     else do
                         -- Unit training
-                        let trainAbility = trainDeps HashMap.! u
-                            producer =
-                                head $
-                                    runC $
-                                        unitsSelf obs
-                                            -- .| unitIdleC
-                                            .| unitTypeC (abilityExecutor HashMap.! trainAbility)
-                        command [SelfCommand trainAbility [producer]]
+                        spawnIntent (IntentId ("step-towards-goal-train-" <> show (u) <> "-" <> simLoop)) (ensureStructure u)
             TechUpgrade upgrade -> do
                 let upgradeAbility = researchDeps HashMap.! upgrade
                     producer =
