@@ -1,4 +1,3 @@
-
 module Squad.FSSquadIdle where
 
 import Squad.Class

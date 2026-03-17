@@ -23,46 +23,45 @@ module StepMonadUtils (
     debugUnitVec,
     siUnitData,
     siUnitRange,
-    siUnitSightRange
+    siUnitSightRange,
 )
 where
 
-import Actions (Action, DebugCommand (..), getCmd, getExecutors, Line)
+import Actions (Action, DebugCommand (..), Line, getCmd, getExecutors)
 import Agent
-import SC2.Grid
-import Observation
-import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData, Point2D)
-import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
-import UnitAbilities
-import Utils
-import Units
-import StepMonad
 import Footprint
+import Observation
+import SC2.Grid
+import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (PlayerInfo, Point, Point2D, ResponseGameInfo, UnitTypeData)
+import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)
+import StepMonad
+import UnitAbilities
+import Units
+import Utils
 
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer.Strict
 import Data.Functor
-import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Set qualified as Set
 import Data.Text (pack)
 import Lens.Micro ((^.))
 
-import SC2.Geometry
 import Data.ProtoLens (defMessage)
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Raw_Fields qualified as PR
+import SC2.Geometry
 
-import Lens.Micro (to, (&), (.~), (^.), (^..))
-import Lens.Micro.Extras(view)
 import Debug.Trace
-import SC2.Proto.Data qualified as D
+import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Data_Fields (sightRange)
-
+import SC2.Proto.Data qualified as D
 
 withObs :: (HasObs d) => (Observation -> a) -> StepMonad d a
 withObs f = f <$> agentObs
@@ -121,7 +120,6 @@ abilityAvailableForUnit uid = do
         executor = abilityExecutor HashMap.! ability
     pure $ ability `elem` HashMap.lookupDefault [] executor abilities
 
-
 -- findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
 findPlacementPointInRadiusSM :: (HasGrid d) => Footprint -> TilePos -> Float -> StepMonad d (Maybe TilePos)
 findPlacementPointInRadiusSM fprint start radius = do
@@ -139,7 +137,7 @@ removeMarkSM fprint cpos = do
     grid <- agentGrid
     return $ removeMark grid fprint cpos
 
---debugUnit :: (HasObs d, HasGrid d) => Unit -> StepMonad d ()
+-- debugUnit :: (HasObs d, HasGrid d) => Unit -> StepMonad d ()
 debugUnit unit = do
     ds <- agentGet
     let unitPos :: Point
@@ -153,9 +151,9 @@ debugUnit unit = do
         p1 = zLevel + toPoint3D (toPoint2D p0 + unitVelocityVec unit)
         colorGreen = defMessage & #r .~ 0 & #g .~ 1 & #b .~ 0
         line :: Line
-        --line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        -- line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
         line = defMessage & #p0 .~ p0 & #p1 .~ p1
-    StepMonad.debug [DebugLine [(colorGreen, line)] ]
+    StepMonad.debug [DebugLine [(colorGreen, line)]]
 
 debugUnitVec :: (HasObs d, HasGrid d) => Unit -> Point2D -> StepMonad d ()
 debugUnitVec unit vec2d = do
@@ -171,10 +169,10 @@ debugUnitVec unit vec2d = do
         p1 = zLevel + toPoint3D (toPoint2D p0 + vec2d)
         colorGreen = defMessage & #r .~ 0 & #g .~ 255 & #b .~ 0
         line :: Line
-        --line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
+        -- line = trace ("line from " ++ show (p0, p1)) $ defMessage & #p0 .~ p0 & #p1 .~ p1
         line = defMessage & #p0 .~ p0 & #p1 .~ p1
-        -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
-    StepMonad.debug [DebugLine [(colorGreen, line)] ]
+    -- line = defMessage & #p0 .~ p0 & #p1 .~ p1
+    StepMonad.debug [DebugLine [(colorGreen, line)]]
 
 siUnitData :: Unit -> StepMonad d UnitTypeData
 siUnitData u = do
@@ -184,11 +182,12 @@ siUnitData u = do
     return udata
 
 headF :: String -> [a] -> a
-headF err []    = error err
-headF _   (x:_) = x
+headF err [] = error err
+headF _ (x : _) = x
 
 siUnitRange :: Unit -> Unit -> StepMonad d Float
-siUnitRange u e = do -- TODO: take into account different data.weapons: air/ground etc
+siUnitRange u e = do
+    -- TODO: take into account different data.weapons: air/ground etc
     udata <- siUnitData u
     let range = view #range $ headF ("no weapons in unit " ++ show u) $ udata ^. #weapons
     return range

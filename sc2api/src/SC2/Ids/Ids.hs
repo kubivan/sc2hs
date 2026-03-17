@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module SC2.Ids.Ids where
 

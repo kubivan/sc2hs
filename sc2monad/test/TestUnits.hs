@@ -4,10 +4,10 @@
 module TestUnits (unitsUnitTests) where
 
 import Lens.Micro ((&), (.~), (^.))
-import SC2.Proto.Data (Alliance (Neutral, Self), Point)
 import Proto.S2clientprotocol.Common_Fields qualified as C
 import Proto.S2clientprotocol.Raw_Fields qualified as R
 import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (Alliance (Neutral, Self), Point)
 import Test.Hspec
 import Units
 
@@ -47,36 +47,54 @@ shouldApprox actual expected = abs (actual - expected) `shouldSatisfy` (< 1e-3)
 nexusUnit :: Unit
 nexusUnit =
     defMessage
-        & R.tag .~ 1
-        & R.unitType .~ fromEnum' ProtossNexus
-        & R.alliance .~ Self
-        & R.pos .~ pointAt 10 20
+        & R.tag
+        .~ 1
+        & R.unitType
+        .~ fromEnum' ProtossNexus
+        & R.alliance
+        .~ Self
+        & R.pos
+        .~ pointAt 10 20
 
 stalkerUnit :: Unit
 stalkerUnit =
     defMessage
-        & R.tag .~ 2
-        & R.unitType .~ fromEnum' ProtossStalker
-        & R.alliance .~ Self
-        & R.pos .~ pointAt 30 40
+        & R.tag
+        .~ 2
+        & R.unitType
+        .~ fromEnum' ProtossStalker
+        & R.alliance
+        .~ Self
+        & R.pos
+        .~ pointAt 30 40
 
 mineralField :: Unit
 mineralField =
     defMessage
-        & R.tag .~ 3
-        & R.unitType .~ fromEnum' NeutralMineralField
-        & R.alliance .~ Neutral
-        & R.mineralContents .~ 900
-        & R.pos .~ pointAt 5 5
+        & R.tag
+        .~ 3
+        & R.unitType
+        .~ fromEnum' NeutralMineralField
+        & R.alliance
+        .~ Neutral
+        & R.mineralContents
+        .~ 900
+        & R.pos
+        .~ pointAt 5 5
 
 geyserUnit :: Unit
 geyserUnit =
     defMessage
-        & R.tag .~ 4
-        & R.unitType .~ fromEnum' NeutralVespeneGeyser
-        & R.alliance .~ Neutral
-        & R.vespeneContents .~ 500
-        & R.pos .~ pointAt 6 6
+        & R.tag
+        .~ 4
+        & R.unitType
+        .~ fromEnum' NeutralVespeneGeyser
+        & R.alliance
+        .~ Neutral
+        & R.vespeneContents
+        .~ 500
+        & R.pos
+        .~ pointAt 6 6
 
 pointAt :: Float -> Float -> Point
 pointAt x y = defMessage & C.x .~ x & C.y .~ y & C.z .~ 0

@@ -13,28 +13,28 @@ module TestBot where
 import Actions
 import Agent
 import AgentBulidUtils
+import Army.Army
 import ArmyLogic
 import BotDynamicState
 import Footprint (getFootprint)
 import Observation
-import Army.Army
 import SC2.Geometry
 import SC2.Grid
-import SC2.Spatial qualified as Spatial
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
+import SC2.Spatial qualified as Spatial
 
+import Intent hiding (unitHasOrder)
+import PlanM
+import SC2.TechTree
+import SC2.Utils
 import Squad
 import Squad qualified as Squad
 import Squad.Behavior
 import Squad.State
-import SC2.TechTree
-import SC2.Utils
 import StepMonad
-import PlanM
-import Intent hiding (unitHasOrder)
 import Units (
     Unit,
     closestC,
@@ -50,12 +50,12 @@ import Utils
 
 import Conduit (concatC, filterC, findC, headC, lengthC, mapC, runConduitPure, sinkList, yieldMany, (.|))
 import Control.Applicative (Alternative (..))
+import Control.Concurrent (forkIO)
 import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
-import Control.Concurrent (forkIO)
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
@@ -74,15 +74,14 @@ import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
+import SC2.Ids.UpgradeId (UpgradeId (Darktemplarblinkupgrade))
 import StepMonad (AsyncStaticInfo (..), StaticInfo (siAsyncStaticInfo), siRegionLookup, siRegionPathToEnemyResolved, siRegionsResolved)
 import System.Random (newStdGen)
-import SC2.Ids.UpgradeId (UpgradeId(Darktemplarblinkupgrade))
 
 import Control.Concurrent.STM
 
 deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
-
 
 stepTowardsTechGoal :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => [Tech] -> StepMonad d ()
 stepTowardsTechGoal goal = do
@@ -122,26 +121,31 @@ stepTowardsTechGoal goal = do
         let toBuild = head pathTobuild
         case toBuild of
             TechUnit u -> do
-                if isUnitStructure u then do
-                    cres <- tryCreate u
-                    case cres of
-                        _ -> return ()
-                else do -- Unit training
-                    let trainAbility = trainDeps HashMap.! u
-                        producer = head $ runC $ unitsSelf obs
-                            -- .| unitIdleC
-                            .| unitTypeC (abilityExecutor HashMap.! trainAbility)
-                    command [SelfCommand trainAbility [producer]]
-
+                if isUnitStructure u
+                    then do
+                        cres <- tryCreate u
+                        case cres of
+                            _ -> return ()
+                    else do
+                        -- Unit training
+                        let trainAbility = trainDeps HashMap.! u
+                            producer =
+                                head $
+                                    runC $
+                                        unitsSelf obs
+                                            -- .| unitIdleC
+                                            .| unitTypeC (abilityExecutor HashMap.! trainAbility)
+                        command [SelfCommand trainAbility [producer]]
             TechUpgrade upgrade -> do
                 let upgradeAbility = researchDeps HashMap.! upgrade
-                    producer = head $ runC $ unitsSelf obs
-                        -- .| unitIdleC
-                        .| unitTypeC (abilityExecutor HashMap.! upgradeAbility)
+                    producer =
+                        head $
+                            runC $
+                                unitsSelf obs
+                                    -- .| unitIdleC
+                                    .| unitTypeC (abilityExecutor HashMap.! upgradeAbility)
                 command [SelfCommand upgradeAbility [producer]]
             _ -> error "not implemented"
-
-
 
 data BotPhase
     = Opening
@@ -323,8 +327,8 @@ agentResetGrid =
 
 agentUpdateGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
 agentUpdateGrid f =
-  {-# SCC "agentUpdateGrid" #-}
-  agentModifyGrid f
+    {-# SCC "agentUpdateGrid" #-}
+    agentModifyGrid f
 
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
@@ -335,7 +339,7 @@ squadAssign s = do
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
 squadSeek squad = case squadState squad of
     SSEngage (FSEngageClose _) -> return True
-    SSEngage (FSEngageFar _)   -> return True
+    SSEngage (FSEngageFar _) -> return True
     _ -> do
         ds <- agentGet
         obs <- agentObs
@@ -422,38 +426,38 @@ agentArmyControl = do
     agentModifyArmy (\current -> current{armySquads = squads'})
 
 data Env = Env
-  { chokeQueue :: TQueue ()
+    { chokeQueue :: TQueue ()
     , chokeVar :: TVar (Maybe AsyncStaticInfo)
-  }
+    }
 
 makeEnv :: IO Env
 makeEnv = do
-  queue <- newTQueueIO
-  var   <- newTVarIO Nothing
-  pure $ Env queue var
+    queue <- newTQueueIO
+    var <- newTVarIO Nothing
+    pure $ Env queue var
 
 startChokeWorker :: Env -> Grid -> TilePos -> TilePos -> IO ()
 startChokeWorker env grid startPos enemyPos =
-  void . forkIO . forever $ do
-    atomically $ readTQueue (chokeQueue env)
-    let !(rays, gridChoked) = findAllChokePoints grid
-        !regions = gridSegment gridChoked
-        !regionsById = HashMap.fromList regions
-        !regionLookup = complementRegionLookup (buildRegionLookup regions) (foldl' (++) [] rays)
-        !regionGraph = buildRegionGraph regions regionLookup
-        !pathToEnemy =
-            maybe
-                []
-                (\(startRegion, enemyRegion) -> regionGraphBfs regionGraph startRegion enemyRegion)
-                ((,) <$> HashMap.lookup startPos regionLookup <*> HashMap.lookup enemyPos regionLookup)
-        !result =
-            AsyncStaticInfo
-                { asiRegionGraph = regionGraph
-                , asiRegionLookup = regionLookup
-                , asiRegions = regionsById
-                , asiRegionPathToEnemy = pathToEnemy
-                }
-    atomically $ writeTVar (chokeVar env) (Just result)
+    void . forkIO . forever $ do
+        atomically $ readTQueue (chokeQueue env)
+        let !(rays, gridChoked) = findAllChokePoints grid
+            !regions = gridSegment gridChoked
+            !regionsById = HashMap.fromList regions
+            !regionLookup = complementRegionLookup (buildRegionLookup regions) (foldl' (++) [] rays)
+            !regionGraph = buildRegionGraph regions regionLookup
+            !pathToEnemy =
+                maybe
+                    []
+                    (\(startRegion, enemyRegion) -> regionGraphBfs regionGraph startRegion enemyRegion)
+                    ((,) <$> HashMap.lookup startPos regionLookup <*> HashMap.lookup enemyPos regionLookup)
+            !result =
+                AsyncStaticInfo
+                    { asiRegionGraph = regionGraph
+                    , asiRegionLookup = regionLookup
+                    , asiRegions = regionsById
+                    , asiRegionPathToEnemy = pathToEnemy
+                    }
+        atomically $ writeTVar (chokeVar env) (Just result)
 
 data BotAgent
     = BotAgent
@@ -568,7 +572,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
-        --command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
+        -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
         command [SelfCommand (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER) idleGates]
 
         trainProbes

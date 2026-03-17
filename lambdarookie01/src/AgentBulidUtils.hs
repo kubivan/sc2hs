@@ -10,16 +10,6 @@
 module AgentBulidUtils where
 
 import Actions
-import SC2.Grid(
-    Grid,
-    canPlaceBuilding,
-    findPlacementPoint,
-    findPlacementPointInRadius,
-    TilePos,
-    tilePos
- )
-import SC2.TechTree
-import SC2.Spatial qualified as Spatial
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Observation (
@@ -31,8 +21,18 @@ import Observation (
     unitsSelf,
  )
 import Proto.S2clientprotocol.Raw qualified as R
+import SC2.Grid (
+    Grid,
+    TilePos,
+    canPlaceBuilding,
+    findPlacementPoint,
+    findPlacementPointInRadius,
+    tilePos,
+ )
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
+import SC2.Spatial qualified as Spatial
+import SC2.TechTree
 import StepMonad
 import StepMonadUtils (agentCanAfford, unitCost)
 import Units (
@@ -67,10 +67,8 @@ actionsCost si xs = sum $ actionCost si <$> xs
 canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
 canAfford = agentCanAfford
 
-
-agentFindBuilder :: HasObs d => StepMonad d (Maybe Unit)
+agentFindBuilder :: (HasObs d) => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs
-
 
 findBuilder :: Observation -> Maybe Unit
 findBuilder obs =

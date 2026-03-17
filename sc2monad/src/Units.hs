@@ -78,10 +78,11 @@ isMineral :: Unit -> Bool
 isMineral u =
     utype == NeutralMineralField
         || utype == NeutralMineralField750
-         -- TODO: for some reason this check doesn't work: finds 36 patches from 148
+        -- TODO: for some reason this check doesn't work: finds 36 patches from 148
         || (u ^. #mineralContents > 0 && u ^. #alliance == Neutral)
-        -- TODO: add missing minerals
   where
+    -- TODO: add missing minerals
+
     -- \|| utype == NeutralMineralField750
     -- \|| utype == NeutralLabMineralField
     -- \|| utype == NeutralLabMineralField
@@ -134,12 +135,12 @@ runC x = runConduitPure (x .| sinkList)
 
 closestC :: (Monad m) => Unit -> ConduitT Unit Void m (Maybe Unit)
 closestC to = await >>= foldlC (\mu u -> closest <$> mu <*> pure u)
-    where
-        toPos = to ^. PR.pos
-        closest a b =
-            if distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D toPos) < distSquared (toPoint2D $ b ^. PR.pos) (toPoint2D toPos)
-                then a
-                else b
+  where
+    toPos = to ^. PR.pos
+    closest a b =
+        if distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D toPos) < distSquared (toPoint2D $ b ^. PR.pos) (toPoint2D toPos)
+            then a
+            else b
 
 unitsBoundingBox :: [Unit] -> (TilePos, TilePos)
 unitsBoundingBox cluster = ((tileX3D minX, tileY3D minY), (tileX3D maxX, tileY3D maxY))

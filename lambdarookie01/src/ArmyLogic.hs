@@ -8,14 +8,16 @@ import BotDynamicState
 import Actions (Action (..), UnitTag)
 import Army.Army
 import Squad.State
+
 -- import Squad.FSM
-import Squad
-import SC2.Utils
-import SC2.Grid
-import SC2.Spatial qualified as Spatial
-import SC2.Geometry
+
 import Observation
+import SC2.Geometry
+import SC2.Grid
 import SC2.Ids.AbilityId
+import SC2.Spatial qualified as Spatial
+import SC2.Utils
+import Squad
 import StepMonad
 import Units
 
@@ -23,11 +25,11 @@ import Conduit (filterC, mapC)
 import Control.Monad (void, when)
 import Data.Foldable qualified as Seq
 import Data.Function (on)
+import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
-import Data.HashMap.Strict qualified as HashMap
-import Data.Set qualified as Set
 import Data.Maybe (catMaybes, fromJust)
+import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import System.Random (StdGen, randomR)
@@ -77,7 +79,6 @@ agentUpdateDsArmy = do
         (squadsFull, squadsToCheck) = partition isSquadFull squads
         (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
 
-
         squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
 
         freeArmyUnitTags = runC $ obsArmyUnits .| mapC (view #tag) .| filterC (\utag -> not $ utag `Set.member` squadedUnitTags)
@@ -88,9 +89,9 @@ agentUpdateDsArmy = do
 
         army' = (dsArmy ds){armyUnitsPos = Set.fromList obsArmyUnitsPoss, armyUnits = armyHashMap, armySquads = squadsFull ++ refilledSquads ++ newSquads}
 
-    --_ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
-    --_ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
-    --_ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
+    -- _ <- debugTraceM (not . null $ squadsDead) ("squad is dead: " ++ show squadsDead)
+    -- _ <- debugTraceM (not . null $ newSquads) ("squads are formed: " ++ show newSquads)
+    -- _ <- debugTraceM (refilledSquads /= squadsNotFull && (not . null $ refilledSquads)) ("squads are refilled: " ++ show refilledSquads)
     agentModifyArmy (const army')
 
 -- Update the visited tiles for a unit in the army
@@ -195,7 +196,6 @@ selectItem ((item, weight) : xs) r
     | otherwise = selectItem xs (r - weight) -- Otherwise, subtract the weight and move to the next item
 selectItem [] _ = error "weightedRandomChoice: empty list"
 
-
 -- Function to select a random element from a list of weights
 weightedRandom :: [Double] -> StdGen -> (Int, StdGen)
 weightedRandom weights gen =
@@ -211,7 +211,6 @@ selectIndex weights randValue = go weights randValue 0
         | rv <= w = idx -- If random value is less than or equal to current weight, return the index
         | otherwise = go ws (rv - w) (idx + 1) -- Subtract the weight and continue
     go [] _ idx = idx -- Default case, in case something goes wrong (should not happen with proper weights)
-
 
 agentUpdateArmy :: Observation -> StepMonad BotDynamicState ()
 agentUpdateArmy obsPrev = {-# SCC "agentUpdateArmy" #-} agentUpdateDsArmy -- >> agentUpdateArmyPositions -- TODO: no diff with obsPrev

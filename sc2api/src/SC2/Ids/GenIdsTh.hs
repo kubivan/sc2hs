@@ -25,8 +25,9 @@ type UnitId = Int
 type UnitName = Name -- the constructor, e.g. ProtossZealot
 type Race = Text
 
--- | Walk up parent directories from the splice-site source file
--- until a directory containing @data/data.json@ is found.
+{- | Walk up parent directories from the splice-site source file
+until a directory containing @data/data.json@ is found.
+-}
 findDataJson :: Q FilePath
 findDataJson = do
     loc <- location

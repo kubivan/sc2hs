@@ -3,8 +3,8 @@
 
 import Conduit
 import Footprint
-import SC2.Grid
 import SC2.Geometry
+import SC2.Grid
 import SC2.Ids.UnitTypeId
 
 import qualified Data.ByteString as B
@@ -15,13 +15,13 @@ import Test.Hspec
 import Units
 import Utils
 
-import Debug.Trace (trace, traceShow, traceShowId, traceM)
+import Debug.Trace (trace, traceM, traceShow, traceShowId)
 
 import Data.Function
-import Data.List (find, sort, foldl', groupBy, minimumBy, sortOn)
-import qualified Data.Map as Map
-import Data.HashMap.Strict(HashMap)
+import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HashMap
+import Data.List (find, foldl', groupBy, minimumBy, sort, sortOn)
+import qualified Data.Map as Map
 import Proto.S2clientprotocol.Common as C
 import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 
@@ -35,12 +35,12 @@ import Units (isBuildingType)
 
 -- floodfill
 
-import qualified Data.Set as Set
 import qualified Data.Sequence as Seq
+import qualified Data.Set as Set
 
 import Control.Monad (guard, mplus)
-import Control.Monad.Trans.Maybe
 import Control.Monad.State
+import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 
 import Data.Char (digitToInt, intToDigit)
@@ -50,16 +50,16 @@ import qualified Data.Set as Set
 
 import Control.Monad (msum)
 
-import TestGrid(gridUnitTests)
-import TestTechTree
+import TestGrid (gridUnitTests)
 import TestObservation (observationUnitTests)
-import TestStepMonad (stepMonadUnitTests)
 import TestSegmentation (segmentationIntegrationTests)
+import TestStepMonad (stepMonadUnitTests)
+import TestTechTree
 import TestUnits (unitsUnitTests)
 import TestUtils (utilsUnitTests)
 
-import Proto.S2clientprotocol.Raw_Fields (placementGrid, pathingGrid)
 import qualified Data.Vector.Unboxed as VU
+import Proto.S2clientprotocol.Raw_Fields (pathingGrid, placementGrid)
 
 fromEither :: Either String a -> a
 fromEither (Left err) = error err
@@ -88,7 +88,7 @@ spec =
             describe "Observation" $ do
                 it "check_object_orientation" $ \(obs, gi) -> do
                     let nexus = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
-                        nexusPos@(x,y) = tilePos $ view #pos $ nexus
+                        nexusPos@(x, y) = tilePos $ view #pos $ nexus
                         image = gi ^. (#startRaw . #pathingGrid)
                         grid@(w, h, bs) = gridFromImage image
                         -- wallC = charToWord8 '#'
@@ -102,11 +102,9 @@ spec =
                     gridToFile "check_object_orientation.txt" gridWithNexus
 
                     nexusPos `shouldBe` (57, 60)
-                    w  `shouldBe` 224
-                    h  `shouldBe` 224
+                    w `shouldBe` 224
+                    h `shouldBe` 224
                     w * h `shouldBe` VU.length bs
-
-
 
                 it "Units tests" $ \(obs, _) -> do
                     runC (obsUnitsC obs) `shouldSatisfy` (not . null)
@@ -168,21 +166,21 @@ spec =
 
                         res = gridSegment grid'
                         charLabels :: [Char]
-                        charLabels = ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9']
+                        charLabels = ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']
 
                         openCellsFromRegions = foldl (\acc (rid, cellsSet) -> acc `Set.union` cellsSet) Set.empty res
-                        raysSet = foldl (\a r -> a `Set.union` Set.fromList r ) Set.empty rays
+                        raysSet = foldl (\a r -> a `Set.union` Set.fromList r) Set.empty rays
                         unsegmentedTiles = Set.difference openCells (openCellsFromRegions `Set.union` raysSet)
-                        --unsegmentedTilesGrid = foldl (\gridAcc pos -> gridSetPixel gridAcc pos '%' ) grid (Set.toList hm)
+                        -- unsegmentedTilesGrid = foldl (\gridAcc pos -> gridSetPixel gridAcc pos '%' ) grid (Set.toList hm)
 
                         resWithCharId = zip charLabels (map snd res)
 
-                        grid'' = foldl (\gridAcc (id, region) -> foldl'(\ga p -> gridSetPixel ga p id ) gridAcc (Set.toList region) ) grid' resWithCharId
+                        grid'' = foldl (\gridAcc (id, region) -> foldl' (\ga p -> gridSetPixel ga p id) gridAcc (Set.toList region)) grid' resWithCharId
 
-                    unsegmentedTiles  `shouldBe` Set.empty
+                    unsegmentedTiles `shouldBe` Set.empty
                     print $ "nexusPos pixel: " ++ show nexusPos ++ " " ++ show (gridPixel grid nexusPos)
                     print $ "grid segmented into " ++ show (length res)
-                    print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a ) [] res)
+                    print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a) [] res)
                     gridToFile "outgrid_segmented_start.txt" grid''
                 it "grid_split_to_regions" $ \(obs, gi) -> do
                     let
@@ -201,9 +199,8 @@ spec =
 
                     -- print $ "enemy start " ++ show enemyPos ++ " " ++ show (Map.lookup enemyPos regionLookup)
                     print $ "player start " ++ show nexusPos ++ " " ++ show nexusRegion
-                    nexusRegion `shouldBe` Just 2 --just fix the value to catch regression
+                    nexusRegion `shouldBe` Just 2 -- just fix the value to catch regression
                     print $ "bases " ++ show bases
-
 
                 it "check volumes" $ \(obs, gi) -> do
                     let grid =
@@ -278,7 +275,7 @@ spec =
                                 , "######                          #"
                                 , "#################################"
                                 ]
-                        --grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+                        -- grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
                         openCells = [(x, y) | y <- [0 .. gridH grid - 1], x <- [0 .. gridW grid - 1], gridPixel grid (x, y) /= '#']
                         minVolume = 10
 
@@ -299,10 +296,10 @@ spec =
                 it "findAllChokes" $ \(obs, gi) -> do
                     let
                         grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        --Just (chokes, (grid', rays, _)) = findAllChokePoints grid
-                        --(grid', rays) = findAllChokePoints grid
+                        -- Just (chokes, (grid', rays, _)) = findAllChokePoints grid
+                        -- (grid', rays) = findAllChokePoints grid
                         (rays, grid') = findAllChokePoints grid
-                        grid'' = foldl' (\gridA p -> gridSetPixel gridA p 'c') grid' [(136,36),(137,36),(138,36),(139,36),(140,36),(141,36)]
+                        grid'' = foldl' (\gridA p -> gridSetPixel gridA p 'c') grid' [(136, 36), (137, 36), (138, 36), (139, 36), (140, 36), (141, 36)]
 
                     gridToFile "outgrid_with_all_chokes.txt" grid''
                     print $ "found " ++ show (length rays) ++ " chokes"

@@ -10,7 +10,7 @@ module SC2.Proto.Requests (
     requestAvailableMaps,
     requestCreateGame,
     -- TODO: remove code duplication
-    
+
     requestJoinGame1vs1Created,
     requestJoinGame1vs1,
     requestJoinGameVsAi,
@@ -24,11 +24,17 @@ module SC2.Proto.Requests (
     sendRequestSync,
 ) where
 
-import SC2.Proto.Data
+import Actions (
+    Action,
+    ChatMsg,
+    DebugCommand,
+    toAction,
+    toChatAction,
+    toDebug,
+ )
+import Agent (Agent (agentRace))
 import SC2.Launcher.Participant
-import Actions
-    ( DebugCommand, Action, ChatMsg, toDebug, toChatAction, toAction )
-import Agent ( Agent(agentRace) )
+import SC2.Proto.Data
 
 import Conduit
 import Control.Exception
@@ -43,25 +49,26 @@ import Network.WebSockets as WS
 import Proto.S2clientprotocol.Raw_Fields (alliance)
 
 import Proto.S2clientprotocol.Common as A
+import Proto.S2clientprotocol.Data as A
 import Proto.S2clientprotocol.Query as A
 import Proto.S2clientprotocol.Raw as A
-import Proto.S2clientprotocol.Data as A
 import Proto.S2clientprotocol.Sc2api qualified as A
 import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 
--- | Build InterfaceOptions similar to python-sc2 defaults
--- defaultInterfaceOptions :: A.InterfaceOptions
--- defaultInterfaceOptions =
---     defMessage
---       & #raw .~ True
---       & #score .~ True
---       & #featureLayer .~ (defMessage & #resolution .~ (defMessage & #x .~ 1 & #y .~ 1)
---                                      & #minimapResolution .~ (defMessage & #x .~ 1 & #y .~ 1))
---       & #showCloaked .~ True
---       & #showBurrowedShadows .~ True
---       & #rawAffectsSelection .~ True
---       & #rawCropToPlayableArea .~ True
---       & #showPlaceholders .~ True
+{- | Build InterfaceOptions similar to python-sc2 defaults
+defaultInterfaceOptions :: A.InterfaceOptions
+defaultInterfaceOptions =
+    defMessage
+      & #raw .~ True
+      & #score .~ True
+      & #featureLayer .~ (defMessage & #resolution .~ (defMessage & #x .~ 1 & #y .~ 1)
+                                     & #minimapResolution .~ (defMessage & #x .~ 1 & #y .~ 1))
+      & #showCloaked .~ True
+      & #showBurrowedShadows .~ True
+      & #rawAffectsSelection .~ True
+      & #rawCropToPlayableArea .~ True
+      & #showPlaceholders .~ True
+-}
 
 -- -- | Builder for JoinGame request
 -- requestJoinGame1vs1
@@ -97,8 +104,8 @@ import Proto.S2clientprotocol.Sc2api_Fields qualified as A
 --     setPlayerName :: A.RequestJoinGame -> A.RequestJoinGame
 --     setPlayerName msg = msg & #playerName .~ "some"
 
-
 newtype ProtoException = ProtoException String deriving (Show)
+
 instance Exception ProtoException
 
 makeException :: String -> ProtoException
@@ -108,8 +115,9 @@ decodeMessageThrowing :: BS.ByteString -> IO A.Response
 decodeMessageThrowing msg = either (throwIO . makeException) return (decodeMessage msg)
 
 sendRequestSync :: WS.Connection -> A.Request -> IO A.Response
-sendRequestSync conn request = -- print request >>
-  WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
+sendRequestSync conn request =
+    -- print request >>
+    WS.sendBinaryData conn (encodeMessage request) >> WS.receiveData conn >>= decodeMessageThrowing -- `Utils.dbg` show request
 
 requestAvailableMaps :: A.Request
 requestAvailableMaps = defMessage & #availableMaps .~ defMessage & #id .~ 123
@@ -148,7 +156,7 @@ requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ m
 requestJoinGame1vs1Created :: Race -> A.Request
 requestJoinGame1vs1Created race = defMessage & #joinGame .~ mods defMessage
   where
-    mods = setParticipation race . setOptions 
+    mods = setParticipation race . setOptions
     setParticipation :: Race -> A.RequestJoinGame -> A.RequestJoinGame
     setParticipation r = #race .~ r
 
@@ -207,7 +215,6 @@ requestJoinGame1vs1 serverPorts clientPorts race = defMessage & #joinGame .~ mod
 
 --     setPlayerName :: Text -> A.RequestJoinGame -> A.RequestJoinGame
 --     setPlayerName name = #playerName .~ name
-
 
 requestJoinGameVsAi :: Race -> A.Request
 requestJoinGameVsAi race = defMessage & #joinGame .~ mods defMessage

@@ -17,9 +17,9 @@ module SC2.Client (
     unitAbilities,
 ) where
 
-import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Ids.AbilityId (AbilityId, toEnum)
 import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
+import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Proto.Data qualified as Proto
 import SC2.Proto.Requests qualified as Proto
 import UnitAbilities
@@ -102,8 +102,9 @@ startStarCraft cfg host port = do
 
     (_, _, _, _sc2Handle) <- createProcess proc
     waitForSC2WebSocket host port
-    --return sc2Handle
   where
+    -- return sc2Handle
+
     pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
 
     -- Function to check if the WebSocket connection is open
@@ -126,9 +127,9 @@ startStarCraft cfg host port = do
             isOpen <- isWebSocketOpen targetHost (fromIntegral targetPort)
             if isOpen
                 then putStrLn "SC2 WebSocket connection is open and ready."
-            else do
-                threadDelay pollInterval
-                loop
+                else do
+                    threadDelay pollInterval
+                    loop
 
 data GameSignals = GameSignals
     { gameCreated :: MVar Bool

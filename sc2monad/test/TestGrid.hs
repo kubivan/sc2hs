@@ -1,13 +1,12 @@
 module TestGrid (gridUnitTests) where
 
+import Data.List (sort)
+import Data.Maybe (fromJust)
+import qualified Data.Set as Set
 import Footprint
 import SC2.Grid
 import SC2.Ids.UnitTypeId
 import Test.Hspec
-import Data.List (sort)
-import Data.Maybe (fromJust)
-import qualified Data.Set as Set
-
 
 gridUnitTests :: Spec
 gridUnitTests = do

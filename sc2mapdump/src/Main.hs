@@ -58,7 +58,7 @@ main = do
 
     bracket
         (startContainer cli mapDir)
-        (\startMode -> case startMode of
+        ( \startMode -> case startMode of
             DockerStarted -> stopContainer (cliContainerName cli)
             DockerReuseExisting -> pure ()
         )
@@ -122,8 +122,8 @@ startContainer cli mapsDir = do
         ExitFailure code
             | "port is already allocated" `elem` words err
                 || "port is already allocated" `isInfixOf` err -> do
-                    putStrLn $ "Port " <> show (cliPort cli) <> " is already allocated; reusing existing SC2 endpoint at " <> cliHost cli <> ":" <> show (cliPort cli)
-                    pure DockerReuseExisting
+                putStrLn $ "Port " <> show (cliPort cli) <> " is already allocated; reusing existing SC2 endpoint at " <> cliHost cli <> ":" <> show (cliPort cli)
+                pure DockerReuseExisting
             | otherwise ->
                 error $ "docker run -d --rm --name " <> cliContainerName cli <> " -p " <> portMap <> " -v " <> mapsMount <> " " <> cliDockerImage cli <> " failed (" <> show code <> ")\nstdout:\n" <> out <> "\nstderr:\n" <> err
 
@@ -147,8 +147,7 @@ waitForSc2 host port = loop (120 :: Int)
     loop attemptsLeft = do
         result <-
             catch
-                ( WS.runClient host port "/sc2api" (\conn -> Proto.sendRequestSync conn Proto.requestPing >> pure True)
-                )
+                (WS.runClient host port "/sc2api" (\conn -> Proto.sendRequestSync conn Proto.requestPing >> pure True))
                 (\(_ :: SomeException) -> pure False)
         if result
             then pure ()

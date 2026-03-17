@@ -1,29 +1,28 @@
 {-# LANGUAGE DeriveLift #-}
 
-module SC2.Ids.UnitTypeId(UnitTypeId(..), toEnum, fromEnum, isUnitStructure) where
+module SC2.Ids.UnitTypeId (UnitTypeId (..), toEnum, fromEnum, isUnitStructure) where
 
 import SC2.Ids.Ids
 
 import Data.Hashable
 import Language.Haskell.TH.Syntax (Lift)
 
-import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Text (unpack)
 import Text.Read (readMaybe)
 
 instance Hashable UnitTypeId where
-  hash = fromEnum
-  hashWithSalt s val = fromEnum val + s
+    hash = fromEnum
+    hashWithSalt s val = fromEnum val + s
 
 instance ToJSON UnitTypeId where
-  toJSON = toJSON . show
+    toJSON = toJSON . show
 
 instance FromJSON UnitTypeId where
-  parseJSON = withText "UnitTypeId" $ \txt ->
-    case readMaybe (unpack txt) of
-      Just utid -> pure utid
-      Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt
-
+    parseJSON = withText "UnitTypeId" $ \txt ->
+        case readMaybe (unpack txt) of
+            Just utid -> pure utid
+            Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt
 
 -- data UnitTypeId =
 --    Invalid  -- 0
@@ -679,5 +678,3 @@ instance FromJSON UnitTypeId where
 --     342 -> NeutralVespenegeyser
 --     149 -> NeutralXelnagatower
 --     _ -> Invalid
-
-

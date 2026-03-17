@@ -1,12 +1,11 @@
-module Squad(module FSM, Squad, module Squad.Squad, debugSquad) where
+module Squad (module FSM, Squad, module Squad.Squad, debugSquad) where
 
-
-import Squad.FSM as FSM
-import Squad.State
-import Squad.Class
-import Squad.Squad
 import Squad.Behavior
+import Squad.Class
 import Squad.FSExploreRegion
+import Squad.FSM as FSM
+import Squad.Squad
+import Squad.State
 import Units
 
 import Data.HashMap.Strict as HashMap

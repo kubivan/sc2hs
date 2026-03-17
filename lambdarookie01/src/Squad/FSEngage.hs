@@ -1,32 +1,31 @@
-
 module Squad.FSEngage where
 
 import Actions
-import Units
-import SC2.Grid
-import Squad.Class
-import Squad.Squad
-import Squad.State
-import Squad.Behavior (isSquadFull)
-import Squad.FSMLog
+import Observation
 import SC2.Geometry
-import SC2.Spatial qualified as Spatial
-import StepMonad
-import StepMonadUtils
+import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import Observation
+import SC2.Spatial qualified as Spatial
+import Squad.Behavior (isSquadFull)
+import Squad.Class
+import Squad.FSMLog
+import Squad.Squad
+import Squad.State
+import StepMonad
+import StepMonadUtils
+import Units
 
+import Control.Monad
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
-import Control.Monad
 
 import Lens.Micro
 import Lens.Micro.Extras (view)
 
 import Debug.Trace (trace)
 
-import Proto.S2clientprotocol.Common ( Point2D )
+import Proto.S2clientprotocol.Common (Point2D)
 import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
 
 isWeaponReady :: Unit -> Bool
@@ -43,30 +42,32 @@ canAttack u e = do
     return $ isWeaponReady u && inRange
 
 unitIsNotMoving :: Unit -> Bool
-unitIsNotMoving u = noOrders || notMoving where
-    noOrders =  null . view #orders $ u
+unitIsNotMoving u = noOrders || notMoving
+  where
+    noOrders = null . view #orders $ u
     order = view #abilityId . head . view #orders $ u
     notMoving = order /= fromEnum' MOVEMOVE
 
-stepForwardOrBack :: HasObs d => Unit -> Unit -> StepMonad d ()
+stepForwardOrBack :: (HasObs d) => Unit -> Unit -> StepMonad d ()
 stepForwardOrBack u e = when (unitIsNotMoving u) $ do
     range <- siUnitRange u e
     let distSq = Spatial.distSquared2D u e
         upos = toPoint2D $ u ^. #pos
-    if distSq / 2 >= (range / 2) * (range / 2) then do
-        stepForward <- u `stepToward` e
-        command [PointCommand MOVE [u] (upos + stepForward)]
-    else do
-        stepBack <- stepBackward u e
-        command [PointCommand MOVE [u] (upos + stepBack) ]
+    if distSq / 2 >= (range / 2) * (range / 2)
+        then do
+            stepForward <- u `stepToward` e
+            command [PointCommand MOVE [u] (upos + stepForward)]
+        else do
+            stepBack <- stepBackward u e
+            command [PointCommand MOVE [u] (upos + stepBack)]
 
 fleeVelocity :: Point2D -> Point2D -> Float -> Point2D
 fleeVelocity currentPos targetPos speed =
-  vecNormalize $ vecScale speed (currentPos - targetPos)
+    vecNormalize $ vecScale speed (currentPos - targetPos)
 
 seekVelocity :: Point2D -> Point2D -> Float -> Point2D
 seekVelocity currentPos targetPos speed =
-  vecNormalize $ vecScale speed (targetPos - currentPos)
+    vecNormalize $ vecScale speed (targetPos - currentPos)
 
 stepBackward :: Unit -> Unit -> StepMonad d Point2D
 stepBackward u e = do
@@ -84,7 +85,7 @@ stepToward u e = do
         unitPos2D = toPoint2D $ u ^. #pos
     return $ seekVelocity unitPos2D enemyPos2D uspeed
 
-unitEngageBehaviorTree :: HasObs d => Unit -> Unit -> StepMonad d ()
+unitEngageBehaviorTree :: (HasObs d) => Unit -> Unit -> StepMonad d ()
 unitEngageBehaviorTree u e = do
     canAtk <- canAttack u e
     if canAtk
@@ -102,8 +103,10 @@ unitSeek unit enemy =
         speed = 4.13 -- TODO: remove hardcoded stalkers value
         desiredVelocity = vecScale speed $ vecNormalize $ enemyPos2D - toPoint2D (unit ^. #pos)
         unitVelocity = unitVelocityVec unit
-    in trace (show (unit ^. #tag) ++ " egaging: " ++ enemyStr enemy ++ ": " ++ show (desiredVelocity - unitVelocity))
-        desiredVelocity - unitVelocity
+     in trace
+            (show (unit ^. #tag) ++ " egaging: " ++ enemyStr enemy ++ ": " ++ show (desiredVelocity - unitVelocity))
+            desiredVelocity
+            - unitVelocity
 
 -- ---------------------------------------------------------------------------
 -- Step
@@ -141,19 +144,21 @@ engageCloseUpdate squad st@(FSEngageClose enemyTag) = do
     ds <- agentGet
     let unitByTag t = HashMap.lookup t (getUnitMap ds)
         leader = fromJust $ unitByTag (head (squadUnits squad))
-        damaged = leader ^. #shield  <=  leader ^. #shieldMax / 2
-    if damaged then do
-        traceFSM squad ("leader damaged " ++ show enemyTag)
-        return (Transition (SSRetreat Nothing))
-    else do
-        case getUnit obs enemyTag of
-            Nothing -> do
-                traceFSM squad ("no more unit with tag " ++ show enemyTag)
-                full <- isSquadFull squad
-                pure $ if full
-                    then Transition SSIdle
-                    else Transition (SSForming FSFormingUnplaced)
-            _ -> pure (Continue (SSEngage st))
+        damaged = leader ^. #shield <= leader ^. #shieldMax / 2
+    if damaged
+        then do
+            traceFSM squad ("leader damaged " ++ show enemyTag)
+            return (Transition (SSRetreat Nothing))
+        else do
+            case getUnit obs enemyTag of
+                Nothing -> do
+                    traceFSM squad ("no more unit with tag " ++ show enemyTag)
+                    full <- isSquadFull squad
+                    pure $
+                        if full
+                            then Transition SSIdle
+                            else Transition (SSForming FSFormingUnplaced)
+                _ -> pure (Continue (SSEngage st))
 engageCloseUpdate _ st = pure (Continue (SSEngage st))
 
 engageFarUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d UpdateResult
@@ -164,15 +169,16 @@ engageFarUpdate squad st@(FSEngageFar enemyTag) = do
         enemy = getUnit obs enemyTag
         leader = fromJust $ unitByTag . head . squadUnits $ squad
     inRange <- case enemy of
-        Just e  -> isEnemyInRange e leader
+        Just e -> isEnemyInRange e leader
         Nothing -> return False
     case enemy of
         Nothing -> do
             traceFSM squad ("no more unit with tag " ++ show enemyTag)
             full <- isSquadFull squad
-            pure $ if full
-                then Transition SSIdle
-                else Transition (SSForming FSFormingUnplaced)
+            pure $
+                if full
+                    then Transition SSIdle
+                    else Transition (SSForming FSFormingUnplaced)
         _ -> pure $ Continue (SSEngage (if inRange then FSEngageClose enemyTag else st))
 engageFarUpdate _ st = pure (Continue (SSEngage st))
 

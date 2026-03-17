@@ -21,13 +21,13 @@ module SC2.Grid.Algo (
     Region,
     RegionGraph,
     regionGraphBfs,
-    complementRegionLookup
+    complementRegionLookup,
 )
 where
 
-import SC2.Spatial (distSquared)
 import SC2.Grid.Core
 import SC2.Grid.TilePos (TilePos)
+import SC2.Spatial (distSquared)
 import Utils (dbg)
 
 import Control.Monad (guard)
@@ -146,8 +146,8 @@ findChokePoint grid threshold start =
     rayShortEnough :: Ray -> Bool
     rayShortEnough ray =
         threshold * threshold
-        >= distSquared (head ray) (last ray)
-        -- `Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
+            >= distSquared (head ray) (last ray)
+    -- `Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
 
     rays :: [(Ray, Ray)]
     rays =
@@ -301,12 +301,12 @@ adjacent4 :: TilePos -> [TilePos]
 adjacent4 (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
 adjacent8 (x, y) =
-  [ (x + dx, y + dy)
-  | dx <- [-1, 0, 1]
-  , dy <- [-1, 0, 1]
-  , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-  --, isJust pixel -- pixel /= Just '#'
-  ]
+    [ (x + dx, y + dy)
+    | dx <- [-1, 0, 1]
+    , dy <- [-1, 0, 1]
+    , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+    -- , isJust pixel -- pixel /= Just '#'
+    ]
 
 tilesInRadius :: Int -> TilePos -> [TilePos]
 tilesInRadius r (x, y) =
@@ -323,16 +323,18 @@ buildRegionLookup regions =
         [(pos, rid) | (rid, region) <- regions, pos <- Set.toList region]
 
 complementRegionLookup :: RegionLookup -> [TilePos] -> RegionLookup
-complementRegionLookup lkp tiles = foldl' go lkp tiles where
-  go acc pos
-    | pos `HashMap.member` lkp = acc
-    | otherwise = let
-        ns = tilesInRadius 3 pos
-        -- variants = catMaybes $ concatMap (\x -> x HashMap.!? lkp) ns
-        variants = catMaybes $ map (lkp HashMap.!?) ns
-        minNeighborRid = minimum variants
-        in
-          if null variants then acc else HashMap.insert pos minNeighborRid acc
+complementRegionLookup lkp tiles = foldl' go lkp tiles
+  where
+    go acc pos
+        | pos `HashMap.member` lkp = acc
+        | otherwise =
+            let
+                ns = tilesInRadius 3 pos
+                -- variants = catMaybes $ concatMap (\x -> x HashMap.!? lkp) ns
+                variants = catMaybes $ map (lkp HashMap.!?) ns
+                minNeighborRid = minimum variants
+             in
+                if null variants then acc else HashMap.insert pos minNeighborRid acc
 
 buildRegionGraph :: [(RegionId, Region)] -> RegionLookup -> RegionGraph
 buildRegionGraph regions regionLookup =
@@ -348,7 +350,8 @@ buildRegionGraph regions regionLookup =
 
 regionGraphBfs :: RegionGraph -> RegionId -> RegionId -> [RegionId]
 regionGraphBfs rg start end =
-  bfs (Seq.singleton (start, [start])) (Set.singleton start) where
+    bfs (Seq.singleton (start, [start])) (Set.singleton start)
+  where
     bfs Seq.Empty _ = []
     bfs ((top, path) Seq.:<| queue) visited
         | top == end = reverse path
@@ -360,4 +363,4 @@ regionGraphBfs rg start end =
         visited' = Set.union visited neighbors'
 
         queue' :: Seq.Seq (RegionId, [RegionId])
-        queue' = queue Seq.>< Seq.fromList ( [(n, n : path) | n <- Set.toList neighbors'])
+        queue' = queue Seq.>< Seq.fromList ([(n, n : path) | n <- Set.toList neighbors'])

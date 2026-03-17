@@ -4,9 +4,9 @@ import Footprint
 import Observation
 import SC2.Geometry
 import SC2.Grid
-import SC2.Spatial (distSquared2D)
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
+import SC2.Spatial (distSquared2D)
 import Units
 
 import Conduit (filterC)
@@ -18,7 +18,6 @@ import Safe (headMay, minimumByMay)
 
 squadFormationFootprint :: Footprint
 squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
-
 
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
 isArmyUnit u = ProtossProbe /= utype && (not . isUnitStructure $ utype)

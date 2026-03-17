@@ -1,4 +1,4 @@
-module Squad.Squad (FSMSquad(..), squadId, replaceSquad) where
+module Squad.Squad (FSMSquad (..), squadId, replaceSquad) where
 
 import Actions (UnitTag)
 import Squad.Class

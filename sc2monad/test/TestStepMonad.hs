@@ -3,12 +3,11 @@
 
 module TestStepMonad (stepMonadUnitTests) where
 
-import StepMonad (HasObs(..), HasGrid(..))
 import Actions (Action (SelfCommand), DebugCommand (DebugText))
 import Data.HashMap.Strict qualified as HashMap
 import Data.ProtoLens (defMessage)
 import Data.Text qualified as T
-import Lens.Micro ((&), (.~), (^.), (^..))
+import Lens.Micro (lens, (&), (.~), (^.), (^..))
 import Observation (Observation)
 import Proto.S2clientprotocol.Common_Fields qualified as C
 import Proto.S2clientprotocol.Raw_Fields qualified as R
@@ -16,12 +15,12 @@ import Proto.S2clientprotocol.Sc2api_Fields qualified as S
 import SC2.Grid (Grid, gridFromLines)
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossProbe))
+import SC2.Proto.Data (Alliance (Self), Point)
 import StepMonad
+import StepMonad (HasGrid (..), HasObs (..))
 import Test.Hspec
 import Units (Unit)
 import Units qualified
-import SC2.Proto.Data (Alliance (Self), Point)
-import Lens.Micro (lens)
 
 -- Small dynamic state for exercising StepMonad helpers.
 data DummyState = DummyState
@@ -31,10 +30,10 @@ data DummyState = DummyState
 
 -- Provide instances for the new typeclasses
 instance HasObs DummyState where
-    obsL = lens dummyObs (\st obs -> st {dummyObs = obs})
+    obsL = lens dummyObs (\st obs -> st{dummyObs = obs})
 
 instance HasGrid DummyState where
-    gridL = lens dummyGrid (\st grid -> st {dummyGrid = grid})
+    gridL = lens dummyGrid (\st grid -> st{dummyGrid = grid})
 stepMonadUnitTests :: Spec
 stepMonadUnitTests =
     describe "StepMonad" $ do
@@ -78,16 +77,20 @@ stepMonadUnitTests =
 probeUnit :: Unit
 probeUnit =
     defMessage
-        & R.tag .~ 1
-        & R.unitType .~ Units.fromEnum' ProtossProbe
-        & R.alliance .~ Self
-        & R.pos .~ (defMessage & C.x .~ 10 & C.y .~ 20 & C.z .~ 0)
+        & R.tag
+        .~ 1
+        & R.unitType
+        .~ Units.fromEnum' ProtossProbe
+        & R.alliance
+        .~ Self
+        & R.pos
+        .~ (defMessage & C.x .~ 10 & C.y .~ 20 & C.z .~ 0)
 
 initialObservation :: Observation
 initialObservation =
     defMessage
         & S.rawData
-            .~ (defMessage & R.units .~ [probeUnit])
+        .~ (defMessage & R.units .~ [probeUnit])
 
 initialGrid :: Grid
 initialGrid = gridFromLines ["     ", "     ", "     "]

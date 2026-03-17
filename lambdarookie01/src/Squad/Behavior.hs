@@ -1,39 +1,42 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE GADTs, ExistentialQuantification, RankNTypes #-}
-{-# LANGUAGE GADTs, ConstraintKinds, TypeApplications #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Squad.Behavior where
 
 import Actions (Action (..), UnitTag)
+import Footprint
+import SC2.Geometry
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
+import SC2.Ids.AbilityId
 import SC2.Spatial qualified as Spatial
-import Squad.Squad
+import SC2.Utils
 import Squad.Class
+import Squad.Squad
+import StepMonad
 import Target (Target)
 import Units
 import Utils
-import Footprint
-import StepMonad
-import SC2.Geometry
-import SC2.Utils
-import SC2.Ids.AbilityId
 
+import Control.Monad (filterM, void, when)
+import Data.Char (isDigit)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Maybe
-import System.Random (Random, StdGen, randomR)
-import Lens.Micro
-import Lens.Micro.Extras (view)
-import Data.Char (isDigit)
 import Data.Typeable
 import Debug.Trace
-import Control.Monad (filterM, void, when)
+import Lens.Micro
+import Lens.Micro.Extras (view)
+import System.Random (Random, StdGen, randomR)
 
 isSquadFull :: (HasArmy d) => FSMSquad a -> StepMonad d Bool
 isSquadFull squad = do
@@ -44,7 +47,7 @@ isSquadFull squad = do
         squadSize = 5
     return $ length tags == squadSize && all (`HashMap.member` unitMap) tags && all (\t -> let Just u = HashMap.lookup t unitMap in (1.0 :: Float) == u ^. #buildProgress) tags
 
---wanderAround :: FS s => s Int -> StepMonad d s
+-- wanderAround :: FS s => s Int -> StepMonad d s
 wanderAround s radius = pure ()
 
 -- command to move units to formation. returns true when complete
@@ -90,12 +93,12 @@ squadDoAttack squad target = return ()
 
 isSquadFormed :: (HasArmy d) => FSMSquad a -> TilePos -> Footprint -> StepMonad d Bool
 isSquadFormed squad center formation = do
-        ds <- agentGet
-        let unitByTag t = HashMap.lookup t (getUnitMap ds)
-            -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-            (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
-            -- filter out leader 'c' : leader goes to center
-            unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) (pixels formation)
+    ds <- agentGet
+    let unitByTag t = HashMap.lookup t (getUnitMap ds)
+        -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+        (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
+        -- filter out leader 'c' : leader goes to center
+        unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) (pixels formation)
 
-            unitsWithPos = take (length units) unitsFormationPos `zip` units
-        return $ all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+        unitsWithPos = take (length units) unitsFormationPos `zip` units
+    return $ all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos

@@ -57,8 +57,9 @@ type UnitAbilityDeps = HashMap.HashMap UnitTypeId [(AbilityId, [Tech])]
 type TechDeps = HashMap.HashMap Tech [Tech]
 type TechPath = HashMap.HashMap Tech [Tech]
 
--- | Walk up parent directories from the splice-site source file
--- until a directory containing @data/data.json@ is found.
+{- | Walk up parent directories from the splice-site source file
+until a directory containing @data/data.json@ is found.
+-}
 findDataJson :: Q FilePath
 findDataJson = do
     loc <- location
@@ -98,7 +99,7 @@ generateDeps = do
         unitAbilitiesGrouped :: UnitAbilityDeps
         unitAbilitiesGrouped = HashMap.fromList $ mapMaybe extractUnitAbilities unitAbilitiesList
 
-        --abilityProducer :: AbilityProducer
+        -- abilityProducer :: AbilityProducer
         abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
 
         techAbilityDeps :: [(Tech, [Tech])]
@@ -268,5 +269,7 @@ ordNub = go Set.empty
         | otherwise = x : go (Set.insert x seen) xs
 
 extractAbilityProducers :: Value -> [(AbilityId, UnitTypeId)]
-extractAbilityProducers unitValue = [(toEnum . fromIntegral $ a, toEnum . fromIntegral $ unitValue ^?! key "id" . _Integral )
-    | a <- unitValue ^.. key "abilities" . _Array . traverse . key "ability" . _Integral]
+extractAbilityProducers unitValue =
+    [ (toEnum . fromIntegral $ a, toEnum . fromIntegral $ unitValue ^?! key "id" . _Integral)
+    | a <- unitValue ^.. key "abilities" . _Array . traverse . key "ability" . _Integral
+    ]

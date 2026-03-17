@@ -27,7 +27,6 @@ module SC2.Proto.Data (
     module S,
     module D,
     module SF,
-
     Map (LocalMap),
 ) where
 
@@ -41,11 +40,13 @@ import Data.Text
 -- import Proto.S2clientprotocol.Sc2api_Fields as A
 -- import Proto.S2clientprotocol.Data as A
 import Proto.S2clientprotocol.Common as C
+
+-- hiding participant
+
+import Proto.S2clientprotocol.Data as D
 import Proto.S2clientprotocol.Raw as R
 import Proto.S2clientprotocol.Raw_Fields as RF
-import Proto.S2clientprotocol.Sc2api as S hiding (PlayerType(..)) -- hiding participant
+import Proto.S2clientprotocol.Sc2api as S hiding (PlayerType (..))
 import Proto.S2clientprotocol.Sc2api_Fields as SF
-import Proto.S2clientprotocol.Data as D
-
 
 data Map = LocalMap Text (Maybe BS.ByteString)

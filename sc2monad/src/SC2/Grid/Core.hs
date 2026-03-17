@@ -70,8 +70,8 @@ gridSetPixel grid@(w, h, g) (x, y) value
     index = x + y * w
 
 gridSetPixelForce :: Grid -> TilePos -> Char -> Grid
-gridSetPixelForce grid@(w, h, g) (x, y) value
-    = (w, h, g VU.// [(index, value)])
+gridSetPixelForce grid@(w, h, g) (x, y) value =
+    (w, h, g VU.// [(index, value)])
   where
     -- `Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
     index = x + y * w
@@ -107,7 +107,8 @@ removeMark grid (Footprint pixels) (cx, cy) =
     foldl' (\accGrid (x, y, _) -> gridSetPixelForce accGrid (cx + x, cy + y) ' ') grid pixels
 
 gridPlace :: Grid -> UnitTypeId -> TilePos -> Grid
-gridPlace g u (cx, cy) = -- trace ("gridPlace " ++ show u) $
-  foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
-    where
-      ptrn = pixels (getFootprint u)
+gridPlace g u (cx, cy) =
+    -- trace ("gridPlace " ++ show u) $
+    foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
+  where
+    ptrn = pixels (getFootprint u)

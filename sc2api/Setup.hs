@@ -4,5 +4,5 @@ import System.FilePath
 protoDir = "protos"
 
 main = do
-  putStrLn "====================GENERATING========================"
-  defaultMainGeneratingProtos protoDir
+    putStrLn "====================GENERATING========================"
+    defaultMainGeneratingProtos protoDir

@@ -1,4 +1,3 @@
-
 module Squad.State where
 
 import Actions (UnitTag)

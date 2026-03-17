@@ -1,19 +1,19 @@
 module Army.Army where
 
 import Actions (Action (..), UnitTag)
+import Footprint
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
-import Units
-import Utils
-import Footprint
 import Squad
 import StepMonad
+import Units
+import Utils
 
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Maybe
 import System.Random (Random, StdGen, randomR)
 
 data ArmyUnitData = ArmyUnitData
@@ -30,5 +30,3 @@ data Army = Army
 
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
-
-

@@ -1,13 +1,14 @@
-
 module SC2.Launcher.Config (
     hostName,
     portHost,
     portClient,
     serverPortSet,
-    clientPortSet)
+    clientPortSet,
+)
 where
+
 import Data.Int (Int32)
-import  qualified GHC.Int
+import GHC.Int qualified
 
 hostName :: String
 hostName = "127.0.0.1"

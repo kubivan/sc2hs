@@ -17,7 +17,6 @@ import Agent
 
 -- import SC2.Proto (Participant, requestJoinGame1vs1, requestJoinGameVsAi, Race, Request)
 
-import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Client (
     GameSignals,
     newGameSignals,
@@ -29,6 +28,7 @@ import SC2.Client (
     waitAllClientsJoined,
     waitForGameCreation,
  )
+import SC2.Launcher.BotConfig (StarCraft2Config (..))
 import SC2.Launcher.Participant
 import SC2.Proto.Data (Map, PlayerResult, Race)
 import SC2.Proto.Data qualified as Proto
@@ -51,8 +51,7 @@ import Network.WebSockets as WS (
     Connection,
     runClient,
  )
-import System.Directory(createDirectoryIfMissing)
-
+import System.Directory (createDirectoryIfMissing)
 
 data NetworkSettings = NetworkSettings
     { networkHostName :: String
@@ -141,29 +140,29 @@ clientAppJoinGame conn agent signals joinFunc = do
 runHostSession :: StarCraft2Config -> Map -> NetworkSettings -> Participant -> [Participant] -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
 runHostSession _ _ _ (Computer _ _ _) _ _ _ = Prelude.error "computer cannot be the host"
 runHostSession sc2Cfg mapSpec net (Player agent) participants signals joinFunc = do
-        when (start sc2Cfg) $
-                startStarCraft sc2Cfg (networkHostName net) (fromIntegral $ networkHostPort net)
-        threadId <- myThreadId
-        putStrLn $ "Host thread ID: " ++ show threadId
-        WS.runClient (networkHostName net) (networkHostPort net) "/sc2api" clientApp
-    where
-        clientApp conn = do
-                putStrLn "creating game..."
-                clientAppCreateGame conn mapSpec participants signals
-                putStrLn "Host joining game..."
-                clientAppJoinGame conn agent signals joinFunc
+    when (start sc2Cfg) $
+        startStarCraft sc2Cfg (networkHostName net) (fromIntegral $ networkHostPort net)
+    threadId <- myThreadId
+    putStrLn $ "Host thread ID: " ++ show threadId
+    WS.runClient (networkHostName net) (networkHostPort net) "/sc2api" clientApp
+  where
+    clientApp conn = do
+        putStrLn "creating game..."
+        clientAppCreateGame conn mapSpec participants signals
+        putStrLn "Host joining game..."
+        clientAppJoinGame conn agent signals joinFunc
 
 runClientSession :: NetworkSettings -> Participant -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
 runClientSession _ (Computer _ _ _) _ _ = Prelude.error "computer cannot be the client"
 runClientSession net (Player agent) signals joinFunc = do
-        threadId <- myThreadId
-        putStrLn $ "Client thread ID: " ++ show threadId
-        waitForGameCreation signals
-        WS.runClient (networkHostName net) (networkClientPort net) "/sc2api" clientApp
-    where
-        clientApp conn = do
-                putStrLn "client joining game..."
-                clientAppJoinGame conn agent signals joinFunc
+    threadId <- myThreadId
+    putStrLn $ "Client thread ID: " ++ show threadId
+    waitForGameCreation signals
+    WS.runClient (networkHostName net) (networkClientPort net) "/sc2api" clientApp
+  where
+    clientApp conn = do
+        putStrLn "client joining game..."
+        clientAppJoinGame conn agent signals joinFunc
 
 runGameLoop :: (Agent a) => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
 runGameLoop conn signals agent localPlayerId = do
@@ -172,14 +171,14 @@ runGameLoop conn signals agent localPlayerId = do
 
     putStrLn "getting game info..."
     respGameInfo <- Proto.sendRequestSync conn Proto.requestGameInfo
-    --print respGameInfo
+    -- print respGameInfo
     gameDataResp <- Proto.sendRequestSync conn Proto.requestData
     let gi :: Proto.ResponseGameInfo = respGameInfo ^. #gameInfo
         gd :: Proto.ResponseData = gameDataResp ^. #data'
 
-    --printGrid _pathingGrid
-    --createDirectoryIfMissing True "grids"
-    --liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
+    -- printGrid _pathingGrid
+    -- createDirectoryIfMissing True "grids"
+    -- liftIO $ B.writeFile "grids/gameinfo" (encodeMessage gi)
 
     obs0 <- Proto.sendRequestSync conn Proto.requestObservation
 

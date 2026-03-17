@@ -9,9 +9,9 @@ import SC2.Ids.UnitTypeId (UnitTypeId)
 import StepMonad
 
 data BOStep
-  = BOBuild UnitTypeId
-  | BOTrain UnitTypeId
-  deriving (Eq, Show)
+    = BOBuild UnitTypeId
+    | BOTrain UnitTypeId
+    deriving (Eq, Show)
 
 type BuildOrder = [BOStep]
 
@@ -29,31 +29,31 @@ stepProgram (BOTrain uid) = ensureUnit uid
 runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => BuildOrder -> StepMonad d BuildOrder
 runBO [] = pure []
 runBO order@(step : rest) = do
-  let boIntentId = IntentId ("bo-" ++ (show $ length order) ++ "-" ++ show step)
-  active <- intentExists boIntentId
-  if active
-    -- TODO: remove duplication
-    then do
-      status <- stepIntent boIntentId
-      case status of
-        IntentCompleted -> pure rest
-        IntentRunning -> pure order
-        IntentFailed -> pure order
-    else do
-      spawnIntent boIntentId (stepProgram step)
-      status <- stepIntent boIntentId
-      case status of
-        IntentCompleted -> pure rest
-        IntentRunning -> pure order
-        IntentFailed -> pure order
+    let boIntentId = IntentId ("bo-" ++ (show $ length order) ++ "-" ++ show step)
+    active <- intentExists boIntentId
+    if active
+        -- TODO: remove duplication
+        then do
+            status <- stepIntent boIntentId
+            case status of
+                IntentCompleted -> pure rest
+                IntentRunning -> pure order
+                IntentFailed -> pure order
+        else do
+            spawnIntent boIntentId (stepProgram step)
+            status <- stepIntent boIntentId
+            case status of
+                IntentCompleted -> pure rest
+                IntentRunning -> pure order
+                IntentFailed -> pure order
 
 tryCreate :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d (Maybe ())
 tryCreate uid = runMaybeT (createAction uid)
 
 createAction :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> MaybeStepMonad d ()
 createAction uid = do
-  _ <- lift $ transientStep (ensureStructure uid)
-  pure ()
+    _ <- lift $ transientStep (ensureStructure uid)
+    pure ()
 
 tryTrain :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d ()
 tryTrain uid = void (transientStep (ensureUnit uid))

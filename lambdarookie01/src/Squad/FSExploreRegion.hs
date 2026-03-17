@@ -1,22 +1,21 @@
-
 module Squad.FSExploreRegion where
 
-import SC2.Utils
+import Actions (Action (..), UnitTag)
+import SC2.Geometry
 import SC2.Grid
+import SC2.Ids.AbilityId
+import SC2.Utils
+import Squad.Behavior
 import Squad.Class
+import Squad.FSMLog
 import Squad.Squad
 import Squad.State
-import Squad.Behavior
-import Squad.FSMLog
-import SC2.Geometry
 import StepMonad
 import StepMonadUtils
-import Actions (Action (..), UnitTag)
-import SC2.Ids.AbilityId
 
+import Control.Monad
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
-import Control.Monad
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
@@ -49,9 +48,10 @@ exploreRegionUpdate squad st@(FSExploreRegion rid region)
         let region' = foldl' (flip Set.delete) region pixelsToRemove
             state' = FSExploreRegion rid region'
 
-        return $ if Set.size region' == 0
-            then Transition SSIdle
-            else Continue (SSExploreRegion state')
+        return $
+            if Set.size region' == 0
+                then Transition SSIdle
+                else Continue (SSExploreRegion state')
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition

@@ -29,7 +29,6 @@ instance Monoid StepPlan where
     mempty = StepPlan [] [] []
 
 class Agent a where
-
     makeAgent :: a -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO a
 
     agentRace :: a -> Proto.Race

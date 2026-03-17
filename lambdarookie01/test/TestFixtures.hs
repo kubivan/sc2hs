@@ -22,7 +22,6 @@ import SC2.Proto.Data (Alliance, Point)
 import StepMonad (StaticInfo (..))
 import System.Random (mkStdGen)
 import Units (Unit, fromEnum')
-
 import Lens.Micro ((&), (.~))
 
 pointAt :: Float -> Float -> Float -> Point

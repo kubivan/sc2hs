@@ -1,6 +1,6 @@
 module UnitAbilities where
 
-import qualified Data.HashMap.Strict as HashMap
+import Data.HashMap.Strict qualified as HashMap
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 

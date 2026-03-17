@@ -1,19 +1,18 @@
-
 module Squad.FSSquadForming where
 
 import Squad.Class
 
-import Squad.Squad
-import Squad.State
+import Actions (Action (..), UnitTag)
+import SC2.Geometry
+import SC2.Grid
+import SC2.Ids.AbilityId
+import SC2.Utils
 import Squad.Behavior
 import Squad.FSMLog
-import SC2.Utils
-import SC2.Grid
-import SC2.Geometry
+import Squad.Squad
+import Squad.State
 import StepMonad
 import StepMonadUtils
-import Actions (Action (..), UnitTag)
-import SC2.Ids.AbilityId
 
 import Control.Monad (void)
 import Data.HashMap.Strict qualified as HashMap
@@ -50,19 +49,20 @@ formingUpdate s FSFormingUnplaced = do
     case gatherPlace of
         Nothing -> do
             isFull <- isSquadFull s
-            return $ if isFull
-                then Transition SSIdle
-                else Continue (SSForming FSFormingUnplaced)
+            return $
+                if isFull
+                    then Transition SSIdle
+                    else Continue (SSForming FSFormingUnplaced)
         (Just fcenter) -> do
             addMarkSM formation fcenter
             return $ Continue (SSForming (FSFormingPlaced (fcenter, formation)))
-
 formingUpdate s (FSFormingPlaced (center, formation)) = do
     isFull <- isSquadFull s
     isFormed <- isSquadFormed s center formation
-    return $ if isFull && isFormed
-        then Transition SSIdle
-        else Continue (SSForming (FSFormingPlaced (center, formation)))
+    return $
+        if isFull && isFormed
+            then Transition SSIdle
+            else Continue (SSForming (FSFormingPlaced (center, formation)))
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition

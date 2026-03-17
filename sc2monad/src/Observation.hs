@@ -30,13 +30,13 @@ import Actions (UnitTag)
 import Footprint
 import SC2.Geometry
 import SC2.Grid
-import SC2.Spatial qualified as Spatial
 import SC2.Grid.Algo
 import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
 import SC2.Proto.Data qualified as Proto
+import SC2.Spatial qualified as Spatial
 import Units
 import Utils
 
@@ -94,7 +94,7 @@ findExpandPosInCluster grid heightMap cluster = bfsRes $ gridBfs grid (tilePos .
   where
     clusterTiles = tilePos . view #pos <$> cluster
     canPlaceDist69 p =
-      all (\c -> Spatial.distSquared p c >= 6 * 6 && Spatial.distSquared p c < 9 * 9) clusterTiles
+        all (\c -> Spatial.distSquared p c >= 6 * 6 && Spatial.distSquared p c < 9 * 9) clusterTiles
             && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 findExpands :: Observation -> Grid -> Grid -> [TilePos]

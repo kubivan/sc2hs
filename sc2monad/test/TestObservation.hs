@@ -55,27 +55,38 @@ emptyObservation = defMessage
 baseUnit :: Units.Unit
 baseUnit =
     defMessage
-        & R.tag .~ 1
-        & R.unitType .~ Units.fromEnum' ProtossNexus
-        & R.alliance .~ Self
-        & R.pos .~ (defMessage & C.x .~ 12 & C.y .~ 18 & C.z .~ 0)
-        & R.buildProgress .~ 1
+        & R.tag
+        .~ 1
+        & R.unitType
+        .~ Units.fromEnum' ProtossNexus
+        & R.alliance
+        .~ Self
+        & R.pos
+        .~ (defMessage & C.x .~ 12 & C.y .~ 18 & C.z .~ 0)
+        & R.buildProgress
+        .~ 1
 
 baseObservation :: Observation
 baseObservation =
     defMessage
-        & S.rawData .~ (defMessage & R.units .~ [baseUnit])
+        & S.rawData
+        .~ (defMessage & R.units .~ [baseUnit])
 
 resourcesObservation :: Observation
 resourcesObservation =
     defMessage
-        & #playerCommon . #minerals .~ 400
-        & #playerCommon . #vespene .~ 125
+        & #playerCommon
+        . #minerals
+        .~ 400
+        & #playerCommon
+        . #vespene
+        .~ 125
 
 gameInfoWithStarts :: ResponseGameInfo
 gameInfoWithStarts =
     defMessage
-        & #startRaw .~ (defMessage & #startLocations .~ [point2D 12 18, point2D 40 40])
+        & #startRaw
+        .~ (defMessage & #startLocations .~ [point2D 12 18, point2D 40 40])
 
 emptyGrid :: Grid
 emptyGrid = gridFromLines (replicate 128 (replicate 128 ' '))
