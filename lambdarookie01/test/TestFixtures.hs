@@ -54,6 +54,7 @@ mkStaticInfo grid =
         , startLocation = (0, 0)
         , enemyStartLocation = (0, 0)
         , siAsyncStaticInfo = Nothing
+        , siSimulationLoop = 0
         }
 
 mkDynamicState :: Observation -> Grid -> BotDynamicState
