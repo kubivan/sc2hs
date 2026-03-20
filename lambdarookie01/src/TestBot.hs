@@ -162,7 +162,7 @@ trainProbes = do
         probeCount = runConduitPure $ units .| unitTypeC ProtossProbe .| lengthC
         assimCount = runConduitPure $ units .| unitTypeC ProtossAssimilator .| lengthC
         nexuses :: [Units.Unit]
-        nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1) .| unitIdleC
+        nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1 && null (n ^. #orders)) .| unitIdleC
         nexusCount = length nexuses
         optimalCount = assimCount * 3 + nexusCount * 16
     when (optimalCount - probeCount > 0) $ command [SelfCommand NEXUSTRAINPROBE nexuses]
