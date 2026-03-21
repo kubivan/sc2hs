@@ -1,12 +1,13 @@
 module Intent where
 
 import Actions (Action (PointCommand, SelfCommand, UnitCommand), UnitTag)
-import Conduit (filterC, (.|))
-import Control.Monad (guard)
+import Conduit (filterC, mapC, (.|))
+import Control.Monad (guard, unless)
 import Control.Monad.Free (Free (..), liftF)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Function (on)
+import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sortBy)
 import Data.Map (Map)
@@ -14,14 +15,14 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text, pack)
 import Data.Word (Word32)
-import Debug.Trace (traceM)
+import Debug.Trace (trace, traceM)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (^.))
-import Lens.Micro.Extras (view)
-import Observation (Cost (..), Observation, findNexus, getUnit, obsUnitsC, unitsSelf)
+import Lens.Micro.Extras
+import Observation (Cost (..), Observation, findNexus, getUnit, obsResources, obsUnitsC, unitsSelf)
 import SC2.Geometry (fromTuple)
 import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, tilePos)
-import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
+import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
 import SC2.Spatial qualified as Spatial
 import SC2.TechTree (abilityExecutor, unitToAbility)
@@ -46,7 +47,7 @@ import StepMonad (
  )
 import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWith, agentUnitCost)
 import Target (Target (..))
-import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
+import Units (Unit, equalsC, fromEnum', isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
 
 newtype IntentId = IntentId [Char]
     deriving (Eq, Ord, Show)
@@ -55,12 +56,14 @@ data IntentStatus
     = IntentRunning
     | IntentCompleted
     | IntentFailed
+    | IntentNeedsPrerequisite UnitTypeId
     deriving (Eq, Show)
 
 data AwaitResult
     = AwaitContinue
     | AwaitBlock
     | AwaitFail
+    | AwaitNeed UnitTypeId
     deriving (Eq, Show)
 
 data IntentF d next
@@ -105,6 +108,7 @@ data IntentTickResult d
     = Continue (IntentRuntime d)
     | Block (IntentRuntime d)
     | Done (IntentRuntime d) IntentStatus
+    | NeedPrerequisite (IntentRuntime d) UnitTypeId
 
 data IntentRuntime d = IntentRuntime
     { intentId :: IntentId
@@ -208,6 +212,27 @@ findPlacementTarget uid obs expands grid gridHeight
     | uid == ProtossAssimilator = TargetUnit <$> findFreeGeyser obs
     | otherwise = TargetPos <$> findPlacementPos obs expands grid gridHeight uid
 
+spawnIntentUnique iid intent = do
+    active <- intentExists iid
+    traceM $ "[spawnIntentUnique] is_active:" <> (show active)
+    unless active $ spawnIntent iid intent
+
+intentEngine :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => StepMonad d ()
+intentEngine = do
+    frame <- agentObs <&> (^. #gameLoop)
+    intents <- agentGet <&> (^. buildIntentsL) <&> Map.toList
+    mapM_
+        ( \(iid, i) -> do
+            (i', status) <- runIntent i
+            traceM $ "[" <> show frame <> "][intentEngine][" <> (show iid) <> "status: " <> (show status)
+            case status of
+                IntentCompleted -> removeIntent iid
+                IntentFailed -> removeIntent iid
+                IntentNeedsPrerequisite uid -> updateIntent i' >> spawnIntentUnique (IntentId ("prereq-" ++ show uid)) (ensureStructure uid)
+                _ -> updateIntent i'
+        )
+        intents
+
 runIntent ::
     (HasObs d, HasGrid d, HasReservedCost d) =>
     IntentRuntime d ->
@@ -220,6 +245,7 @@ runIntent = stepLoop
             Continue rt' -> stepLoop rt'
             Block rt' -> pure (rt', IntentRunning)
             Done rt' status -> pure (rt', status)
+            NeedPrerequisite rt' uid -> pure (rt', IntentNeedsPrerequisite uid)
 
 intentTick :: (HasObs d, HasGrid d, HasReservedCost d) => IntentRuntime d -> StepMonad d (IntentTickResult d)
 intentTick rt =
@@ -244,6 +270,7 @@ intentTick rt =
                         AwaitContinue -> pure $ Continue (rt{intentProgram = next})
                         AwaitBlock -> pure $ Block rt
                         AwaitFail -> pure $ Done rt IntentFailed
+                        AwaitNeed uid -> pure $ NeedPrerequisite rt uid
                 ReserveCost uid next -> do
                     ucost <- agentUnitCost uid
                     -- subtract from the global reserve, add to the local
@@ -279,7 +306,7 @@ intentTick rt =
                     obs <- agentObs
                     let ability = unitToAbility (unitTraits si) uid
                     case find ((== builder) . (^. #tag)) (obs ^. #rawData . #units) of
-                        Nothing -> pure $ Block rt -- TODO: fail
+                        Nothing -> pure $ Done rt IntentFailed
                         Just executor -> do
                             case target of
                                 TargetPos pos -> do
@@ -294,13 +321,14 @@ intentTick rt =
                     obs <- agentObs
                     let ability = unitToAbility (unitTraits si) uid
                     case find ((== producer) . (^. #tag)) (obs ^. #rawData . #units) of
-                        Nothing -> pure $ Block rt -- TODO: fail
+                        Nothing -> pure $ Done rt IntentFailed
                         Just executor -> do
                             command [SelfCommand ability [executor]]
                             pure $ Continue (rt{intentProgram = next})
 
 spawnIntent :: (HasObs d, HasBuildIntents d, HasReservedCost d) => IntentId -> IntentDSL d () -> StepMonad d ()
 spawnIntent iid program = do
+    traceM $ "spawnIntent " ++ (show iid)
     frame <- (^. #gameLoop) <$> agentObs
     agentModify (buildIntentsL %~ Map.insert iid (IntentRuntime iid program frame (Cost 0 0)))
 
@@ -311,11 +339,14 @@ lookupIntent :: (HasBuildIntents d) => IntentId -> StepMonad d (Maybe (IntentRun
 lookupIntent iid = Map.lookup iid . (^. buildIntentsL) <$> agentGet
 
 updateIntent :: (HasBuildIntents d) => IntentRuntime d -> StepMonad d ()
-updateIntent runtime =
+updateIntent runtime = do
+    traceM $ "updateIntent " ++ (show $ intentId runtime)
+    -- unless (runtime == ) $
     agentModify (buildIntentsL %~ Map.insert (intentId runtime) runtime)
 
 removeIntent :: (HasBuildIntents d) => IntentId -> StepMonad d ()
-removeIntent iid =
+removeIntent iid = do
+    traceM $ "removeIntent " ++ (show iid)
     agentModify (buildIntentsL %~ Map.delete iid)
 
 stepIntent ::
@@ -333,9 +364,11 @@ stepIntent iid = do
                 IntentRunning -> updateIntent runtime' >> pure IntentRunning
                 IntentCompleted -> removeIntent iid >> pure IntentCompleted
                 IntentFailed -> do
+                    traceM $ "stepIntent: intent failed"
                     agentModifyReservedCost (+ intentReserve runtime')
                     removeIntent iid
                     pure IntentFailed
+                IntentNeedsPrerequisite uid -> updateIntent runtime' >> pure (IntentNeedsPrerequisite uid)
 
 -- TODO: duplicate
 unitHasOrder :: AbilityId -> Units.Unit -> Bool
@@ -344,20 +377,45 @@ unitHasOrder order u = order `elem` orders
     orders = toEnum' . view #abilityId <$> u ^. #orders
 
 canAffordI uid rt = do
-    traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ " can i afford " ++ show uid)
+    obs <- agentObs
+    reserved <- agentGetReservedCost
+    traceM
+        ( "[intent]["
+            ++ show (intentId rt)
+            ++ "] "
+            ++ " can i afford "
+            ++ show uid
+            ++ " intent reserve: "
+            ++ (show $ intentReserve rt)
+            ++ " global reserve: "
+            ++ show (reserved, obsResources obs)
+        )
     agentCanAffordWith (intentReserve rt) uid
 
 canProduceI uid rt = do
     traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ " can i produce " ++ show uid)
     abilityAvailableForUnit uid
 
-ensureStructure :: (HasObs d, HasReservedCost d) => UnitTypeId -> IntentDSL d ()
+targetInProgress target uid = do
+    obs <- agentObs
+    pure $
+        not . null $
+            runC $
+                unitsSelf obs
+                    .| unitTypeC uid
+                    .| filterC
+                        ( \x ->
+                            let dist = Spatial.distSquared (x ^. #pos) target
+                             in trace ("[targetInProgress] unit pos: " ++ show (x ^. #pos) ++ ", target: " ++ show target ++ ", dist: " ++ show dist) (dist <= 1)
+                        )
+
+ensureStructure :: (HasObs d, HasReservedCost d, HasGrid d) => UnitTypeId -> IntentDSL d ()
 ensureStructure uid = do
     reserveCostI uid
     waitUntilWith (canAffordI uid)
     waitUntilWith (canProduceI uid)
     builder <- findBuilderI
-    target <- findPlacementTargetI uid
+    target <- ensurePlacement uid
     issueBuildI builder uid target
     awaitWith $ \rt -> do
         obs <- agentObs
@@ -369,23 +427,28 @@ ensureStructure uid = do
                     Nothing -> False
 
             targetInProgress =
-                not . null $
-                    runC $
-                        unitsSelf obs
-                            .| unitTypeC uid
-                            .| filterC (\x -> Spatial.distSquared (x ^. #pos) target <= 2 * 2)
+                -- not . null $
+                runC $
+                    unitsSelf obs
+                        -- .| unitTypeC uid
+                        .| filterC (\x -> (toEnum' $ x ^. #unitType) /= ProtossProbe)
+                        .| mapC (\x -> (toEnum' $ x ^. #unitType :: UnitTypeId, Spatial.distSquared target x))
+        -- .| filterC
+        --     ( \x ->
+        --         let dist = Spatial.distSquared (x ^. #pos) target
+        --          in trace ("[ensureStructure] unit pos: " ++ show (x ^. #pos) ++ ", target: " ++ show target ++ ", dist: " ++ show dist) (dist <= 2 * 2)
+        --     )
 
-        traceM ("[intent][" ++ show (intentId rt) ++ "] waiting for build start " ++ show uid)
+        traceM ("[intent][" ++ show (intentId rt) ++ "] waiting for build start " ++ show uid ++ " " ++ show targetInProgress)
 
-        pure $
-            if not builderHasOrder
-                then AwaitFail
-                else
-                    if targetInProgress
-                        then AwaitContinue
-                        else AwaitBlock
+        if builderHasOrder
+            then
+                traceM "order in progress, wait" >> pure AwaitBlock
+            else
+                traceM "order failed or completed, check next frame " >> pure AwaitContinue
 
-    releaseCostI uid
+    releaseCostI uid -- release cost, we either done, or failed
+    waitUntil (targetInProgress target uid)
 
 ensureUnit :: (HasObs d, HasReservedCost d) => UnitTypeId -> IntentDSL d ()
 ensureUnit uid = do
@@ -396,16 +459,39 @@ ensureUnit uid = do
     issueSelfCommandI producer uid
     releaseCostI uid
 
-transientStep ::
-    (HasObs d, HasGrid d, HasReservedCost d) =>
-    IntentDSL d () ->
-    StepMonad d IntentStatus
-transientStep program = snd <$> runIntent (IntentRuntime (IntentId "transient") program 0 (Cost 0 0))
+ensurePlacement ::
+    (HasObs d, HasGrid d) =>
+    UnitTypeId -> IntentDSL d Target
+ensurePlacement uid = do
+    awaitWith $ \_ -> do
+        obs <- agentObs
+        grid <- agentGrid
+        si <- agentStatic
 
-pylonBuildAction :: (HasObs d, HasGrid d, HasReservedCost d) => MaybeStepMonad d ()
-pylonBuildAction = do
-    affordable <- lift $ agentCanAfford ProtossPylon
-    MaybeT $ pure (if affordable then Just () else Nothing)
-    lift $ do
-        _ <- transientStep (ensureStructure ProtossPylon)
-        pure ()
+        let placement =
+                findPlacementTarget uid obs (expandsPos si) grid (heightMap si)
+
+            pylonsInProgress =
+                not . null $
+                    runC $
+                        unitsSelf obs
+                            .| unitTypeC ProtossPylon
+                            .| filterC (\u -> u ^. #buildProgress < 1)
+            pylonsOrdered =
+                not . null $
+                    runC $
+                        unitsSelf obs
+                            .| unitTypeC ProtossProbe
+                            .| filterC (unitHasOrder PROTOSSBUILDPYLON)
+
+        case placement of
+            Just _ -> pure AwaitContinue
+            Nothing ->
+                if pylonsInProgress || pylonsOrdered
+                    then
+                        pure AwaitBlock
+                    else
+                        traceM ("[intent][ensurePlacement] no pylons in progress, no placement point, we need one more pylon")
+                            >> pure (AwaitNeed ProtossPylon)
+
+    findPlacementTargetI uid

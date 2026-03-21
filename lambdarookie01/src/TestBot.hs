@@ -276,7 +276,7 @@ buildPylons = do
 
     -- TODO:
     guard (foodCap + expectedFoodCap - foodUsed < 2)
-    pylonBuildAction
+    lift $ spawnIntent (IntentId ("build-pylons")) (ensureStructure ProtossPylon)
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
@@ -529,14 +529,16 @@ agentStepPhase Opening =
 agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}
     do
+        obs <- agentObs
+        traceM $ "===============================" <> show (obs ^. #gameLoop) <> "====================================="
         debugUnitPos
         reassignIdleProbes
-        trainProbes
-        obs <- agentObs
+        -- trainProbes
+        intentEngine
         abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
             agentResetGrid
-        void $ runMaybeT buildPylons
+        -- void $ runMaybeT buildPylons
         buildOrder' <- runBO buildOrder
         if null buildOrder'
             then do
@@ -558,7 +560,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 
-        res <- runMaybeT buildPylons
+        -- res <- runMaybeT buildPylons
 
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC

@@ -3,8 +3,11 @@ module PlanM where
 import Control.Monad (void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
+import Data.Map qualified as Map
 import Data.Text (pack)
+import Debug.Trace (traceM)
 import Intent
+import Lens.Micro
 import SC2.Ids.UnitTypeId (UnitTypeId)
 import StepMonad
 
@@ -22,38 +25,20 @@ boCurrentStep :: BuildOrder -> Maybe BOStep
 boCurrentStep [] = Nothing
 boCurrentStep (step : _) = Just step
 
-stepProgram :: (HasObs d, HasReservedCost d) => BOStep -> IntentDSL d ()
-stepProgram (BOBuild uid) = ensureStructure uid
-stepProgram (BOTrain uid) = ensureUnit uid
+boToIntent :: (HasObs d, HasReservedCost d, HasGrid d) => BOStep -> IntentDSL d ()
+boToIntent (BOBuild uid) = ensureStructure uid
+boToIntent (BOTrain uid) = ensureUnit uid
 
 runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => BuildOrder -> StepMonad d BuildOrder
 runBO [] = pure []
 runBO order@(step : rest) = do
+    frame <- (^. #gameLoop) <$> agentObs
     let boIntentId = IntentId ("bo-" ++ (show $ length order) ++ "-" ++ show step)
     active <- intentExists boIntentId
-    if active
-        -- TODO: remove duplication
+    traceM $ "[" <> show frame <> "][runBo][" <> (show boIntentId) <> "is_active: " <> (show active)
+    if not active
         then do
-            status <- stepIntent boIntentId
-            case status of
-                IntentCompleted -> pure rest
-                IntentRunning -> pure order
-                IntentFailed -> pure order
-        else do
-            spawnIntent boIntentId (stepProgram step)
-            status <- stepIntent boIntentId
-            case status of
-                IntentCompleted -> pure rest
-                IntentRunning -> pure order
-                IntentFailed -> pure order
-
-tryCreate :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d (Maybe ())
-tryCreate uid = runMaybeT (createAction uid)
-
-createAction :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> MaybeStepMonad d ()
-createAction uid = do
-    _ <- lift $ transientStep (ensureStructure uid)
-    pure ()
-
-tryTrain :: (HasObs d, HasGrid d, HasReservedCost d) => UnitTypeId -> StepMonad d ()
-tryTrain uid = void (transientStep (ensureUnit uid))
+            spawnIntent boIntentId (boToIntent step)
+            pure order
+        else
+            pure rest
