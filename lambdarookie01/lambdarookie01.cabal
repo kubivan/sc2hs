@@ -94,6 +94,7 @@ test-suite lambdarookie01-test
       TestBot
       TestFixtures
       TestIntegrationRealGame
+      TestIntentDsl
       TestStepFlow
       Paths_lambdarookie01
   hs-source-dirs:

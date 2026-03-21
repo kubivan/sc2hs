@@ -6,7 +6,7 @@ import Actions (UnitTag)
 import Army.Army
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
-import Intent (HasBuildIntents (..), IntentStore)
+import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
 import Lens.Micro ((%~), (^.))
 import Observation
 import SC2.Grid

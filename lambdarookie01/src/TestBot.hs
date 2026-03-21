@@ -61,7 +61,7 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, nub, partition, sortOn, (\\))
+import Data.List (find, isPrefixOf, nub, partition, sortOn, (\\))
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
@@ -72,10 +72,12 @@ import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
+import Proto.S2clientprotocol.Error qualified as E
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
 import SC2.Ids.UpgradeId (UpgradeId (Darktemplarblinkupgrade))
 import StepMonad (AsyncStaticInfo (..), StaticInfo (siAsyncStaticInfo), siRegionLookup, siRegionPathToEnemyResolved, siRegionsResolved)
+import StepMonadUtils (agentUnitCost)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
@@ -123,10 +125,10 @@ stepTowardsTechGoal goal = do
             TechUnit u -> do
                 if isUnitStructure u
                     then do
-                        spawnIntent (IntentId ("step-towards-goal-build-" <> show (u) <> "-" <> simLoop)) (ensureStructure u)
+                        spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (buildStructureIntent u)
                     else do
                         -- Unit training
-                        spawnIntent (IntentId ("step-towards-goal-train-" <> show (u) <> "-" <> simLoop)) (ensureStructure u)
+                        spawnIntent (IntentId ("step-towards-goal-train-" <> show (u))) (trainUnitIntent u)
             TechUpgrade upgrade -> do
                 let upgradeAbility = researchDeps HashMap.! upgrade
                     producer =
@@ -135,7 +137,7 @@ stepTowardsTechGoal goal = do
                                 unitsSelf obs
                                     -- .| unitIdleC
                                     .| unitTypeC (abilityExecutor HashMap.! upgradeAbility)
-                command [SelfCommand upgradeAbility [producer]]
+                issueSelfCommandReserveAware upgradeAbility [producer]
             _ -> error "not implemented"
 
 data BotPhase
@@ -155,7 +157,25 @@ unitsData raw =
             .| mapC (\a -> (toEnum . fromIntegral $ a ^. #unitId, a))
             .| sinkList
 
-trainProbes :: (HasObs d) => StepMonad d ()
+canAffordCopies :: (HasObs d, HasReservedCost d) => UnitTypeId -> Int -> StepMonad d Bool
+canAffordCopies uid count = do
+    obs <- agentObs
+    reserved <- agentGetReservedCost
+    unitCost <- agentUnitCost uid
+    let totalCost = sum (replicate count unitCost)
+    pure $ obsResources obs + reserved >= totalCost
+
+issueSelfCommandReserveAware :: (HasObs d, HasReservedCost d) => AbilityId -> [Units.Unit] -> StepMonad d ()
+issueSelfCommandReserveAware _ [] = pure ()
+issueSelfCommandReserveAware ability executors = do
+    si <- agentStatic
+    case abilityToUnitSafe (unitTraits si) ability of
+        Just uid -> do
+            canAfford <- canAffordCopies uid (length executors)
+            when canAfford $ command [SelfCommand ability executors]
+        Nothing -> command [SelfCommand ability executors]
+
+trainProbes :: (HasObs d, HasReservedCost d) => StepMonad d ()
 trainProbes = do
     obs <- agentObs
     let units = unitsSelf obs
@@ -165,7 +185,7 @@ trainProbes = do
         nexuses = runC $ units .| unitTypeC ProtossNexus .| filterC (\n -> (n ^. #buildProgress) == 1 && null (n ^. #orders)) .| unitIdleC
         nexusCount = length nexuses
         optimalCount = assimCount * 3 + nexusCount * 16
-    when (optimalCount - probeCount > 0) $ command [SelfCommand NEXUSTRAINPROBE nexuses]
+    when (optimalCount - probeCount > 0) $ issueSelfCommandReserveAware NEXUSTRAINPROBE nexuses
 
 -- `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
 
@@ -252,10 +272,10 @@ reassignIdleProbes = do
                     -- TODO: obsolete, rewrite
                     command [UnitCommand HARVESTGATHERPROBE [idle] (fromJust $ mineralField <|> closestMineral idle) | idle <- idleWorkers]
 
-buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => MaybeStepMonad d ()
+buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => StepMonad d ()
 buildPylons = do
-    obs <- lift agentObs
-    grid <- lift agentGrid
+    obs <- agentObs
+    grid <- agentGrid
     let foodCap = fromIntegral $ obs ^. (#playerCommon . #foodCap) -- `Utils.debug` ("minerals: " ++ show minerals)
         foodUsed = fromIntegral $ obs ^. (#playerCommon . #foodUsed)
 
@@ -275,8 +295,8 @@ buildPylons = do
         expectedFoodCap = 8 * incompletePylonsCount + 8 * orderedPylonsCount
 
     -- TODO:
-    guard (foodCap + expectedFoodCap - foodUsed < 2)
-    lift $ spawnIntent (IntentId ("build-pylons")) (ensureStructure ProtossPylon)
+    when (foodCap + expectedFoodCap - foodUsed < 2) $
+        spawnIntentUnique (IntentId "buildPylons") (buildStructureIntent ProtossPylon)
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos = agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
@@ -464,8 +484,44 @@ makeDynamicState obs grid = do
     gen <- newStdGen
     return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy Map.empty
 
-rollbackIntentFromActionError :: BotDynamicState -> Proto.ActionError -> BotDynamicState
-rollbackIntentFromActionError ds _ = ds
+hasActiveBoIntent :: StepMonad BotDynamicState Bool
+hasActiveBoIntent = do
+    intents <- agentGetBuildIntents
+    pure $ any isBoIntentId (Map.keys intents)
+  where
+    isBoIntentId (IntentId raw) = "bo-" `isPrefixOf` raw
+
+actionErrorToPending :: Proto.ActionError -> Maybe PendingActionError
+actionErrorToPending err =
+    if rawTag == 0 || rawAbility == 0
+        then Nothing
+        else Just (PendingActionError (fromIntegral rawTag) (toEnum' (fromIntegral rawAbility)))
+  where
+    rawTag = err ^. #unitTag
+    rawAbility = err ^. #abilityId
+
+formatActionError :: Proto.ActionError -> String
+formatActionError err =
+    "{unitTag="
+        <> show rawTag
+        <> ", abilityId="
+        <> show rawAbility
+        <> " ("
+        <> abilityName
+        <> "), result="
+        <> show (fromEnum rawResult)
+        <> " ("
+        <> resultName
+        <> ")}"
+  where
+    rawTag = err ^. #unitTag
+    rawAbility = err ^. #abilityId
+    rawResult = err ^. #result
+    abilityName = if rawAbility == 0 then "UnknownAbility" else show (toEnum' (fromIntegral rawAbility) :: AbilityId)
+    resultName = show (rawResult :: E.ActionResult)
+
+formatActionErrors :: [Proto.ActionError] -> String
+formatActionErrors errs = show (map formatActionError errs)
 
 instance Agent BotAgent where
     makeAgent :: BotAgent -> Word32 -> Proto.ResponseGameInfo -> Proto.ResponseData -> Proto.ResponseObservation -> IO BotAgent
@@ -502,15 +558,18 @@ instance Agent BotAgent where
     agentStep (BotAgent phase si ds env) obs abilities = do
         asyncResult <- readTVarIO (chokeVar env)
         let errors = obs ^. #actionErrors
+            pendingErrors = mapMaybe actionErrorToPending errors
             si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
             sm = agentStepPhase phase
-            dsPrepared = foldl rollbackIntentFromActionError (ds{dsObs = obs ^. #observation}) errors
+            dsPrepared = ds{dsObs = obs ^. #observation}
             (phase', plan, ds') = runStepM si' abilities dsPrepared sm
             actions = obs ^. #actions
             tracedResult =
                 if not (null actions) || not (null errors)
                     then (BotAgent phase' si' ds' env, plan)
                     else (BotAgent phase' si' ds' env, plan)
+        when (not . null $ obs ^. #actionErrors) $ traceM $ "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)
+        when (not . null $ obs ^. #actions) $ traceM $ "!!!actions: " <> (show $ obs ^. #actions)
         pure tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
@@ -524,22 +583,22 @@ agentStepPhase Opening =
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticsCore, ProtossAssimilator, ProtossGateway]
             expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
 
-        command [SelfCommand NEXUSTRAINPROBE [nexus]]
+        issueSelfCommandReserveAware NEXUSTRAINPROBE [nexus]
         return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
     {-# SCC "agentStep:BuildOrderExecutor" #-}
     do
-        obs <- agentObs
-        traceM $ "===============================" <> show (obs ^. #gameLoop) <> "====================================="
         debugUnitPos
         reassignIdleProbes
-        -- trainProbes
-        intentEngine
+        obs <- agentObs
         abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
             agentResetGrid
-        -- void $ runMaybeT buildPylons
-        buildOrder' <- runBO buildOrder
+        buildPylons
+        outcomes <- intentEngine
+        buildOrder' <- runBO outcomes buildOrder
+        boIntentActive <- hasActiveBoIntent
+        unless boIntentActive trainProbes
         if null buildOrder'
             then do
                 -- transit
@@ -560,13 +619,13 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 
-        -- res <- runMaybeT buildPylons
+        buildPylons
 
         let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
             idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
             gameLoop = obs ^. #gameLoop
         -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
-        command [SelfCommand (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER) idleGates]
+        issueSelfCommandReserveAware (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER) idleGates
 
         trainProbes
 
