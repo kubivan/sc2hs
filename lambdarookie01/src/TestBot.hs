@@ -125,10 +125,11 @@ stepTowardsTechGoal goal = do
             TechUnit u -> do
                 if isUnitStructure u
                     then do
-                        spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (buildStructureIntent u)
+                        -- spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (buildStructureIntent u)
+                        spawnIntentUnique (IntentId ("step-towards-goal-build")) (buildStructureIntent u)
                     else do
                         -- Unit training
-                        spawnIntent (IntentId ("step-towards-goal-train-" <> show (u))) (trainUnitIntent u)
+                        spawnIntentUnique (IntentId ("step-towards-goal-train")) (trainUnitIntent u)
             TechUpgrade upgrade -> do
                 let upgradeAbility = researchDeps HashMap.! upgrade
                     producer =
@@ -616,6 +617,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
         reassignIdleProbes
         agentArmyControl
         stepTowardsTechGoal deathBall
+        outcomes <- intentEngine
         -- when (unitsChanged obs obsPrev) $ do
         --  agentPut (obs, gridUpdate obs (gridFromImage $ gameInfo si ^. (#startRaw . #placementGrid))) -- >> command [Chat $ pack "grid updated"]
 

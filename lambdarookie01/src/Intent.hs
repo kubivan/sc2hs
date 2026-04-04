@@ -57,8 +57,8 @@ Production usage pattern in stepTowardsTechGoal or build-order sequencing:
   buildPylonIntent `andThen` buildAssimilatorIntent `orElse` buildProbeIntent
 
 Semantics:
-  - andThen: left completes → run right; left fails/timeout → fail parent (fail-fast)
-  - orElse: primary fails → run fallback; primary succeeds → return success (never switches on NeedPrerequisite)
+  - andThen: left completes -> run right; left fails/timeout → fail parent (fail-fast)
+  - orElse: primary fails -> run fallback; primary succeeds -> return success (never switches on NeedPrerequisite)
   - Cleanup: recursive walkthrough combinators; only active branch cleaned (prevents double-cleanup with reserves)
   - Timeout: uniform across all intents via buildPhaseTimedOut (build-phase only, no train timeout)
   - Status propagation: NeedPrerequisite blocks both branches; running propagates from active branch
@@ -135,7 +135,7 @@ class HasBuildIntents d where
     buildIntentsL :: Lens' d (IntentStore d)
 
 buildStartTimeoutFrames :: Word32
-buildStartTimeoutFrames = 112
+buildStartTimeoutFrames = 16 * 20
 
 maxIntentTransitionsPerFrame :: Int
 maxIntentTransitionsPerFrame = 8
@@ -612,6 +612,8 @@ intentEngine = do
             <> show (gasCost resources)
             <> " reserved penalty: "
             <> show reserved
+            <> " intents num: "
+            <> show (length intents)
     traceM $ "[" <> show frame <> "][intentEngine] running intents: " <> show (length intents)
     outcomes <-
         mapM
