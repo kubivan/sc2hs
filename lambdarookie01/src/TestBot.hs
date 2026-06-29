@@ -61,7 +61,7 @@ import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, isPrefixOf, nub, partition, sortOn, (\\))
+import Data.List (find, nub, partition, sortOn, (\\))
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
 
@@ -143,12 +143,12 @@ stepTowardsTechGoal goal = do
 
 data BotPhase
     = Opening
-    | BuildOrderExecutor BuildOrder Observation UnitAbilities
+    | BuildOrderRunning BuildOrder Observation
     | BuildArmyAndWin Observation [Tech]
 
 strBotPhase :: BotPhase -> String
 strBotPhase (Opening) = "Opening"
-strBotPhase (BuildOrderExecutor{}) = "BuildOrderExecutor"
+strBotPhase (BuildOrderRunning{}) = "BuildOrderRunning"
 strBotPhase (BuildArmyAndWin{}) = "BuildArmyAndWin Observation"
 
 unitsData :: [Proto.UnitTypeData] -> UnitTraits
@@ -486,11 +486,7 @@ makeDynamicState obs grid = do
     return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy Map.empty
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
-hasActiveBoIntent = do
-    intents <- agentGetBuildIntents
-    pure $ any isBoIntentId (Map.keys intents)
-  where
-    isBoIntentId (IntentId raw) = "bo-" `isPrefixOf` raw
+hasActiveBoIntent = intentExists buildOrderIntentId
 
 actionErrorToPending :: Proto.ActionError -> Maybe PendingActionError
 actionErrorToPending err =
@@ -583,29 +579,48 @@ agentStepPhase Opening =
         let nexus = findNexus obs
             fourGateBuild = [ProtossPylon, ProtossAssimilator, ProtossGateway, ProtossCyberneticsCore, ProtossAssimilator, ProtossGateway]
             expandBuild = [ProtossNexus, ProtossRoboticsFacility, ProtossGateway, ProtossGateway, ProtossAssimilator, ProtossAssimilator]
+            initialBuildOrder = boFromUnits (fourGateBuild ++ expandBuild)
 
         issueSelfCommandReserveAware NEXUSTRAINPROBE [nexus]
-        return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
-agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
-    {-# SCC "agentStep:BuildOrderExecutor" #-}
+        started <- spawnBuildOrderIntent initialBuildOrder
+        if started
+            then return $ BuildOrderRunning initialBuildOrder obs
+            else return $ BuildArmyAndWin obs deathBall
+agentStepPhase (BuildOrderRunning remainingBuildOrder obsPrev) =
+    {-# SCC "agentStep:BuildOrderRunning" #-}
     do
         debugUnitPos
         reassignIdleProbes
         obs <- agentObs
-        abilities <- agentAbilities
         when (buildingsSelfChanged obs obsPrev) $ do
             agentResetGrid
         buildPylons
-        outcomes <- intentEngine
-        buildOrder' <- runBO outcomes buildOrder
+        (outcomes, terminals) <- intentEngineDetailed
+        let boStatus = Map.lookup buildOrderIntentId outcomes
         boIntentActive <- hasActiveBoIntent
+        mBoRuntime <- if boIntentActive then lookupIntent buildOrderIntentId else pure Nothing
+        let remainingFromActive = mBoRuntime >>= programToBuildOrder . intentProgram
+            remainingFromTerminal = Map.lookup buildOrderIntentId terminals >>= programToBuildOrder . fst
+            nextRemainingBuildOrder =
+                case remainingFromActive of
+                    Just buildOrder -> buildOrder
+                    Nothing -> case remainingFromTerminal of
+                        Just buildOrder -> buildOrder
+                        Nothing -> remainingBuildOrder
         unless boIntentActive trainProbes
-        if null buildOrder'
+        if boStatus == Just IntentCompleted
             then do
                 -- transit
                 return $ BuildArmyAndWin obs deathBall
             else
-                return $ BuildOrderExecutor buildOrder' obs abilities
+                if boStatus == Just IntentFailed
+                    then do
+                        restarted <- spawnBuildOrderIntent nextRemainingBuildOrder
+                        if restarted
+                            then return $ BuildOrderRunning nextRemainingBuildOrder obs
+                            else return $ BuildArmyAndWin obs deathBall
+                    else
+                        return $ BuildOrderRunning nextRemainingBuildOrder obs
 agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     {-# SCC "agentStep:BuildArmyAndWin" #-}
     do

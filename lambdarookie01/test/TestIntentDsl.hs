@@ -4,8 +4,10 @@ module TestIntentDsl (intentDslTests) where
 
 import BotDynamicState (BotDynamicState)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Maybe (isNothing)
 import Intent
 import Observation (Cost (Cost))
+import PlanM (BOStep (..), boToComposite, composeBuildOrderWith)
 import SC2.Grid (gridFromLines)
 import SC2.Ids.UnitTypeId (UnitTypeId (ProtossGateway, ProtossProbe, ProtossPylon))
 import SC2.Proto.Data (Alliance (Self))
@@ -106,6 +108,36 @@ intentDslTests = describe "Intent DSL combinators" $ do
 
         snd (runIntentInTest ds rt) `shouldBe` IntentRunning
 
+    it "boToComposite returns Nothing for empty build order" $ do
+        boToComposite [] `shouldSatisfy` isNothing
+
+    it "composeBuildOrderWith preserves BuildOrder step order" $ do
+        let bo = [BOBuild ProtossPylon, BOTrain ProtossProbe, BOBuild ProtossGateway]
+            toSimpleIntent (BOBuild uid) = PBuildStructure uid BSReserving
+            toSimpleIntent (BOTrain uid) = PTrainUnit uid TUWaiting
+
+        fmap flattenSteps (composeBuildOrderWith toSimpleIntent bo)
+            `shouldBe` Just ["build-ProtossPylon", "train-ProtossProbe", "build-ProtossGateway"]
+
+    it "composeBuildOrderWith keeps fail-fast behavior in composite chain" $ do
+        let bo = [BOBuild ProtossPylon, BOBuild ProtossGateway]
+            composite =
+                composeBuildOrderWith toFailingIntent bo
+                    :: Maybe (IntentProgram BotDynamicState)
+            pylon = mockUnit 101 ProtossPylon Self (3, 3, 0)
+            ds = mkDynamicState (mkObservation [pylon] 200) (gridFromLines ["          "])
+
+        case composite of
+            Nothing -> expectationFailure "Expected non-empty composite build order"
+            Just program ->
+                let rt =
+                        IntentRuntime
+                            { intentId = IntentId "bo-chain-fail-fast"
+                            , intentProgram = program
+                            , intentStartedFrame = 0
+                            }
+                 in snd (runIntentInTest ds rt) `shouldBe` IntentFailed
+
 runIntentInTest :: BotDynamicState -> IntentRuntime BotDynamicState -> (IntentRuntime BotDynamicState, IntentStatus)
 runIntentInTest ds rt =
     let staticInfo = mkStaticInfo (gridFromLines ["          "])
@@ -113,3 +145,14 @@ runIntentInTest ds rt =
 
 fst3 :: (a, b, c) -> a
 fst3 (x, _, _) = x
+
+flattenSteps :: IntentProgram d -> [String]
+flattenSteps (PAndThen left right) = flattenSteps left ++ flattenSteps right
+flattenSteps (PBuildStructure uid _) = ["build-" ++ show uid]
+flattenSteps (PTrainUnit uid _) = ["train-" ++ show uid]
+flattenSteps (POrElse _ _) = ["orElse"]
+
+toFailingIntent :: BOStep -> IntentProgram d
+toFailingIntent (BOBuild ProtossPylon) = PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (20, 20)) 0)
+toFailingIntent (BOBuild uid) = PBuildStructure uid (BSMonitoring 1 (TargetPos (3, 3)))
+toFailingIntent (BOTrain uid) = PTrainUnit uid TUWaiting

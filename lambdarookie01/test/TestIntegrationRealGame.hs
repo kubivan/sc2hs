@@ -12,10 +12,11 @@ import Data.List (foldl', isInfixOf)
 import Data.Map qualified as Map
 import Data.ProtoLens.Labels ()
 import Data.Text qualified as Text
+import Intent (IntentRuntime (..))
 import Lens.Micro ((&), (.~), (^.))
 import Network.WebSockets qualified as WS
 import Observation (Observation)
-import PlanM (BuildOrder, boFromUnits)
+import PlanM (boFromUnits, boToComposite, buildOrderIntentId)
 import Proto.S2clientprotocol.Common qualified as C
 import Proto.S2clientprotocol.Sc2api qualified as A
 import SC2.Client (unitAbilities, unitAbilitiesRaw)
@@ -172,7 +173,13 @@ testBuildOrderCompletesBuildings conn = do
     injected <- case agent0 of
         EmptyBotAgent -> expectationFailure "agent unexpectedly became EmptyBotAgent" >> pure EmptyBotAgent
         BotAgent _ staticInfo ds env ->
-            pure $ BotAgent (BuildOrderExecutor (boFromUnits targetBuildOrder) obs abilityMap) staticInfo ds{dsObs = obs} env
+            case boToComposite (boFromUnits targetBuildOrder) of
+                Nothing -> expectationFailure "target build order unexpectedly empty" >> pure EmptyBotAgent
+                Just program ->
+                    let initialBuildOrder = boFromUnits targetBuildOrder
+                        runtime = IntentRuntime buildOrderIntentId program (obs ^. #gameLoop)
+                        intents = Map.insert buildOrderIntentId runtime (dsIntents ds)
+                     in pure $ BotAgent (BuildOrderRunning initialBuildOrder obs) staticInfo ds{dsObs = obs, dsIntents = intents} env
 
     waitUntilBuildOrderComplete conn 8000 injected
 
@@ -200,7 +207,7 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
 
     phaseName :: BotPhase -> String
     phaseName Opening = "Opening"
-    phaseName BuildOrderExecutor{} = "BuildOrderExecutor"
+    phaseName BuildOrderRunning{} = "BuildOrderRunning"
     phaseName BuildArmyAndWin{} = "BuildArmyAndWin"
 
     formatCounts :: HashMap.HashMap UnitTypeId Int -> String
@@ -223,14 +230,15 @@ waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing
                         allBuildingsPresent = allRequiredPresent requiredCounts counts
                         activeIntentCount = Map.size (dsIntents ds)
                         intentsCompleted = activeIntentCount == 0
+                        boIntentActive = Map.member buildOrderIntentId (dsIntents ds)
                         queueCompleted =
                             case phase of
                                 BuildArmyAndWin{} -> True
-                                BuildOrderExecutor bo _ _ -> null bo
+                                BuildOrderRunning{} -> not boIntentActive
                                 Opening -> False
                         queueLens =
                             case phase of
-                                BuildOrderExecutor bo _ _ -> (length bo, activeIntentCount)
+                                BuildOrderRunning{} -> (if boIntentActive then 1 else 0, activeIntentCount)
                                 _ -> (0, activeIntentCount)
                         status =
                             ( phaseName phase

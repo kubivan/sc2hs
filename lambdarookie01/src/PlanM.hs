@@ -18,21 +18,48 @@ data BOStep
 
 type BuildOrder = [BOStep]
 
+buildOrderIntentId :: IntentId
+buildOrderIntentId = IntentId "bo-root"
+
 boFromUnits :: [UnitTypeId] -> BuildOrder
 boFromUnits = map BOBuild
-
-boCurrentStep :: BuildOrder -> Maybe BOStep
-boCurrentStep [] = Nothing
-boCurrentStep (step : _) = Just step
 
 boToIntent :: BOStep -> IntentProgram d
 boToIntent (BOBuild uid) = buildStructureIntent uid
 boToIntent (BOTrain uid) = trainUnitIntent uid
 
+programToBoStep :: IntentProgram d -> Maybe BOStep
+programToBoStep intent =
+    case intent of
+        PBuildStructure uid _ -> Just (BOBuild uid)
+        PTrainUnit uid _ -> Just (BOTrain uid)
+        _ -> Nothing
+
+programToBuildOrder :: IntentProgram d -> Maybe BuildOrder
+programToBuildOrder intent =
+    case intent of
+        PAndThen left right -> (++) <$> programToBuildOrder left <*> programToBuildOrder right
+        _ -> (: []) <$> programToBoStep intent
+
+composeBuildOrderWith :: (BOStep -> IntentProgram d) -> BuildOrder -> Maybe (IntentProgram d)
+composeBuildOrderWith toIntent steps =
+    case map toIntent steps of
+        [] -> Nothing
+        intent : rest -> Just (foldl andThen intent rest)
+
+boToComposite :: BuildOrder -> Maybe (IntentProgram d)
+boToComposite = composeBuildOrderWith boToIntent
+
+spawnBuildOrderIntent :: (HasObs d, HasBuildIntents d) => BuildOrder -> StepMonad d Bool
+spawnBuildOrderIntent buildOrder =
+    case boToComposite buildOrder of
+        Nothing -> pure False
+        Just program -> spawnIntent buildOrderIntentId program >> pure True
+
 spawnCurrentStepIntent :: (HasObs d, HasBuildIntents d) => IntentId -> BOStep -> StepMonad d ()
 spawnCurrentStepIntent iid step = spawnIntent iid (boToIntent step)
 
-runBO :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => IntentOutcomeStore -> BuildOrder -> StepMonad d BuildOrder
+runBO :: (HasObs d, HasBuildIntents d) => IntentOutcomeStore -> BuildOrder -> StepMonad d BuildOrder
 runBO _ [] = pure []
 runBO outcomes order@(step : rest) = do
     frame <- agentObs <&> (^. #gameLoop)

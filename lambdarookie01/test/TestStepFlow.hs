@@ -23,7 +23,7 @@ import Units (fromEnum')
 
 stepFlowTests :: Spec
 stepFlowTests = describe "Step flow (mocked)" $ do
-    it "Opening schedules probe training and transitions into BuildOrderExecutor" $ do
+    it "Opening schedules probe training and transitions into BuildOrderRunning" $ do
         let grid = gridFromLines ["          ", "          ", "          "]
             nexus = mockUnit 1 ProtossNexus Self (3, 3, 0)
             obs0 = mkObservation [nexus] 0
@@ -32,7 +32,7 @@ stepFlowTests = describe "Step flow (mocked)" $ do
             abilities = HashMap.empty
             (phase', StepPlan cmds _ _, _) = runStepM staticInfo abilities ds0 (agentStepPhase Opening)
 
-        phaseTag phase' `shouldBe` "BuildOrderExecutor"
+        phaseTag phase' `shouldBe` "BuildOrderRunning"
         cmds `shouldSatisfy` any isProbeTrain
 
     it "agentCanAfford applies global reserved penalty" $ do
@@ -73,7 +73,7 @@ stepFlowTests = describe "Step flow (mocked)" $ do
 
 phaseTag :: BotPhase -> String
 phaseTag Opening = "Opening"
-phaseTag BuildOrderExecutor{} = "BuildOrderExecutor"
+phaseTag BuildOrderRunning{} = "BuildOrderRunning"
 phaseTag BuildArmyAndWin{} = "BuildArmyAndWin"
 
 isProbeTrain :: Action -> Bool

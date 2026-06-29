@@ -130,6 +130,7 @@ liftIntentStepResult runtime stepResult =
 
 type IntentStore d = Map IntentId (IntentRuntime d)
 type IntentOutcomeStore = Map IntentId IntentStatus
+type IntentTerminalStore d = Map IntentId (IntentProgram d, IntentStatus)
 
 class HasBuildIntents d where
     buildIntentsL :: Lens' d (IntentStore d)
@@ -593,10 +594,10 @@ spawnIntentUnique iid intent = do
     traceM $ "[spawnIntentUnique] is_active:" <> show active
     if active then pure () else spawnIntent iid intent
 
-intentEngine ::
+intentEngineDetailed ::
     (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) =>
-    StepMonad d IntentOutcomeStore
-intentEngine = do
+    StepMonad d (IntentOutcomeStore, IntentTerminalStore d)
+intentEngineDetailed = do
     obs <- agentObs
     frame <- pure (obs ^. #gameLoop)
     let resources = obsResources obs
@@ -615,7 +616,7 @@ intentEngine = do
             <> " intents num: "
             <> show (length intents)
     traceM $ "[" <> show frame <> "][intentEngine] running intents: " <> show (length intents)
-    outcomes <-
+    results <-
         mapM
             ( \(iid, i) -> do
                 (i', status) <- runIntent i
@@ -624,11 +625,11 @@ intentEngine = do
                     IntentCompleted -> do
                         cleanupIntent (intentProgram i')
                         removeIntent iid
-                        pure $ Just (iid, IntentCompleted)
+                        pure $ Just ((iid, IntentCompleted), (iid, (intentProgram i', IntentCompleted)))
                     IntentFailed -> do
                         cleanupIntent (intentProgram i')
                         removeIntent iid
-                        pure $ Just (iid, IntentFailed)
+                        pure $ Just ((iid, IntentFailed), (iid, (intentProgram i', IntentFailed)))
                     IntentNeedsPrerequisite uid ->
                         updateIntent i'
                             >> spawnIntentUnique (IntentId ("prereq-" ++ show uid)) (buildStructureIntent uid)
@@ -636,7 +637,14 @@ intentEngine = do
                     _ -> updateIntent i' >> pure Nothing
             )
             intents
-    pure $ (Map.fromList $ catMaybes outcomes)
+
+    let finished = catMaybes results
+    pure (Map.fromList (map fst finished), Map.fromList (map snd finished))
+
+intentEngine ::
+    (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) =>
+    StepMonad d IntentOutcomeStore
+intentEngine = fst <$> intentEngineDetailed
 
 spawnIntent ::
     (HasObs d, HasBuildIntents d) =>
