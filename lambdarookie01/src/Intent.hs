@@ -1,7 +1,7 @@
 module Intent where
 
 import Actions (Action (PointCommand, SelfCommand, UnitCommand), UnitTag)
-import Conduit (filterC, (.|))
+import Conduit (filterC, findC, runConduitPure, (.|))
 import Data.Function (on)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
@@ -255,8 +255,12 @@ orElseStep fallback primaryStep =
 
 findProducerTag :: (HasObs d) => UnitTypeId -> StepMonad d (Maybe UnitTag)
 findProducerTag producerType = do
-    obs <- agentObs
-    pure $ (^. #tag) <$> find ((== 1) . (^. #buildProgress)) (runC $ unitsSelf obs .| unitTypeC producerType)
+  obs <- agentObs
+  -- pure $ (^. #tag) <$> find ((== 1) . (^. #buildProgress)) (runC $ unitsSelf obs .| unitTypeC producerType)
+  pure . fmap (view #tag) . runConduitPure $
+    unitsSelf obs
+      .| unitTypeC producerType
+      .| findC ((== 1) . (^. #buildProgress))
 
 agentFindBuilder :: (HasObs d) => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs
