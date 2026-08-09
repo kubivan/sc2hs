@@ -22,7 +22,7 @@
 
 
 # resolver: lts-23.10
-resolver: nightly-2025-04-11
+resolver: nightly-2026-07-19
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -47,11 +47,6 @@ packages:
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
-extra-deps:
-  - proto-lens-0.7.1.5
-  - proto-lens-protoc-0.9.0.0
-  - proto-lens-runtime-0.7.0.7
-  - proto-lens-setup-0.4.0.9
 
 ghc-options:
   "$everything": -fexternal-interpreter
@@ -87,3 +82,4 @@ ghc-options:
 # compiler-check: newer-minor
 allow-newer: true
 allow-newer-deps: [proto-lens]
+
