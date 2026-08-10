@@ -49,9 +49,10 @@ findRetreatPoint squad = do
         asi <- siAsyncStaticInfo si
         unitTag <- listToMaybe (squadUnits squad)
         leader <- HashMap.lookup unitTag (getUnitMap ds)
+        nexus <- findNexus obs
 
         let leaderPos = tilePos (leader ^. #pos)
-            nexusPos = tilePos $ findNexus obs ^. #pos
+            nexusPos = tilePos $ nexus ^. #pos
             regionLookup = asiRegionLookup asi
 
         leaderRegion <- HashMap.lookup leaderPos regionLookup

@@ -74,7 +74,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
 import Data.List (find, isPrefixOf, nub, partition, sortOn, (\\))
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe, maybeToList)
 
 import Data.ProtoLens (defMessage)
 import Data.Sequence (Seq (..), empty, (|>))
@@ -635,7 +635,7 @@ agentStepPhase Opening =
     obs <- agentObs
 
     agentModifyGrid (\g -> gridUpdate obs g)
-    let nexus = findNexus obs
+    let nexus = maybeToList $ findNexus obs
         fourGateBuild =
           [ ProtossPylon
           , ProtossAssimilator
@@ -653,7 +653,7 @@ agentStepPhase Opening =
           , ProtossAssimilator
           ]
 
-    issueSelfCommandReserveAware NEXUSTRAINPROBE [nexus]
+    issueSelfCommandReserveAware NEXUSTRAINPROBE nexus
     return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
   {-# SCC "agentStep:BuildOrderExecutor" #-}

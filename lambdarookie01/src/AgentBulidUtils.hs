@@ -16,6 +16,7 @@ import Observation
   ( Cost
   , Observation
   , findNexus
+  , getNexus
   , obsResources
   , obsUnitsC
   , unitsSelf
@@ -72,19 +73,14 @@ agentFindBuilder = findBuilder <$> agentObs
 
 findBuilder :: Observation -> Maybe Unit
 findBuilder obs =
-  headMay $
-    runC $
-      unitsSelf obs
-        .| unitTypeC ProtossProbe
-        -- .| unitIdleC
-        -- .| filterC unitIsHarvesting
-        .| filterC
-          ( \x ->
-              Prelude.null (x ^. #orders)
-                || ( length (x ^. #orders) == 1
-                       && HARVESTGATHERPROBE `elem` map (\o -> toEnum' (o ^. #abilityId)) (x ^. #orders) -- TODO: fix, add proper o
-                   )
-          )
+  find availableProbe (runC $ unitsSelf obs .| unitTypeC ProtossProbe)
+ where
+  availableProbe :: Unit -> Bool
+  availableProbe unit =
+    Prelude.null (unit ^. #orders)
+      || ( length (unit ^. #orders) == 1
+             && HARVESTGATHERPROBE `elem` map (toEnum' . (^. #abilityId)) (unit ^. #orders)
+         )
 
 pylonRadius :: Float
 pylonRadius = 6.5
@@ -93,7 +89,7 @@ findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Ma
 findPlacementPos _ expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
 findPlacementPos obs _ grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
  where
-  nexusPos = tilePos $ findNexus obs ^. #pos
+  nexusPos = tilePos . view #pos $ getNexus obs
 findPlacementPos obs _ grid heightMap id = go pylons
  where
   go :: [TilePos] -> Maybe TilePos
@@ -108,13 +104,16 @@ findPlacementPos obs _ grid heightMap id = go pylons
         .| filterC (\u -> u ^. #buildProgress == 1)
         .| mapC (\x -> tilePos $ x ^. #pos)
 
-findFreeGeyser :: Observation -> Maybe Units.Unit
-findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorsPosSet)) geysersSorted
- where
-  assimilatorsPosSet = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-  nexusPos = tilePos $ findNexus obs ^. #pos
-  geysers = runC $ obsUnitsC obs .| filterC isGeyser
-  geysersSorted = sortBy (compare `on` (\x -> Spatial.distSquared x nexusPos)) geysers
+findFreeGeyser :: Observation -> Maybe Unit
+findFreeGeyser obs = do
+  let assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
+  nexus <- findNexus obs
+  let nexusPos = tilePos $ nexus ^. #pos
+      geysersSorted =
+        sortBy
+          (compare `on` (\u -> Spatial.distSquared u nexusPos))
+          (runC $ obsUnitsC obs .| filterC isGeyser)
+  find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) geysersSorted
 
 -- ##################################### UNIT UTILS #####################################################################
 

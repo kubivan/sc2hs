@@ -1,6 +1,7 @@
 module Intent where
 
 import Actions (Action (PointCommand, SelfCommand, UnitCommand), UnitTag)
+import AgentBulidUtils
 import Conduit (filterC, findC, runConduitPure, (.|))
 import Data.Function (on)
 import Data.Functor ((<&>))
@@ -8,14 +9,23 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sortBy)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromJust, isNothing)
+import Data.Maybe (catMaybes, fromJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (.~), (^.))
 import Lens.Micro.Extras
-import Observation (Cost (..), Observation, findNexus, getUnit, obsResources, obsUnitsC, unitsSelf)
+import Observation
+  ( Cost (..)
+  , Observation
+  , findNexus
+  , getNexus
+  , getUnit
+  , obsResources
+  , obsUnitsC
+  , unitsSelf
+  )
 import SC2.Geometry (fromTuple)
 import SC2.Grid
   ( Grid
@@ -278,23 +288,12 @@ findProducerTag producerType = do
 agentFindBuilder :: (HasObs d) => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs
 
-findBuilder :: Observation -> Maybe Unit
-findBuilder obs =
-  find availableProbe (runC $ unitsSelf obs .| unitTypeC ProtossProbe)
- where
-  availableProbe :: Unit -> Bool
-  availableProbe unit =
-    Prelude.null (unit ^. #orders)
-      || ( length (unit ^. #orders) == 1
-             && HARVESTGATHERPROBE `elem` map (toEnum' . (^. #abilityId)) (unit ^. #orders)
-         )
-
 findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
 findPlacementPos _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
 findPlacementPos obs _ grid gridHeight ProtossPylon =
   findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos (const True)
  where
-  nexusPos = tilePos $ findNexus obs ^. #pos
+  nexusPos = tilePos $ getNexus obs ^. #pos
 findPlacementPos obs _ grid gridHeight uid = go pylons
  where
   go (p : ps) =
@@ -308,16 +307,6 @@ findPlacementPos obs _ grid gridHeight uid = go pylons
         .| unitTypeC ProtossPylon
         .| mapTilePosC
 
-findFreeGeyser :: Observation -> Maybe Unit
-findFreeGeyser obs = find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) geysersSorted
- where
-  assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-  nexusPos = tilePos $ findNexus obs ^. #pos
-  geysersSorted =
-    sortBy
-      (compare `on` (\u -> Spatial.distSquared u nexusPos))
-      (runC $ obsUnitsC obs .| filterC isGeyser)
-
 findPlacementTarget :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe Target)
 findPlacementTarget uid = do
   obs <- agentObs
@@ -326,7 +315,7 @@ findPlacementTarget uid = do
   pure $
     if uid == ProtossAssimilator
       then TargetUnit <$> findFreeGeyser obs
-      else TargetPos <$> findPlacementPos obs (expandsPos si) grid (heightMap si) uid
+      else TargetPos <$> Intent.findPlacementPos obs (expandsPos si) grid (heightMap si) uid
 
 commandBuild ::
   (HasObs d, HasGrid d) =>
@@ -460,7 +449,7 @@ tickBuildPhase iid uid currentPhase =
             then retryNextFrame
             else goNextTick (BSGathering reserved)
         BSGathering reserved -> do
-          mbBuilder <- agentFindBuilder
+          mbBuilder <- Intent.agentFindBuilder
           case mbBuilder of
             Nothing -> retryNextFrame
             Just builder -> do
