@@ -13,7 +13,7 @@ import Squad.State
 import StepMonad
 
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe (catMaybes, fromJust, listToMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, listToMaybe)
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
 
@@ -34,29 +34,41 @@ retreatStep squad (Just rallyPos) = do
 -- ---------------------------------------------------------------------------
 -- Update
 
-findRetreatPoint :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d TilePos
+findRetreatPoint ::
+  (HasArmy d, HasObs d, HasGrid d) =>
+  FSMSquad SquadState ->
+  StepMonad d TilePos
 findRetreatPoint squad = do
   ds <- agentGet
   si <- agentStatic
-  case siAsyncStaticInfo si of
-    Nothing -> return $ startLocation si
-    Just asi -> do
-      obs <- agentObs
-      let unitByTag t = HashMap.lookup t (getUnitMap ds)
-          leader = fromJust $ unitByTag (head (squadUnits squad))
-          leaderPos = tilePos (leader ^. #pos)
-          nexusPos = tilePos $ findNexus obs ^. #pos
-          -- nexusPos = head (playerStartPos si)
-          regionLookup = asiRegionLookup asi
-          leaderRegion = fromJust $ HashMap.lookup leaderPos regionLookup
-          startRegion = fromJust $ HashMap.lookup nexusPos regionLookup
-          rg = asiRegionGraph asi
-          pathToHome = regionGraphBfs rg leaderRegion startRegion
-          retreatRegionId = head pathToHome
+  obs <- agentObs
 
-          region = fromJust $ HashMap.lookup retreatRegionId (asiRegions asi)
+  let fallback = startLocation si
 
-      return $ Set.findMin region
+      retreatPoint = do
+        asi <- siAsyncStaticInfo si
+        unitTag <- listToMaybe (squadUnits squad)
+        leader <- HashMap.lookup unitTag (getUnitMap ds)
+
+        let leaderPos = tilePos (leader ^. #pos)
+            nexusPos = tilePos $ findNexus obs ^. #pos
+            regionLookup = asiRegionLookup asi
+
+        leaderRegion <- HashMap.lookup leaderPos regionLookup
+        startRegion <- HashMap.lookup nexusPos regionLookup
+
+        let pathToHome =
+              regionGraphBfs
+                (asiRegionGraph asi)
+                leaderRegion
+                startRegion
+
+        retreatRegionId <- listToMaybe pathToHome
+        region <- HashMap.lookup retreatRegionId (asiRegions asi)
+
+        Set.lookupMin region
+
+  return $ fromMaybe fallback retreatPoint
 
 retreatUpdate ::
   (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d UpdateResult
