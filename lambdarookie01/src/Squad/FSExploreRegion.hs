@@ -27,31 +27,34 @@ import Data.Char (isDigit)
 -- ---------------------------------------------------------------------------
 -- Step
 
-exploreRegionStep :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d ()
+exploreRegionStep ::
+  (HasArmy d, HasGrid d, HasObs d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d ()
 exploreRegionStep s (FSExploreRegion _ region) = squadExploreRegion s region
 
 -- ---------------------------------------------------------------------------
 -- Update
 
-exploreRegionUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSExploreRegion -> StepMonad d UpdateResult
+exploreRegionUpdate ::
+  (HasArmy d, HasObs d, HasGrid d) =>
+  FSMSquad SquadState -> FSExploreRegion -> StepMonad d UpdateResult
 exploreRegionUpdate squad st@(FSExploreRegion rid region)
-    | Set.size region == 0 = return (Transition SSIdle)
-    | otherwise = do
-        ds <- agentGet
-        let unitByTag t = HashMap.lookup t (getUnitMap ds)
-            units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+  | Set.size region == 0 = return (Transition SSIdle)
+  | otherwise = do
+      ds <- agentGet
+      let unitByTag t = HashMap.lookup t (getUnitMap ds)
+          units = catMaybes $ [unitByTag t | t <- squadUnits squad]
 
-        pixelsToRemove <- fmap concat $ forM units $ \u -> do
-            sightRange <- siUnitSightRange u
-            return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
+      pixelsToRemove <- fmap concat $ forM units $ \u -> do
+        sightRange <- siUnitSightRange u
+        return $ tilesInRadius (floor sightRange) (tilePos (u ^. #pos))
 
-        let region' = foldl' (flip Set.delete) region pixelsToRemove
-            state' = FSExploreRegion rid region'
+      let region' = foldl' (flip Set.delete) region pixelsToRemove
+          state' = FSExploreRegion rid region'
 
-        return $
-            if Set.size region' == 0
-                then Transition SSIdle
-                else Continue (SSExploreRegion state')
+      return $
+        if Set.size region' == 0
+          then Transition SSIdle
+          else Continue (SSExploreRegion state')
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition

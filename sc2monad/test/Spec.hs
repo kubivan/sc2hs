@@ -67,251 +67,256 @@ fromEither (Right val) = val
 
 loadTestData :: IO (Observation, ResponseGameInfo)
 loadTestData = do
-    obs <- B.readFile "test/data/obs0"
-    gi <- B.readFile "test/data/gameinfo"
+  obs <- B.readFile "test/data/obs0"
+  gi <- B.readFile "test/data/gameinfo"
 
-    return
-        ( fromEither (decodeMessage obs :: Either String Observation)
-        , fromEither (decodeMessage gi :: Either String ResponseGameInfo)
-        )
+  return
+    ( fromEither (decodeMessage obs :: Either String Observation)
+    , fromEither (decodeMessage gi :: Either String ResponseGameInfo)
+    )
 
 markClusters :: MapClusters -> Grid -> Grid
 markClusters labels grid = foldl' mark grid (Map.toList labels)
-  where
-    mark g (p, Cluster n) = gridSetPixel g (tilePos $ p ^. #pos) 'x'
-    mark g (p, Noise) = gridSetPixel g (tilePos $ p ^. #pos) 'X'
+ where
+  mark g (p, Cluster n) = gridSetPixel g (tilePos $ p ^. #pos) 'x'
+  mark g (p, Noise) = gridSetPixel g (tilePos $ p ^. #pos) 'X'
 
 spec :: Spec
 spec =
-    beforeAll loadTestData $
-        do
-            describe "Observation" $ do
-                it "check_object_orientation" $ \(obs, gi) -> do
-                    let nexus = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
-                        nexusPos@(x, y) = tilePos $ view #pos $ nexus
-                        image = gi ^. (#startRaw . #pathingGrid)
-                        grid@(w, h, bs) = gridFromImage image
-                        -- wallC = charToWord8 '#'
-                        gridWithNexus = gridPlace grid (toEnum' $ nexus ^. #unitType) (tilePos $ nexus ^. #pos)
+  beforeAll loadTestData $
+    do
+      describe "Observation" $ do
+        it "check_object_orientation" $ \(obs, gi) -> do
+          let nexus = head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
+              nexusPos@(x, y) = tilePos $ view #pos $ nexus
+              image = gi ^. (#startRaw . #pathingGrid)
+              grid@(w, h, bs) = gridFromImage image
+              -- wallC = charToWord8 '#'
+              gridWithNexus = gridPlace grid (toEnum' $ nexus ^. #unitType) (tilePos $ nexus ^. #pos)
 
-                        nexusCenter = gridPixel grid nexusPos
+              nexusCenter = gridPixel grid nexusPos
 
-                    print $ "nexus Pos: " ++ show nexusPos
+          print $ "nexus Pos: " ++ show nexusPos
 
-                    gridPixel gridWithNexus nexusPos `shouldBe` 'c'
-                    gridToFile "check_object_orientation.txt" gridWithNexus
+          gridPixel gridWithNexus nexusPos `shouldBe` 'c'
+          gridToFile "check_object_orientation.txt" gridWithNexus
 
-                    nexusPos `shouldBe` (57, 60)
-                    w `shouldBe` 224
-                    h `shouldBe` 224
-                    w * h `shouldBe` VU.length bs
+          nexusPos `shouldBe` (57, 60)
+          w `shouldBe` 224
+          h `shouldBe` 224
+          w * h `shouldBe` VU.length bs
 
-                it "Units tests" $ \(obs, _) -> do
-                    runC (obsUnitsC obs) `shouldSatisfy` (not . null)
+        it "Units tests" $ \(obs, _) -> do
+          runC (obsUnitsC obs) `shouldSatisfy` (not . null)
 
-                    let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralField
-                    length mineralFields `shouldBe` 60
+          let mineralFields = runC $ obsUnitsC obs .| unitTypeC NeutralMineralField
+          length mineralFields `shouldBe` 60
 
-                    isBuildingType ProtossNexus `shouldBe` True
-                    isBuildingType ProtossAssimilator `shouldBe` True
+          isBuildingType ProtossNexus `shouldBe` True
+          isBuildingType ProtossAssimilator `shouldBe` True
 
-                    isBuildingType ProtossCyberneticsCore `shouldBe` True
+          isBuildingType ProtossCyberneticsCore `shouldBe` True
 
-                    isBuildingType ProtossStalker `shouldBe` False
+          isBuildingType ProtossStalker `shouldBe` False
 
-                it "dbscan tests" $ \(obs, gi) -> do
-                    -- print obs
-                    let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
-                        grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #placementGrid))
-                        heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
+        it "dbscan tests" $ \(obs, gi) -> do
+          -- print obs
+          let resourceFields = runC $ obsUnitsC obs .| filterC (\x -> isMineral x || isGeyser x)
+              grid = gridUpdate obs $ gridFromImage (gi ^. (#startRaw . #placementGrid))
+              heights = gridFromImage $ gi ^. (#startRaw . #terrainHeight)
 
-                        -- calculate clusters
-                        marked = dbscan 10 2 resourceFields
-                        clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
-                        clusteredUnits = map fst <$> clusters
-                        expands = findExpands obs grid heights
+              -- calculate clusters
+              marked = dbscan 10 2 resourceFields
+              clusters = groupBy ((==) `on` snd) $ sortOn snd $ Map.toList marked
+              clusteredUnits = map fst <$> clusters
+              expands = findExpands obs grid heights
 
-                        bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
+              bbFootPrints = footprintRect . unitsBoundingBox <$> clusteredUnits
 
-                        gridWithClusters =
-                            appEndo
-                                ( Endo (markClusters marked)
-                                    <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints
-                                )
-                                grid
+              gridWithClusters =
+                appEndo
+                  ( Endo (markClusters marked)
+                      <> foldMap (\(fp, p) -> Endo (\g -> addMark g fp p)) bbFootPrints
+                  )
+                  grid
 
-                        grid' =
-                            foldl' (`gridPlace` ProtossNexus) grid expands
+              grid' =
+                foldl' (`gridPlace` ProtossNexus) grid expands
 
-                    print $ foldl' (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
-                    print $ bbFootPrints
-                    gridToFile "outgrid_with_clasters.txt" gridWithClusters
+          print $ foldl' (\acc cl -> (show . snd . head $ cl, length cl) : acc) [] clusters
+          print $ bbFootPrints
+          gridToFile "outgrid_with_clasters.txt" gridWithClusters
 
-                    length resourceFields `shouldBe` 148
-                    length marked `shouldBe` length resourceFields
-                    length expands `shouldBe` 15 -- 16 - already buit start nexus
-                it "grid_segmentation" $ \(obs, gi) -> do
-                    let
-                        nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
-                        grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        (rays, grid') = findAllChokePoints grid
+          length resourceFields `shouldBe` 148
+          length marked `shouldBe` length resourceFields
+          length expands `shouldBe` 15 -- 16 - already buit start nexus
+        it "grid_segmentation" $ \(obs, gi) -> do
+          let nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
+              grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+              (rays, grid') = findAllChokePoints grid
 
-                        openCells =
-                            Set.fromList
-                                [ (x, y)
-                                | y <- [0 .. gridH grid - 1]
-                                , x <- [0 .. gridW grid - 1]
-                                , gridPixel grid (x, y) == ' '
-                                ]
+              openCells =
+                Set.fromList
+                  [ (x, y)
+                  | y <- [0 .. gridH grid - 1]
+                  , x <- [0 .. gridW grid - 1]
+                  , gridPixel grid (x, y) == ' '
+                  ]
 
-                        res = gridSegment grid'
-                        charLabels :: [Char]
-                        charLabels = ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']
+              res = gridSegment grid'
+              charLabels :: [Char]
+              charLabels = ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']
 
-                        openCellsFromRegions = foldl (\acc (rid, cellsSet) -> acc `Set.union` cellsSet) Set.empty res
-                        raysSet = foldl (\a r -> a `Set.union` Set.fromList r) Set.empty rays
-                        unsegmentedTiles = Set.difference openCells (openCellsFromRegions `Set.union` raysSet)
-                        -- unsegmentedTilesGrid = foldl (\gridAcc pos -> gridSetPixel gridAcc pos '%' ) grid (Set.toList hm)
+              openCellsFromRegions = foldl (\acc (rid, cellsSet) -> acc `Set.union` cellsSet) Set.empty res
+              raysSet = foldl (\a r -> a `Set.union` Set.fromList r) Set.empty rays
+              unsegmentedTiles = Set.difference openCells (openCellsFromRegions `Set.union` raysSet)
+              -- unsegmentedTilesGrid = foldl (\gridAcc pos -> gridSetPixel gridAcc pos '%' ) grid (Set.toList hm)
 
-                        resWithCharId = zip charLabels (map snd res)
+              resWithCharId = zip charLabels (map snd res)
 
-                        grid'' = foldl (\gridAcc (id, region) -> foldl' (\ga p -> gridSetPixel ga p id) gridAcc (Set.toList region)) grid' resWithCharId
+              grid'' =
+                foldl
+                  (\gridAcc (id, region) -> foldl' (\ga p -> gridSetPixel ga p id) gridAcc (Set.toList region))
+                  grid'
+                  resWithCharId
 
-                    unsegmentedTiles `shouldBe` Set.empty
-                    print $ "nexusPos pixel: " ++ show nexusPos ++ " " ++ show (gridPixel grid nexusPos)
-                    print $ "grid segmented into " ++ show (length res)
-                    print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a) [] res)
-                    gridToFile "outgrid_segmented_start.txt" grid''
-                it "grid_split_to_regions" $ \(obs, gi) -> do
-                    let
-                        nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
-                        enemyPos = tilePos $ enemyBaseLocation gi obs
-                        grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        bases = gi ^. (#startRaw . #startLocations)
+          unsegmentedTiles `shouldBe` Set.empty
+          print $ "nexusPos pixel: " ++ show nexusPos ++ " " ++ show (gridPixel grid nexusPos)
+          print $ "grid segmented into " ++ show (length res)
+          print $ "grid segmented into " ++ show (foldl' (\a (id, region) -> Set.size region : a) [] res)
+          gridToFile "outgrid_segmented_start.txt" grid''
+        it "grid_split_to_regions" $ \(obs, gi) -> do
+          let nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
+              enemyPos = tilePos $ enemyBaseLocation gi obs
+              grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+              bases = gi ^. (#startRaw . #startLocations)
 
-                        (rays, grid') = findAllChokePoints grid
+              (rays, grid') = findAllChokePoints grid
 
-                        regions = gridSegment grid'
-                        regionLookup = buildRegionLookup regions
-                        regionGraph = buildRegionGraph regions
+              regions = gridSegment grid'
+              regionLookup = buildRegionLookup regions
+              regionGraph = buildRegionGraph regions
 
-                        nexusRegion = HashMap.lookup nexusPos regionLookup
+              nexusRegion = HashMap.lookup nexusPos regionLookup
 
-                    -- print $ "enemy start " ++ show enemyPos ++ " " ++ show (Map.lookup enemyPos regionLookup)
-                    print $ "player start " ++ show nexusPos ++ " " ++ show nexusRegion
-                    nexusRegion `shouldBe` Just 2 -- just fix the value to catch regression
-                    print $ "bases " ++ show bases
+          -- print $ "enemy start " ++ show enemyPos ++ " " ++ show (Map.lookup enemyPos regionLookup)
+          print $ "player start " ++ show nexusPos ++ " " ++ show nexusRegion
+          nexusRegion `shouldBe` Just 2 -- just fix the value to catch regression
+          print $ "bases " ++ show bases
 
-                it "check volumes" $ \(obs, gi) -> do
-                    let grid =
-                            gridFromLines
-                                [ "########"
-                                , "#      #"
-                                , "#******#"
-                                , "#      #"
-                                , "#      #"
-                                , "#      #"
-                                , "########"
-                                ]
+        it "check volumes" $ \(obs, gi) -> do
+          let grid =
+                gridFromLines
+                  [ "########"
+                  , "#      #"
+                  , "#******#"
+                  , "#      #"
+                  , "#      #"
+                  , "#      #"
+                  , "########"
+                  ]
 
-                        grid2 =
-                            gridFromLines
-                                [ "#####################"
-                                , "#############       #"
-                                , "########   *        #"
-                                , "#######   *         #"
-                                , "######   *          #"
-                                , "#####   *           #"
-                                , "#####  *            #"
-                                , "##### *             #"
-                                , "#####*              #"
-                                , "#####               #"
-                                , "#####################"
-                                ]
-                        grid_to_segment =
-                            gridFromLines
-                                [ "#####################"
-                                , "#############       #"
-                                , "########            #"
-                                , "#######             #"
-                                , "######              #"
-                                , "#####               #"
-                                , "#####               #"
-                                , "#####               #"
-                                , "#####               #"
-                                , "#####               #"
-                                , "#####################"
-                                ]
-                        (chokes, grid') = findAllChokePoints grid_to_segment
-                        -- rays = findAllChokePoints grid_to_segment
+              grid2 =
+                gridFromLines
+                  [ "#####################"
+                  , "#############       #"
+                  , "########   *        #"
+                  , "#######   *         #"
+                  , "######   *          #"
+                  , "#####   *           #"
+                  , "#####  *            #"
+                  , "##### *             #"
+                  , "#####*              #"
+                  , "#####               #"
+                  , "#####################"
+                  ]
+              grid_to_segment =
+                gridFromLines
+                  [ "#####################"
+                  , "#############       #"
+                  , "########            #"
+                  , "#######             #"
+                  , "######              #"
+                  , "#####               #"
+                  , "#####               #"
+                  , "#####               #"
+                  , "#####               #"
+                  , "#####               #"
+                  , "#####################"
+                  ]
+              (chokes, grid') = findAllChokePoints grid_to_segment
+              -- rays = findAllChokePoints grid_to_segment
 
-                        ray2 = [(11, 2), (10, 3), (9, 4), (8, 5), (7, 6), (6, 7)]
-                        res2 = checkVolumes grid2 ray2 15
+              ray2 = [(11, 2), (10, 3), (9, 4), (8, 5), (7, 6), (6, 7)]
+              res2 = checkVolumes grid2 ray2 15
 
-                    checkVolumes grid2 ray2 15 `shouldBe` True
-                    checkVolumes grid2 ray2 16 `shouldBe` False
+          checkVolumes grid2 ray2 15 `shouldBe` True
+          checkVolumes grid2 ray2 16 `shouldBe` False
 
-                    gridToFile "grid_to_segment.txt" grid'
-                it "findFirstChoke" $ \(obs, gi) -> do
-                    let
-                        grid =
-                            gridFromLines
-                                [ "#################################"
-                                , "#             ###################"
-                                , "#             ###################"
-                                , "#######       ###################"
-                                , "##  ###                         #"
-                                , "#    ##                         #"
-                                , "#     ##                        #"
-                                , "#      ###                      #"
-                                , "##      ###                     #"
-                                , "###      ######                 #"
-                                , "## #                            #"
-                                , "#####                           #"
-                                , "######                          #"
-                                , "######                          #"
-                                , "######                          #"
-                                , "######                          #"
-                                , "######                          #"
-                                , "#################################"
-                                ]
-                        -- grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        openCells = [(x, y) | y <- [0 .. gridH grid - 1], x <- [0 .. gridW grid - 1], gridPixel grid (x, y) /= '#']
-                        minVolume = 10
+          gridToFile "grid_to_segment.txt" grid'
+        it "findFirstChoke" $ \(obs, gi) -> do
+          let grid =
+                gridFromLines
+                  [ "#################################"
+                  , "#             ###################"
+                  , "#             ###################"
+                  , "#######       ###################"
+                  , "##  ###                         #"
+                  , "#    ##                         #"
+                  , "#     ##                        #"
+                  , "#      ###                      #"
+                  , "##      ###                     #"
+                  , "###      ######                 #"
+                  , "## #                            #"
+                  , "#####                           #"
+                  , "######                          #"
+                  , "######                          #"
+                  , "######                          #"
+                  , "######                          #"
+                  , "######                          #"
+                  , "#################################"
+                  ]
+              -- grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+              openCells = [(x, y) | y <- [0 .. gridH grid - 1], x <- [0 .. gridW grid - 1], gridPixel grid (x, y) /= '#']
+              minVolume = 10
 
-                        Just (ray, va, vb) = msum $ tryFind <$> openCells
-                        tryFind pos = do
-                            ray <- findChokePoint grid 15 pos
-                            let (Just a, Just b) = gridSplitByRay grid 1000 ray
-                                volumeA = Set.size a
-                                volumeB = Set.size b
-                            guard (volumeA >= minVolume && volumeB >= minVolume) `Utils.dbg` ("volumes " ++ show (volumeA, volumeB))
-                            return $ (ray, volumeA, volumeB)
+              Just (ray, va, vb) = msum $ tryFind <$> openCells
+              tryFind pos = do
+                ray <- findChokePoint grid 15 pos
+                let (Just a, Just b) = gridSplitByRay grid 1000 ray
+                    volumeA = Set.size a
+                    volumeB = Set.size b
+                guard (volumeA >= minVolume && volumeB >= minVolume)
+                  `Utils.dbg` ("volumes " ++ show (volumeA, volumeB))
+                return $ (ray, volumeA, volumeB)
 
-                        grid' = gridPlaceRay grid ray
+              grid' = gridPlaceRay grid ray
 
-                    print (ray, va, vb)
-                    gridToFile "outgrid_with_first_choke.txt" grid'
+          print (ray, va, vb)
+          gridToFile "outgrid_with_first_choke.txt" grid'
 
-                it "findAllChokes" $ \(obs, gi) -> do
-                    let
-                        grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
-                        -- Just (chokes, (grid', rays, _)) = findAllChokePoints grid
-                        -- (grid', rays) = findAllChokePoints grid
-                        (rays, grid') = findAllChokePoints grid
-                        grid'' = foldl' (\gridA p -> gridSetPixel gridA p 'c') grid' [(136, 36), (137, 36), (138, 36), (139, 36), (140, 36), (141, 36)]
+        it "findAllChokes" $ \(obs, gi) -> do
+          let grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))
+              -- Just (chokes, (grid', rays, _)) = findAllChokePoints grid
+              -- (grid', rays) = findAllChokePoints grid
+              (rays, grid') = findAllChokePoints grid
+              grid'' =
+                foldl'
+                  (\gridA p -> gridSetPixel gridA p 'c')
+                  grid'
+                  [(136, 36), (137, 36), (138, 36), (139, 36), (140, 36), (141, 36)]
 
-                    gridToFile "outgrid_with_all_chokes.txt" grid''
-                    print $ "found " ++ show (length rays) ++ " chokes"
+          gridToFile "outgrid_with_all_chokes.txt" grid''
+          print $ "found " ++ show (length rays) ++ " chokes"
 
 main :: IO ()
 main =
-    hspec $
-        spec
-            >> gridUnitTests
-            >> techTreeUnitTests
-            >> stepMonadUnitTests
-            >> unitsUnitTests
-            >> observationUnitTests
-            >> segmentationIntegrationTests
-            >> utilsUnitTests
+  hspec $
+    spec
+      >> gridUnitTests
+      >> techTreeUnitTests
+      >> stepMonadUnitTests
+      >> unitsUnitTests
+      >> observationUnitTests
+      >> segmentationIntegrationTests
+      >> utilsUnitTests

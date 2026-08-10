@@ -2,11 +2,11 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedLabels #-}
 
-module SC2.Units.CombatEval (
-    effectiveHp,
-    unitDps,
-    unitRange,
-) where
+module SC2.Units.CombatEval
+  ( effectiveHp
+  , unitDps
+  , unitRange
+  ) where
 
 import Lens.Micro ((^.))
 import SC2.Proto.Data qualified as Proto

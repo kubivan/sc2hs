@@ -5,4 +5,4 @@ import Data.HashMap.Strict (HashMap)
 import Units (Unit (..))
 
 class HasArmy d where
-    getUnitMap :: d -> HashMap UnitTag Unit
+  getUnitMap :: d -> HashMap UnitTag Unit

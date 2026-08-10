@@ -4,40 +4,40 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module StepMonad (
-    StepPlan (..),
-    AsyncStaticInfo (..),
-    StaticInfo (..),
-    siRegionGraph,
-    siRegionLookup,
-    siRegionsResolved,
-    siRegionPathToEnemyResolved,
-    StepMonad,
-    HasObs (..),
-    HasGrid (..),
-    MaybeStepMonad,
-    runStepM,
-    agentChat,
-    agentAsk,
-    agentStatic,
-    agentGet,
-    agentObs,
-    agentGrid,
-    agentModify,
-    agentModifyGrid,
-    agentModifyObs,
-    agentAbilities,
-    agentPut,
-    UnitAbilities,
-    UnitTraits,
-    debug,
-    debugText,
-    debugTexts,
-    command,
-    HasReservedCost (..),
-    agentGetReservedCost,
-    agentModifyReservedCost,
-)
+module StepMonad
+  ( StepPlan (..)
+  , AsyncStaticInfo (..)
+  , StaticInfo (..)
+  , siRegionGraph
+  , siRegionLookup
+  , siRegionsResolved
+  , siRegionPathToEnemyResolved
+  , StepMonad
+  , HasObs (..)
+  , HasGrid (..)
+  , MaybeStepMonad
+  , runStepM
+  , agentChat
+  , agentAsk
+  , agentStatic
+  , agentGet
+  , agentObs
+  , agentGrid
+  , agentModify
+  , agentModifyGrid
+  , agentModifyObs
+  , agentAbilities
+  , agentPut
+  , UnitAbilities
+  , UnitTraits
+  , debug
+  , debugText
+  , debugTexts
+  , command
+  , HasReservedCost (..)
+  , agentGetReservedCost
+  , agentModifyReservedCost
+  )
 where
 
 import Actions (Action, DebugCommand (..), getCmd, getExecutors)
@@ -64,17 +64,17 @@ import Lens.Micro (Lens', (%~), (^.))
 
 obsApplyAction :: Action -> Observation -> Observation
 obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) obs units
-  where
-    units = getExecutors a
-    ability = getCmd a
+ where
+  units = getExecutors a
+  ability = getCmd a
 
 command :: (HasObs d) => [Action] -> StepMonad d ()
 command acts = unless (null acts) $ do
-    -- \$ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
-    traceM $ "command: " ++ show acts
-    agentModifyObs $ \obs -> foldl' (flip obsApplyAction) obs acts
+  -- \$ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
+  traceM $ "command: " ++ show acts
+  agentModifyObs $ \obs -> foldl' (flip obsApplyAction) obs acts
 
-    tell (StepPlan acts [] [])
+  tell (StepPlan acts [] [])
 
 debug :: [DebugCommand] -> StepMonad dyn ()
 debug acts = tell (StepPlan [] [] acts)
@@ -89,24 +89,24 @@ agentChat :: String -> StepMonad dyn ()
 agentChat msg = tell (StepPlan [] [pack msg] [])
 
 data AsyncStaticInfo = AsyncStaticInfo
-    { asiRegionGraph :: !RegionGraph
-    , asiRegionLookup :: !RegionLookup
-    , asiRegions :: !(HashMap RegionId Region)
-    , asiRegionPathToEnemy :: ![RegionId]
-    }
+  { asiRegionGraph :: !RegionGraph
+  , asiRegionLookup :: !RegionLookup
+  , asiRegions :: !(HashMap RegionId Region)
+  , asiRegionPathToEnemy :: ![RegionId]
+  }
 
 type RegionLookup = HashMap TilePos RegionId
 
 data StaticInfo = StaticInfo
-    { gameInfo :: ResponseGameInfo
-    , playerInfo :: PlayerInfo
-    , unitTraits :: UnitTraits
-    , heightMap :: Grid
-    , expandsPos :: [TilePos]
-    , startLocation :: TilePos
-    , enemyStartLocation :: TilePos
-    , siAsyncStaticInfo :: !(Maybe AsyncStaticInfo)
-    }
+  { gameInfo :: ResponseGameInfo
+  , playerInfo :: PlayerInfo
+  , unitTraits :: UnitTraits
+  , heightMap :: Grid
+  , expandsPos :: [TilePos]
+  , startLocation :: TilePos
+  , enemyStartLocation :: TilePos
+  , siAsyncStaticInfo :: !(Maybe AsyncStaticInfo)
+  }
 
 siRegionGraph :: StaticInfo -> RegionGraph
 siRegionGraph = maybe HashMap.empty asiRegionGraph . siAsyncStaticInfo
@@ -121,13 +121,13 @@ siRegionPathToEnemyResolved :: StaticInfo -> Maybe [RegionId]
 siRegionPathToEnemyResolved = fmap asiRegionPathToEnemy . siAsyncStaticInfo
 
 class HasObs s where
-    obsL :: Lens' s Observation
+  obsL :: Lens' s Observation
 
 class HasGrid s where
-    gridL :: Lens' s Grid
+  gridL :: Lens' s Grid
 
 class HasReservedCost d where
-    reservedCostL :: Lens' d Cost
+  reservedCostL :: Lens' d Cost
 
 agentGetReservedCost :: (HasReservedCost d) => StepMonad d Cost
 agentGetReservedCost = agentGet <&> (^. reservedCostL)
@@ -167,12 +167,12 @@ agentModify f = agentGet >>= agentPut . f
 
 runStepM :: StaticInfo -> UnitAbilities -> d -> StepMonad d a -> (a, StepPlan, d)
 runStepM staticInfo abilities dynamicState stepMonad =
-    let writerRes = runWriterT stepMonad
-        stateRes = runStateT writerRes dynamicState
-        ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
-     in (a, stepPlan, dyn')
+  let writerRes = runWriterT stepMonad
+      stateRes = runStateT writerRes dynamicState
+      ((a, stepPlan), dyn') = runReader stateRes (staticInfo, abilities)
+   in (a, stepPlan, dyn')
 
 type StepMonad d =
-    WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))
+  WriterT StepPlan (StateT d (Reader (StaticInfo, UnitAbilities)))
 
 type MaybeStepMonad d a = MaybeT (StepMonad d) a

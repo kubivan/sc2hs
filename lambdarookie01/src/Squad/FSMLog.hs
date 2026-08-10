@@ -10,8 +10,9 @@ traceFSM squad = traceFSMWithState squad (squadState squad)
 
 traceFSMWithState :: FSMSquad SquadState -> SquadState -> String -> StepMonad d ()
 traceFSMWithState squad state msg = traceM (prefix ++ " " ++ msg)
-  where
-    prefix = "[fsm][" ++ renderState state ++ "][" ++ renderSubstate state ++ "][" ++ show (squadId squad) ++ "]"
+ where
+  prefix =
+    "[fsm][" ++ renderState state ++ "][" ++ renderSubstate state ++ "][" ++ show (squadId squad) ++ "]"
 
 renderState :: SquadState -> String
 renderState SSIdle = "idle"

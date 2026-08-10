@@ -1,10 +1,10 @@
-module SC2.Launcher.Config (
-    hostName,
-    portHost,
-    portClient,
-    serverPortSet,
-    clientPortSet,
-)
+module SC2.Launcher.Config
+  ( hostName
+  , portHost
+  , portClient
+  , serverPortSet
+  , clientPortSet
+  )
 where
 
 import Data.Int (Int32)

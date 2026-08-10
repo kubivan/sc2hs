@@ -13,27 +13,27 @@ import SC2.Ids.UnitTypeId
 -- Generates a list of (UnitTypeId, AbilityId) pairs based on naming conventions
 genBuildingMapping :: Name -> Name -> Q [Dec]
 genBuildingMapping unitTypeName abilityIdName = do
-    -- Get all the constructors for UnitTypeId and AbilityId
-    unitTypeInfo <- reify unitTypeName
-    abilityIdInfo <- reify abilityIdName
+  -- Get all the constructors for UnitTypeId and AbilityId
+  unitTypeInfo <- reify unitTypeName
+  abilityIdInfo <- reify abilityIdName
 
-    let unitTypeConstructors = getConstructors unitTypeInfo
-        abilityIdConstructors = getConstructors abilityIdInfo
+  let unitTypeConstructors = getConstructors unitTypeInfo
+      abilityIdConstructors = getConstructors abilityIdInfo
 
-    -- Generate the mapping using naming conventions (e.g., ProtossNexus -> BuildNexus)
-    let mapping =
-            [ (unitType, fromJust buildCmd)
-            | unitType <- unitTypeConstructors
-            , let buildCmd = mkBuildCmd (nameBase unitType)
-            , isJust buildCmd
-            , (fromJust buildCmd) `elem` map nameBase abilityIdConstructors
-            ]
+  -- Generate the mapping using naming conventions (e.g., ProtossNexus -> BuildNexus)
+  let mapping =
+        [ (unitType, fromJust buildCmd)
+        | unitType <- unitTypeConstructors
+        , let buildCmd = mkBuildCmd (nameBase unitType)
+        , isJust buildCmd
+        , (fromJust buildCmd) `elem` map nameBase abilityIdConstructors
+        ]
 
-    -- Create the mapping list at compile-time
-    let mappingList = listE [tupE [conE unitType, conE (mkName buildCmd)] | (unitType, buildCmd) <- mapping]
+  -- Create the mapping list at compile-time
+  let mappingList = listE [tupE [conE unitType, conE (mkName buildCmd)] | (unitType, buildCmd) <- mapping]
 
-    -- Define the `buildingMapping` as a top-level declaration
-    sequence [valD (varP (mkName "buildingMapping")) (normalB mappingList) []]
+  -- Define the `buildingMapping` as a top-level declaration
+  sequence [valD (varP (mkName "buildingMapping")) (normalB mappingList) []]
 
 -- Helper to extract constructors from a data type
 getConstructors :: Info -> [Name]
@@ -43,6 +43,6 @@ getConstructors _ = []
 -- Helper to create Build* AbilityId from Protoss* UnitTypeId
 mkBuildCmd :: String -> Maybe String
 mkBuildCmd unitTypeStr =
-    case stripPrefix "Protoss" unitTypeStr of
-        Just stripped -> Just $ "Build" ++ stripped
-        Nothing -> Nothing -- error $ "Unexpected unit type: " ++ unitTypeStr
+  case stripPrefix "Protoss" unitTypeStr of
+    Just stripped -> Just $ "Build" ++ stripped
+    Nothing -> Nothing -- error $ "Unexpected unit type: " ++ unitTypeStr

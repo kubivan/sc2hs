@@ -5,14 +5,14 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module SC2.Ids.Deps (
-    generateDeps,
-    TrainDeps,
-    BuildDeps,
-    MorphDeps,
-    Tech (..),
-    TechPath,
-) where
+module SC2.Ids.Deps
+  ( generateDeps
+  , TrainDeps
+  , BuildDeps
+  , MorphDeps
+  , Tech (..)
+  , TechPath
+  ) where
 
 import SC2.Ids.AbilityId (AbilityId (..))
 import SC2.Ids.UnitTypeId (UnitTypeId (..))
@@ -38,12 +38,12 @@ import System.FilePath (takeDirectory, (</>))
 -- Define types
 
 data Tech = TechUnit UnitTypeId | TechUpgrade UpgradeId | TechAbility AbilityId
-    deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToJSONKey, FromJSONKey, Lift)
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToJSONKey, FromJSONKey, Lift)
 
 instance Hashable Tech where
-    hashWithSalt s (TechUnit uid) = hashWithSalt s . fromEnum $ uid
-    hashWithSalt s (TechUpgrade uid) = hashWithSalt s . fromEnum $ uid
-    hashWithSalt s (TechAbility aid) = hashWithSalt s . fromEnum $ aid
+  hashWithSalt s (TechUnit uid) = hashWithSalt s . fromEnum $ uid
+  hashWithSalt s (TechUpgrade uid) = hashWithSalt s . fromEnum $ uid
+  hashWithSalt s (TechAbility aid) = hashWithSalt s . fromEnum $ aid
 
 type TrainDeps = HashMap.HashMap UnitTypeId AbilityId
 type BuildDeps = HashMap.HashMap UnitTypeId AbilityId
@@ -62,214 +62,214 @@ until a directory containing @data/data.json@ is found.
 -}
 findDataJson :: Q FilePath
 findDataJson = do
-    loc <- location
-    let locFile = loc_filename loc
-    runIO $ do
-        absLoc <- makeAbsolute locFile
-        go (takeDirectory absLoc)
-  where
-    go dir = do
-        let candidate = dir </> "data" </> "data.json"
-        exists <- doesFileExist candidate
-        if exists
-            then return candidate
-            else
-                let parent = takeDirectory dir
-                 in if parent == dir
-                        then error $ "data/data.json not found in any parent directory of: " ++ dir
-                        else go parent
+  loc <- location
+  let locFile = loc_filename loc
+  runIO $ do
+    absLoc <- makeAbsolute locFile
+    go (takeDirectory absLoc)
+ where
+  go dir = do
+    let candidate = dir </> "data" </> "data.json"
+    exists <- doesFileExist candidate
+    if exists
+      then return candidate
+      else
+        let parent = takeDirectory dir
+         in if parent == dir
+              then error $ "data/data.json not found in any parent directory of: " ++ dir
+              else go parent
 
 generateDeps :: Q [Dec]
 generateDeps = do
-    dataFile <- findDataJson
-    qAddDependentFile dataFile
-    content <- runIO $ B.readFile dataFile
-    let Just rootVal = decode content :: Maybe Value
-        Just (Array abilitiesArray) = rootVal ^? key "Ability"
-        abilitiesList = V.toList abilitiesArray
+  dataFile <- findDataJson
+  qAddDependentFile dataFile
+  content <- runIO $ B.readFile dataFile
+  let Just rootVal = decode content :: Maybe Value
+      Just (Array abilitiesArray) = rootVal ^? key "Ability"
+      abilitiesList = V.toList abilitiesArray
 
-        Just (Array unitsArray) = rootVal ^? key "Unit"
-        unitAbilitiesList = V.toList unitsArray
+      Just (Array unitsArray) = rootVal ^? key "Unit"
+      unitAbilitiesList = V.toList unitsArray
 
-        trainPairs = mapMaybe extractTrainDep abilitiesList
-        buildPairs = mapMaybe extractBuildDep abilitiesList
-        morphPairs = mapMaybe extractMorphDep abilitiesList
-        researchPairs = mapMaybe extractResearchDep abilitiesList
+      trainPairs = mapMaybe extractTrainDep abilitiesList
+      buildPairs = mapMaybe extractBuildDep abilitiesList
+      morphPairs = mapMaybe extractMorphDep abilitiesList
+      researchPairs = mapMaybe extractResearchDep abilitiesList
 
-        unitAbilitiesGrouped :: UnitAbilityDeps
-        unitAbilitiesGrouped = HashMap.fromList $ mapMaybe extractUnitAbilities unitAbilitiesList
+      unitAbilitiesGrouped :: UnitAbilityDeps
+      unitAbilitiesGrouped = HashMap.fromList $ mapMaybe extractUnitAbilities unitAbilitiesList
 
-        -- abilityProducer :: AbilityProducer
-        abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
+      -- abilityProducer :: AbilityProducer
+      abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
 
-        techAbilityDeps :: [(Tech, [Tech])]
-        techAbilityDeps =
-            [ (TechAbility abid, deps)
-            | abList <- HashMap.elems unitAbilitiesGrouped
-            , (abid, deps) <- abList
-            ]
+      techAbilityDeps :: [(Tech, [Tech])]
+      techAbilityDeps =
+        [ (TechAbility abid, deps)
+        | abList <- HashMap.elems unitAbilitiesGrouped
+        , (abid, deps) <- abList
+        ]
 
-        techUnitBuilds :: [(Tech, [Tech])]
-        techUnitBuilds =
-            [ (TechUnit uid, [TechAbility abid])
-            | (uid, abid) <- trainPairs
-            ]
+      techUnitBuilds :: [(Tech, [Tech])]
+      techUnitBuilds =
+        [ (TechUnit uid, [TechAbility abid])
+        | (uid, abid) <- trainPairs
+        ]
 
-        techBuildDeps :: [(Tech, [Tech])]
-        techBuildDeps =
-            [ (TechUnit uid, [TechAbility abid])
-            | (uid, abid) <- buildPairs
-            ]
+      techBuildDeps :: [(Tech, [Tech])]
+      techBuildDeps =
+        [ (TechUnit uid, [TechAbility abid])
+        | (uid, abid) <- buildPairs
+        ]
 
-        techUpgradeDeps :: [(Tech, [Tech])]
-        techUpgradeDeps =
-            [ (TechUpgrade uid, [TechAbility abid])
-            | (uid, abid) <- researchPairs
-            ]
+      techUpgradeDeps :: [(Tech, [Tech])]
+      techUpgradeDeps =
+        [ (TechUpgrade uid, [TechAbility abid])
+        | (uid, abid) <- researchPairs
+        ]
 
-        extraAbilityLinks :: [(Tech, [Tech])]
-        extraAbilityLinks =
-            [ (TechAbility abid, [TechUnit uid])
-            | (uid, abList) <- HashMap.toList unitAbilitiesGrouped
-            , (abid, _) <- abList
-            ]
+      extraAbilityLinks :: [(Tech, [Tech])]
+      extraAbilityLinks =
+        [ (TechAbility abid, [TechUnit uid])
+        | (uid, abList) <- HashMap.toList unitAbilitiesGrouped
+        , (abid, _) <- abList
+        ]
 
-        -- Final direct dependency graph
-        techDeps :: TechDeps
-        techDeps =
-            HashMap.fromListWith
-                (++)
-                (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
+      -- Final direct dependency graph
+      techDeps :: TechDeps
+      techDeps =
+        HashMap.fromListWith
+          (++)
+          (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
 
-        -- Build full paths (transitive closure)
-        rawTechPath :: TechPath
-        rawTechPath = buildTechPaths techDeps
+      -- Build full paths (transitive closure)
+      rawTechPath :: TechPath
+      rawTechPath = buildTechPaths techDeps
 
-        -- Remove TechAbility from final path values
-        isTechAbility (TechAbility _) = True
-        isTechAbility _ = False
+      -- Remove TechAbility from final path values
+      isTechAbility (TechAbility _) = True
+      isTechAbility _ = False
 
-        techPathFiltered :: TechPath
-        techPathFiltered = HashMap.map (filter (not . isTechAbility)) rawTechPath
+      techPathFiltered :: TechPath
+      techPathFiltered = HashMap.map (filter (not . isTechAbility)) rawTechPath
 
-    [d|
-        trainDeps :: TrainDeps
-        trainDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList trainPairs)
+  [d|
+    trainDeps :: TrainDeps
+    trainDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList trainPairs)
 
-        buildDeps :: BuildDeps
-        buildDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList buildPairs)
+    buildDeps :: BuildDeps
+    buildDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList buildPairs)
 
-        morphDeps :: MorphDeps
-        morphDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList morphPairs)
+    morphDeps :: MorphDeps
+    morphDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList morphPairs)
 
-        researchDeps :: ResearchDeps
-        researchDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList researchPairs)
+    researchDeps :: ResearchDeps
+    researchDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList researchPairs)
 
-        unitAbilitiesDeps :: UnitAbilityDeps
-        unitAbilitiesDeps = HashMap.fromList $(liftHashMap unitAbilitiesGrouped)
+    unitAbilitiesDeps :: UnitAbilityDeps
+    unitAbilitiesDeps = HashMap.fromList $(liftHashMap unitAbilitiesGrouped)
 
-        abilityExecutor :: AbilityProducer
-        abilityExecutor = HashMap.fromList $(liftHashMap $ HashMap.fromList abilityProducerPairs)
+    abilityExecutor :: AbilityProducer
+    abilityExecutor = HashMap.fromList $(liftHashMap $ HashMap.fromList abilityProducerPairs)
 
-        techDeps :: TechDeps
-        techDeps =
-            HashMap.fromListWith
-                (++)
-                $( liftHashMap $
-                    HashMap.fromListWith
-                        (++)
-                        (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
-                 )
+    techDeps :: TechDeps
+    techDeps =
+      HashMap.fromListWith
+        (++)
+        $( liftHashMap $
+             HashMap.fromListWith
+               (++)
+               (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
+         )
 
-        techPath :: TechPath
-        techPath = HashMap.fromList $(liftHashMap techPathFiltered)
-        |]
+    techPath :: TechPath
+    techPath = HashMap.fromList $(liftHashMap techPathFiltered)
+    |]
 
 extractTrainDep :: Value -> Maybe (UnitTypeId, AbilityId)
 extractTrainDep v = do
-    aid <- v ^? key "id" . _Integral
-    uid <- v ^? key "target" . key "Train" . key "produces" . _Integral
-    let utid = toEnum (fromInteger uid)
-        abid = toEnum (fromInteger aid)
-    return (utid, abid)
+  aid <- v ^? key "id" . _Integral
+  uid <- v ^? key "target" . key "Train" . key "produces" . _Integral
+  let utid = toEnum (fromInteger uid)
+      abid = toEnum (fromInteger aid)
+  return (utid, abid)
 
 extractBuildDep :: Value -> Maybe (UnitTypeId, AbilityId)
 extractBuildDep v = do
-    aid <- v ^? key "id" . _Integral
-    tgt <- v ^? key "target"
-    uid <-
-        (tgt ^? key "Build" . key "produces" . _Integral)
-            <|> (tgt ^? key "BuildOnUnit" . key "produces" . _Integral)
-            <|> (tgt ^? key "BuildInstant" . key "produces" . _Integral)
-    let utid = toEnum (fromInteger uid)
-        abid = toEnum (fromInteger aid)
-    return (utid, abid)
+  aid <- v ^? key "id" . _Integral
+  tgt <- v ^? key "target"
+  uid <-
+    (tgt ^? key "Build" . key "produces" . _Integral)
+      <|> (tgt ^? key "BuildOnUnit" . key "produces" . _Integral)
+      <|> (tgt ^? key "BuildInstant" . key "produces" . _Integral)
+  let utid = toEnum (fromInteger uid)
+      abid = toEnum (fromInteger aid)
+  return (utid, abid)
 
 extractMorphDep :: Value -> Maybe (UnitTypeId, AbilityId)
 extractMorphDep v = do
-    aid <- v ^? key "id" . _Integral
-    uid <-
-        (v ^? key "target" . key "Morph" . key "produces" . _Integral)
-            <|> (v ^? key "target" . key "MorphPlace" . key "produces" . _Integral)
-    let utid = toEnum (fromInteger uid)
-        abid = toEnum (fromInteger aid)
-    return (utid, abid)
+  aid <- v ^? key "id" . _Integral
+  uid <-
+    (v ^? key "target" . key "Morph" . key "produces" . _Integral)
+      <|> (v ^? key "target" . key "MorphPlace" . key "produces" . _Integral)
+  let utid = toEnum (fromInteger uid)
+      abid = toEnum (fromInteger aid)
+  return (utid, abid)
 
 extractResearchDep :: Value -> Maybe (UpgradeId, AbilityId)
 extractResearchDep v = do
-    aid <- v ^? key "id" . _Integral
-    uid <- v ^? key "target" . key "Research" . key "upgrade" . _Integral
-    let upid = toEnum (fromInteger uid)
-        abid = toEnum (fromInteger aid)
-    return (upid, abid)
+  aid <- v ^? key "id" . _Integral
+  uid <- v ^? key "target" . key "Research" . key "upgrade" . _Integral
+  let upid = toEnum (fromInteger uid)
+      abid = toEnum (fromInteger aid)
+  return (upid, abid)
 
 extractUnitAbilities :: Value -> Maybe (UnitTypeId, [(AbilityId, [Tech])])
 extractUnitAbilities v = do
-    uid <- v ^? key "id" . _Integral
-    let abdeps = extractAbilities v
-        utid = toEnum (fromInteger uid)
-    return (utid, abdeps)
+  uid <- v ^? key "id" . _Integral
+  let abdeps = extractAbilities v
+      utid = toEnum (fromInteger uid)
+  return (utid, abdeps)
 
 extractAbilities :: Value -> [(AbilityId, [Tech])]
 extractAbilities v = extractAbilityDeps <$> v ^.. key "abilities" . values
 
 extractAbilityDeps :: Value -> (AbilityId, [Tech])
 extractAbilityDeps obj =
-    let abid = obj ^?! key "ability" . _Integral
-        upgradeDeps = obj ^.. key "requirements" . _Array . traverse . key "upgrade" . _Integral
-        unitDeps = obj ^.. key "requirements" . _Array . traverse . key "building" . _Integral
-     in (toEnum abid, (TechUpgrade . toEnum <$> upgradeDeps) ++ (TechUnit . toEnum <$> unitDeps))
+  let abid = obj ^?! key "ability" . _Integral
+      upgradeDeps = obj ^.. key "requirements" . _Array . traverse . key "upgrade" . _Integral
+      unitDeps = obj ^.. key "requirements" . _Array . traverse . key "building" . _Integral
+   in (toEnum abid, (TechUpgrade . toEnum <$> upgradeDeps) ++ (TechUnit . toEnum <$> unitDeps))
 
 liftHashMap :: (Lift k, Lift v) => HashMap.HashMap k v -> Q Exp
 liftHashMap = lift . HashMap.toList
 
 buildTechPaths :: TechDeps -> TechPath
 buildTechPaths deps = HashMap.fromList [(t, ordNub . reverse $ go t Set.empty []) | t <- HashMap.keys deps]
-  where
-    go :: Tech -> Set.Set Tech -> [Tech] -> [Tech]
-    go tech visited acc
-        | tech `Set.member` visited = acc
-        | otherwise =
-            let visited' = Set.insert tech visited
-                children = fromMaybe [] (HashMap.lookup tech deps)
-                acc' = foldl' (\a child -> go child visited' a) acc children
-             in tech : acc'
+ where
+  go :: Tech -> Set.Set Tech -> [Tech] -> [Tech]
+  go tech visited acc
+    | tech `Set.member` visited = acc
+    | otherwise =
+        let visited' = Set.insert tech visited
+            children = fromMaybe [] (HashMap.lookup tech deps)
+            acc' = foldl' (\a child -> go child visited' a) acc children
+         in tech : acc'
 
 reverseHashMap :: (Hashable v) => HashMap k [v] -> HashMap v [k]
 reverseHashMap input =
-    HashMap.fromListWith (++) $
-        [(v, [k]) | (k, vs) <- HashMap.toList input, v <- vs]
+  HashMap.fromListWith (++) $
+    [(v, [k]) | (k, vs) <- HashMap.toList input, v <- vs]
 
 ordNub :: (Ord a) => [a] -> [a]
 ordNub = go Set.empty
-  where
-    go _ [] = []
-    go seen (x : xs)
-        | x `Set.member` seen = go seen xs
-        | otherwise = x : go (Set.insert x seen) xs
+ where
+  go _ [] = []
+  go seen (x : xs)
+    | x `Set.member` seen = go seen xs
+    | otherwise = x : go (Set.insert x seen) xs
 
 extractAbilityProducers :: Value -> [(AbilityId, UnitTypeId)]
 extractAbilityProducers unitValue =
-    [ (toEnum . fromIntegral $ a, toEnum . fromIntegral $ unitValue ^?! key "id" . _Integral)
-    | a <- unitValue ^.. key "abilities" . _Array . traverse . key "ability" . _Integral
-    ]
+  [ (toEnum . fromIntegral $ a, toEnum . fromIntegral $ unitValue ^?! key "id" . _Integral)
+  | a <- unitValue ^.. key "abilities" . _Array . traverse . key "ability" . _Integral
+  ]

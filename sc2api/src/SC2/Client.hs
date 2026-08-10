@@ -5,17 +5,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module SC2.Client (
-    GameSignals (..),
-    newGameSignals,
-    signalGameCreated,
-    waitForGameCreation,
-    signalClientJoined,
-    waitAllClientsJoined,
-    startStarCraft,
-    unitAbilitiesRaw,
-    unitAbilities,
-) where
+module SC2.Client
+  ( GameSignals (..)
+  , newGameSignals
+  , signalGameCreated
+  , waitForGameCreation
+  , signalClientJoined
+  , waitAllClientsJoined
+  , startStarCraft
+  , unitAbilitiesRaw
+  , unitAbilities
+  ) where
 
 import SC2.Ids.AbilityId (AbilityId, toEnum)
 import SC2.Ids.UnitTypeId (UnitTypeId, toEnum)
@@ -25,15 +25,15 @@ import SC2.Proto.Requests qualified as Proto
 import UnitAbilities
 
 import Conduit (mapC, runConduitPure, sinkList, yieldMany, (.|))
-import Control.Concurrent (
-    MVar,
-    modifyMVar_,
-    newEmptyMVar,
-    newMVar,
-    putMVar,
-    readMVar,
-    threadDelay,
- )
+import Control.Concurrent
+  ( MVar
+  , modifyMVar_
+  , newEmptyMVar
+  , newMVar
+  , putMVar
+  , readMVar
+  , threadDelay
+  )
 import Control.Exception (SomeException, try)
 import Control.Monad (unless, when)
 import Data.HashMap.Strict qualified as HashMap
@@ -42,100 +42,103 @@ import Data.ProtoLens.Labels ()
 import Debug.Trace (trace, traceM)
 import GHC.Int qualified
 import Lens.Micro ((^.))
-import Network.WebSockets as WS (
-    Connection,
-    runClient,
- )
+import Network.WebSockets as WS
+  ( Connection
+  , runClient
+  )
 import Proto.S2clientprotocol.Data as S (UnitTypeData)
-import Proto.S2clientprotocol.Query as S (
-    ResponseQueryAvailableAbilities,
- )
-import Proto.S2clientprotocol.Sc2api as S (
-    Response,
- )
-import System.Process (
-    CreateProcess (cwd),
-    ProcessHandle,
-    createProcess,
-    shell,
- )
+import Proto.S2clientprotocol.Query as S
+  ( ResponseQueryAvailableAbilities
+  )
+import Proto.S2clientprotocol.Sc2api as S
+  ( Response
+  )
+import System.Process
+  ( CreateProcess (cwd)
+  , ProcessHandle
+  , createProcess
+  , shell
+  )
 
-unitAbilitiesRaw :: WS.Connection -> Proto.ResponseObservation -> IO [S.ResponseQueryAvailableAbilities]
+unitAbilitiesRaw ::
+  WS.Connection -> Proto.ResponseObservation -> IO [S.ResponseQueryAvailableAbilities]
 unitAbilitiesRaw conn respObs = do
-    let obs = respObs ^. #observation
-    resp <- Proto.sendRequestSync conn $ Proto.requestUnitAbilities obs
-    return $ resp ^. #query . #abilities
+  let obs = respObs ^. #observation
+  resp <- Proto.sendRequestSync conn $ Proto.requestUnitAbilities obs
+  return $ resp ^. #query . #abilities
 
 unitAbilities :: [S.ResponseQueryAvailableAbilities] -> UnitAbilities
 unitAbilities raw =
-    HashMap.fromList . runConduitPure $
-        yieldMany raw
-            .| mapC
-                ( \a ->
-                    let unit = toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
-                        abilityIds = [toEnum . fromIntegral $ x ^. #abilityId :: AbilityId | x <- a ^. #abilities]
-                     in (unit, abilityIds)
-                )
-            .| sinkList
+  HashMap.fromList . runConduitPure $
+    yieldMany raw
+      .| mapC
+        ( \a ->
+            let unit = toEnum (fromIntegral (a ^. #unitTypeId)) :: UnitTypeId
+                abilityIds = [toEnum . fromIntegral $ x ^. #abilityId :: AbilityId | x <- a ^. #abilities]
+             in (unit, abilityIds)
+        )
+      .| sinkList
 
 startStarCraft :: StarCraft2Config -> String -> Int32 -> IO ()
 startStarCraft cfg host port = do
-    let sc2Binary = "\"" ++ exePath cfg ++ "\""
-        workingDir = Just (SC2.Launcher.BotConfig.cwd cfg)
-        args =
-            [ "-listen"
-            , host
-            , "-port"
-            , show port
-            , "-displayMode"
-            , "0"
-            , "-windowwidth"
-            , show (windowWidth cfg)
-            , "-windowheight"
-            , show (windowHeight cfg)
-            , "-windowx"
-            , show (windowX cfg)
-            , "-windowy"
-            , show (windowY cfg)
-            ]
-        proc = (shell $ sc2Binary ++ " " ++ unwords args){System.Process.cwd = workingDir}
+  let sc2Binary = "\"" ++ exePath cfg ++ "\""
+      workingDir = Just (SC2.Launcher.BotConfig.cwd cfg)
+      args =
+        [ "-listen"
+        , host
+        , "-port"
+        , show port
+        , "-displayMode"
+        , "0"
+        , "-windowwidth"
+        , show (windowWidth cfg)
+        , "-windowheight"
+        , show (windowHeight cfg)
+        , "-windowx"
+        , show (windowX cfg)
+        , "-windowy"
+        , show (windowY cfg)
+        ]
+      proc = (shell $ sc2Binary ++ " " ++ unwords args){System.Process.cwd = workingDir}
 
-    (_, _, _, _sc2Handle) <- createProcess proc
-    waitForSC2WebSocket host port
-  where
-    -- return sc2Handle
+  (_, _, _, _sc2Handle) <- createProcess proc
+  waitForSC2WebSocket host port
+ where
+  -- return sc2Handle
 
-    pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
+  pollInterval = 1000000 -- Poll every second (1,000,000 microseconds)
 
-    -- Function to check if the WebSocket connection is open
-    isWebSocketOpen :: String -> Int -> IO Bool
-    isWebSocketOpen host port = do
-        result <- try (WS.runClient host port "/sc2api" (`Proto.sendRequestSync` Proto.requestPing)) :: IO (Either SomeException Response)
-        case result of
-            Left err -> do
-                putStrLn $ "Connection failed: " ++ show err
-                return False
-            Right r -> trace (show r) return True
+  -- Function to check if the WebSocket connection is open
+  isWebSocketOpen :: String -> Int -> IO Bool
+  isWebSocketOpen host port = do
+    result <-
+      try (WS.runClient host port "/sc2api" (`Proto.sendRequestSync` Proto.requestPing)) ::
+        IO (Either SomeException Response)
+    case result of
+      Left err -> do
+        putStrLn $ "Connection failed: " ++ show err
+        return False
+      Right r -> trace (show r) return True
 
-    -- return $ either (const False) (const True) result
+  -- return $ either (const False) (const True) result
 
-    -- Function to wait until the SC2 WebSocket connection is available
-    waitForSC2WebSocket :: String -> Int32 -> IO ()
-    waitForSC2WebSocket targetHost targetPort = loop
-      where
-        loop = do
-            isOpen <- isWebSocketOpen targetHost (fromIntegral targetPort)
-            if isOpen
-                then putStrLn "SC2 WebSocket connection is open and ready."
-                else do
-                    threadDelay pollInterval
-                    loop
+  -- Function to wait until the SC2 WebSocket connection is available
+  waitForSC2WebSocket :: String -> Int32 -> IO ()
+  waitForSC2WebSocket targetHost targetPort = loop
+   where
+    loop = do
+      isOpen <- isWebSocketOpen targetHost (fromIntegral targetPort)
+      if isOpen
+        then putStrLn "SC2 WebSocket connection is open and ready."
+        else do
+          threadDelay pollInterval
+          loop
 
 data GameSignals = GameSignals
-    { gameCreated :: MVar Bool
-    , allClientsJoined :: MVar Int
-    , expectedClients :: Int
-    }
+  { gameCreated :: MVar Bool
+  , allClientsJoined :: MVar Int
+  , expectedClients :: Int
+  }
 
 -- Initialize the signals (empty `MVar` for blocking behavior)
 newGameSignals :: Int -> IO GameSignals
@@ -144,8 +147,8 @@ newGameSignals numClients = GameSignals <$> newEmptyMVar <*> newMVar 0 <*> retur
 -- Signal to clients that the game is created
 signalGameCreated :: GameSignals -> IO ()
 signalGameCreated signals = do
-    putMVar (gameCreated signals) True
-    putStrLn "Host: Game creation signaled."
+  putMVar (gameCreated signals) True
+  putStrLn "Host: Game creation signaled."
 
 -- Signal to the host that the client has joined
 signalClientJoined :: GameSignals -> IO ()
@@ -154,21 +157,21 @@ signalClientJoined signals = trace "signalClientJoined" modifyMVar_ (allClientsJ
 -- Wait for all clients to join
 waitAllClientsJoined :: GameSignals -> IO ()
 waitAllClientsJoined signals = do
-    joinedCountNotMeet
-  where
-    joinedCountNotMeet :: IO ()
-    joinedCountNotMeet = do
-        count <- readMVar $ allClientsJoined signals
-        let expectedCount = expectedClients signals
-        traceM $ "waitForAllClients: count " ++ show count ++ " expected " ++ show expectedCount
-        -- traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
-        when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
+  joinedCountNotMeet
+ where
+  joinedCountNotMeet :: IO ()
+  joinedCountNotMeet = do
+    count <- readMVar $ allClientsJoined signals
+    let expectedCount = expectedClients signals
+    traceM $ "waitForAllClients: count " ++ show count ++ " expected " ++ show expectedCount
+    -- traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
+    when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
 
 -- Wait for the host's game creation signal
 waitForGameCreation :: GameSignals -> IO ()
 waitForGameCreation signals = do_wait
-  where
-    do_wait = do
-        traceM "waitForGameCreation"
-        created <- readMVar (gameCreated signals)
-        unless created (threadDelay 500 >> do_wait)
+ where
+  do_wait = do
+    traceM "waitForGameCreation"
+    created <- readMVar (gameCreated signals)
+    unless created (threadDelay 500 >> do_wait)

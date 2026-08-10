@@ -17,16 +17,16 @@ import Data.Set qualified as Set
 import System.Random (Random, StdGen, randomR)
 
 data ArmyUnitData = ArmyUnitData
-    { auVisitedTiles :: Set TilePos
-    , auUnvisitedEdge :: Set TilePos
-    }
+  { auVisitedTiles :: Set TilePos
+  , auUnvisitedEdge :: Set TilePos
+  }
 
 data Army = Army
-    { armyUnitsData :: HashMap UnitTag ArmyUnitData
-    , armyUnits :: HashMap UnitTag Unit
-    , armyUnitsPos :: Set TilePos
-    , armySquads :: [Squad]
-    }
+  { armyUnitsData :: HashMap UnitTag ArmyUnitData
+  , armyUnits :: HashMap UnitTag Unit
+  , armyUnitsPos :: Set TilePos
+  , armySquads :: [Squad]
+  }
 
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []

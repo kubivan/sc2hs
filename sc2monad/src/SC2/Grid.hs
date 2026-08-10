@@ -4,4 +4,3 @@ import SC2.Grid.Algo
 import SC2.Grid.Core
 import SC2.Grid.TilePos
 import SC2.Grid.Utils
-

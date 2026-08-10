@@ -12,17 +12,17 @@ import Data.Text (unpack)
 import Text.Read (readMaybe)
 
 instance Hashable UnitTypeId where
-    hash = fromEnum
-    hashWithSalt s val = fromEnum val + s
+  hash = fromEnum
+  hashWithSalt s val = fromEnum val + s
 
 instance ToJSON UnitTypeId where
-    toJSON = toJSON . show
+  toJSON = toJSON . show
 
 instance FromJSON UnitTypeId where
-    parseJSON = withText "UnitTypeId" $ \txt ->
-        case readMaybe (unpack txt) of
-            Just utid -> pure utid
-            Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt
+  parseJSON = withText "UnitTypeId" $ \txt ->
+    case readMaybe (unpack txt) of
+      Just utid -> pure utid
+      Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt
 
 -- data UnitTypeId =
 --    Invalid  -- 0

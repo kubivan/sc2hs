@@ -4,9 +4,9 @@ import Actions (UnitTag)
 import Squad.Class
 
 data FSMSquad s = Squad
-    { squadUnits :: [UnitTag]
-    , squadState :: s
-    }
+  { squadUnits :: [UnitTag]
+  , squadState :: s
+  }
 
 squadId :: FSMSquad s -> UnitTag
 squadId s = head $ squadUnits s

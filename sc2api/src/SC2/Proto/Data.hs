@@ -5,8 +5,8 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module SC2.Proto.Data (
-    -- -- reexporting sc2-proto types
+module SC2.Proto.Data
+  ( -- -- reexporting sc2-proto types
     -- A.Race(..),
     -- A.Request,
     -- A.PlayerResult,
@@ -22,13 +22,13 @@ module SC2.Proto.Data (
     -- A.abilityId,
     -- A.Action,
     -- A.Observation,
-    module C,
-    module R,
-    module S,
-    module D,
-    module SF,
-    Map (LocalMap),
-) where
+    module C
+  , module R
+  , module S
+  , module D
+  , module SF
+  , Map (LocalMap)
+  ) where
 
 import Data.ByteString qualified as BS
 import Data.ProtoLens.Labels ()

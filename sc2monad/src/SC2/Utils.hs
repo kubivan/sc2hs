@@ -21,8 +21,8 @@ squadFormationFootprint = createFootprint $ unlines ["1#2#c#3#4"]
 
 isArmyUnit :: Unit -> Bool -- TODO: remove protoss specific consts
 isArmyUnit u = ProtossProbe /= utype && (not . isUnitStructure $ utype)
-  where
-    utype = toEnum' (u ^. #unitType)
+ where
+  utype = toEnum' (u ^. #unitType)
 
 -- Define an enemy unit filter
 isEnemy :: Unit -> Bool
@@ -31,34 +31,34 @@ isEnemy u = (u ^. #alliance) == Enemy
 -- Get neighboring tiles
 neighbors :: TilePos -> Grid -> [TilePos]
 neighbors p@(x, y) grid =
-    [ (x + dx, y + dy)
-    | dx <- [-1, 0, 1]
-    , dy <- [-1, 0, 1]
-    , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
-    , let pixel = grid !? (x + dx, y + dy)
-    , pixel /= Just '#' && isJust pixel
-    ]
+  [ (x + dx, y + dy)
+  | dx <- [-1, 0, 1]
+  , dy <- [-1, 0, 1]
+  , dx /= 0 || dy /= 0 -- Exclude points on the same vertical line
+  , let pixel = grid !? (x + dx, y + dy)
+  , pixel /= Just '#' && isJust pixel
+  ]
 
 tilesInRadius :: Int -> TilePos -> [TilePos]
 tilesInRadius r (x, y) =
-    [ (x + dx, y + dy)
-    | dx <- [-r .. r]
-    , dy <- [-r .. r]
-    , dx * dx + dy * dy <= r * r -- circular mask
-    -- , (dx, dy) /= (0, 0)          -- exclude center
-    ]
+  [ (x + dx, y + dy)
+  | dx <- [-r .. r]
+  , dy <- [-r .. r]
+  , dx * dx + dy * dy <= r * r -- circular mask
+  -- , (dx, dy) /= (0, 0)          -- exclude center
+  ]
 
 backoffList :: [a] -> Int -> Maybe a
 backoffList xs n
-    | n < 0 = Nothing
-    | otherwise = takeMaybe n xs <|> backoffList xs (n - 1)
-  where
-    takeMaybe i ys = if i < length ys then Just (ys !! i) else Nothing
+  | n < 0 = Nothing
+  | otherwise = takeMaybe n xs <|> backoffList xs (n - 1)
+ where
+  takeMaybe i ys = if i < length ys then Just (ys !! i) else Nothing
 
 -- Check if an enemy is in range
 enemyInRange :: Unit -> [Unit] -> Maybe Unit
 enemyInRange u enemies =
-    headMay $ filter (\e -> distSquared2D e u <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
+  headMay $ filter (\e -> distSquared2D e u <= 6 * 6) enemies -- TODO: magic number Stalker attack range of 6
 
 noneOf :: (a -> Bool) -> [a] -> Bool
 noneOf p = not . any p

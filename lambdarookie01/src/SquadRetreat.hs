@@ -20,58 +20,60 @@ import Lens.Micro ((^.))
 -- ---------------------------------------------------------------------------
 -- Step
 
-retreatStep :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d ()
+retreatStep ::
+  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d ()
 retreatStep squad Nothing = error ("retreatStep for Nothing rallypoint shouldnt happen")
 retreatStep squad (Just rallyPos) = do
-    ds <- agentGet
-    let unitByTag t = HashMap.lookup t (getUnitMap ds)
-        units = catMaybes [unitByTag t | t <- squadUnits squad]
-    if null units
-        then pure ()
-        else command [PointCommand ATTACKATTACK units (fromTuple rallyPos)]
+  ds <- agentGet
+  let unitByTag t = HashMap.lookup t (getUnitMap ds)
+      units = catMaybes [unitByTag t | t <- squadUnits squad]
+  if null units
+    then pure ()
+    else command [PointCommand ATTACKATTACK units (fromTuple rallyPos)]
 
 -- ---------------------------------------------------------------------------
 -- Update
 
 findRetreatPoint :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d TilePos
 findRetreatPoint squad = do
-    ds <- agentGet
-    si <- agentStatic
-    case siAsyncStaticInfo si of
-        Nothing -> return $ startLocation si
-        Just asi -> do
-            obs <- agentObs
-            let unitByTag t = HashMap.lookup t (getUnitMap ds)
-                leader = fromJust $ unitByTag (head (squadUnits squad))
-                leaderPos = tilePos (leader ^. #pos)
-                nexusPos = tilePos $ findNexus obs ^. #pos
-                -- nexusPos = head (playerStartPos si)
-                regionLookup = asiRegionLookup asi
-                leaderRegion = fromJust $ HashMap.lookup leaderPos regionLookup
-                startRegion = fromJust $ HashMap.lookup nexusPos regionLookup
-                rg = asiRegionGraph asi
-                pathToHome = regionGraphBfs rg leaderRegion startRegion
-                retreatRegionId = head pathToHome
+  ds <- agentGet
+  si <- agentStatic
+  case siAsyncStaticInfo si of
+    Nothing -> return $ startLocation si
+    Just asi -> do
+      obs <- agentObs
+      let unitByTag t = HashMap.lookup t (getUnitMap ds)
+          leader = fromJust $ unitByTag (head (squadUnits squad))
+          leaderPos = tilePos (leader ^. #pos)
+          nexusPos = tilePos $ findNexus obs ^. #pos
+          -- nexusPos = head (playerStartPos si)
+          regionLookup = asiRegionLookup asi
+          leaderRegion = fromJust $ HashMap.lookup leaderPos regionLookup
+          startRegion = fromJust $ HashMap.lookup nexusPos regionLookup
+          rg = asiRegionGraph asi
+          pathToHome = regionGraphBfs rg leaderRegion startRegion
+          retreatRegionId = head pathToHome
 
-                region = fromJust $ HashMap.lookup retreatRegionId (asiRegions asi)
+          region = fromJust $ HashMap.lookup retreatRegionId (asiRegions asi)
 
-            return $ Set.findMin region
+      return $ Set.findMin region
 
-retreatUpdate :: (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d UpdateResult
+retreatUpdate ::
+  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d UpdateResult
 retreatUpdate squad Nothing = do
-    pos <- findRetreatPoint squad
-    return (Continue (SSRetreat (Just pos)))
+  pos <- findRetreatPoint squad
+  return (Continue (SSRetreat (Just pos)))
 retreatUpdate squad st@(Just rallyPos) = do
-    ds <- agentGet
-    let unitByTag t = HashMap.lookup t (getUnitMap ds)
-        leader = fromJust $ unitByTag (head (squadUnits squad))
-        arrived = Spatial.distManhattan (tilePos (leader ^. #pos)) rallyPos <= 3
-        healed = leader ^. #shield == leader ^. #shieldMax
+  ds <- agentGet
+  let unitByTag t = HashMap.lookup t (getUnitMap ds)
+      leader = fromJust $ unitByTag (head (squadUnits squad))
+      arrived = Spatial.distManhattan (tilePos (leader ^. #pos)) rallyPos <= 3
+      healed = leader ^. #shield == leader ^. #shieldMax
 
-    pure $
-        if arrived || healed
-            then Transition SSIdle
-            else Continue (SSRetreat st)
+  pure $
+    if arrived || healed
+      then Transition SSIdle
+      else Continue (SSRetreat st)
 
 -- ---------------------------------------------------------------------------
 -- Enter / Exit / Transition

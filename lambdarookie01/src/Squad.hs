@@ -18,7 +18,7 @@ type Squad = FSMSquad SquadState
 
 debugSquad :: (HasArmy d) => Squad -> StepMonad d ()
 debugSquad squad = do
-    ds <- agentGet
-    let unitByTag t = HashMap.lookup t (getUnitMap ds)
-        leader = fromJust $ unitByTag $ head $ squadUnits squad
-    debugUnit leader
+  ds <- agentGet
+  let unitByTag t = HashMap.lookup t (getUnitMap ds)
+      leader = fromJust $ unitByTag $ head $ squadUnits squad
+  debugUnit leader

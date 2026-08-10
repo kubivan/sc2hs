@@ -5,12 +5,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Actions (Action (..), toAction, toChatAction, UnitTag, ChatMsg, toDebug, DebugCommand (..), getCmd, getTarget, getExecutors, D.Color, D.Line) where
+module Actions
+  ( Action (..)
+  , toAction
+  , toChatAction
+  , UnitTag
+  , ChatMsg
+  , toDebug
+  , DebugCommand (..)
+  , getCmd
+  , getTarget
+  , getExecutors
+  , D.Color
+  , D.Line
+  ) where
 
-import SC2.Ids.AbilityId
-import SC2.Proto.Data qualified as Proto
-import SC2.Proto.Data(Unit, Point, Point2D)
 import SC2.Geometry
+import SC2.Ids.AbilityId
+import SC2.Proto.Data (Point, Point2D, Unit)
+import SC2.Proto.Data qualified as Proto
 
 import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()
@@ -25,11 +38,11 @@ type UnitTag = Word64
 type ChatMsg = Text
 
 data Action
-    = -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
-      PointCommand AbilityId [Unit] Point2D
-    | UnitCommand AbilityId [Unit] Unit
-    | SelfCommand AbilityId [Unit]
-    deriving (Show)
+  = -- | forall a. Pointable a => PointCommand AbilityId UnitTag a
+    PointCommand AbilityId [Unit] Point2D
+  | UnitCommand AbilityId [Unit] Unit
+  | SelfCommand AbilityId [Unit]
+  deriving (Show)
 
 getExecutors :: Action -> [Unit]
 getExecutors (UnitCommand _ us _) = us
@@ -44,9 +57,9 @@ getCmd (PointCommand a _ _) = a
 getTarget :: Action -> Point2D
 getTarget (PointCommand _ _ t) = t
 getTarget (UnitCommand _ _ t) = toPoint2D (tPos)
-  where
-    tPos :: Point
-    tPos = t ^. #pos
+ where
+  tPos :: Point
+  tPos = t ^. #pos
 
 -- // Display debug text on screen.
 -- message DebugText {
@@ -66,74 +79,73 @@ data DebugCommand = DebugText Text Point | DebugLine [(D.Color, D.Line)]
 
 toDebug :: DebugCommand -> D.DebugCommand
 toDebug (DebugText t p) = defMessage & #draw .~ drawMsg
-  where
-    drawMsg :: D.DebugDraw
-    drawMsg = defMessage & #text .~ [textMsg]
-    textMsg :: D.DebugText
-    textMsg = defMessage & #text .~ t & #worldPos .~ p
-
+ where
+  drawMsg :: D.DebugDraw
+  drawMsg = defMessage & #text .~ [textMsg]
+  textMsg :: D.DebugText
+  textMsg = defMessage & #text .~ t & #worldPos .~ p
 toDebug (DebugLine cls) = defMessage & #draw .~ drawMsg
-  where
-    drawMsg :: D.DebugDraw
-    drawMsg = defMessage & #lines .~ [lineMsg c l | (c, l) <- cls]
-    lineMsg :: D.Color -> D.Line -> D.DebugLine
-    lineMsg c l= defMessage & #color .~ c & #line .~ l
+ where
+  drawMsg :: D.DebugDraw
+  drawMsg = defMessage & #lines .~ [lineMsg c l | (c, l) <- cls]
+  lineMsg :: D.Color -> D.Line -> D.DebugLine
+  lineMsg c l = defMessage & #color .~ c & #line .~ l
 
 toChatAction :: ChatMsg -> Proto.Action
 toChatAction msg = defMessage & #actionChat .~ chat
-  where
-    chat =
-        defMessage
-            & #message -- cut the message because there is a limit
-            .~ Data.Text.take 128 msg -- TODO: investigate exact limit
+ where
+  chat =
+    defMessage
+      & #message -- cut the message because there is a limit
+      .~ Data.Text.take 128 msg -- TODO: investigate exact limit
 
 toAction :: Action -> Proto.Action
 toAction (PointCommand ability us target) =
+  defMessage
+    & #actionRaw
+    .~ attackRaw
+ where
+  attackRaw =
     defMessage
-        & #actionRaw
-        .~ attackRaw
-  where
-    attackRaw =
-        defMessage
-            & #unitCommand
-            .~ attactCommand
-    attactCommand =
-        defMessage
-            & #abilityId
-            .~ fromIntegral (fromEnum ability)
-            & #targetWorldSpacePos
-        .~ target
-            & #unitTags
-            .~ [u ^. #tag | u <- us]
+      & #unitCommand
+      .~ attactCommand
+  attactCommand =
+    defMessage
+      & #abilityId
+      .~ fromIntegral (fromEnum ability)
+      & #targetWorldSpacePos
+      .~ target
+      & #unitTags
+      .~ [u ^. #tag | u <- us]
 toAction (UnitCommand ability us target) =
+  defMessage
+    & #actionRaw
+    .~ attackRaw
+ where
+  attackRaw =
     defMessage
-        & #actionRaw
-        .~ attackRaw
-  where
-    attackRaw =
-        defMessage
-            & #unitCommand
-            .~ attactCommand
-    attactCommand =
-        defMessage
-            & #abilityId
-            .~ fromIntegral (fromEnum ability)
-            & #targetUnitTag
-            .~ (target ^. #tag)
-            & #unitTags
-            .~ [u ^. #tag | u <- us]
+      & #unitCommand
+      .~ attactCommand
+  attactCommand =
+    defMessage
+      & #abilityId
+      .~ fromIntegral (fromEnum ability)
+      & #targetUnitTag
+      .~ (target ^. #tag)
+      & #unitTags
+      .~ [u ^. #tag | u <- us]
 toAction (SelfCommand ability us) =
+  defMessage
+    & #actionRaw
+    .~ attackRaw
+ where
+  attackRaw =
     defMessage
-        & #actionRaw
-        .~ attackRaw
-  where
-    attackRaw =
-        defMessage
-            & #unitCommand
-            .~ attactCommand
-    attactCommand =
-        defMessage
-            & #abilityId
-            .~ fromIntegral (fromEnum ability)
-            & #unitTags
-            .~ [u ^. #tag | u <- us]
+      & #unitCommand
+      .~ attactCommand
+  attactCommand =
+    defMessage
+      & #abilityId
+      .~ fromIntegral (fromEnum ability)
+      & #unitTags
+      .~ [u ^. #tag | u <- us]

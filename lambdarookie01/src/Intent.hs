@@ -17,9 +17,20 @@ import Lens.Micro (Lens', (%~), (.~), (^.))
 import Lens.Micro.Extras
 import Observation (Cost (..), Observation, findNexus, getUnit, obsResources, obsUnitsC, unitsSelf)
 import SC2.Geometry (fromTuple)
-import SC2.Grid (Grid, TilePos, addMark, canPlaceBuilding, findPlacementPoint, findPlacementPointInRadius, removeMark, tilePos)
+import SC2.Grid
+  ( Grid
+  , TilePos
+  , addMark
+  , canPlaceBuilding
+  , findPlacementPoint
+  , findPlacementPointInRadius
+  , removeMark
+  , tilePos
+  )
 import SC2.Ids.AbilityId
-import SC2.Ids.UnitTypeId (UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon))
+import SC2.Ids.UnitTypeId
+  ( UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon)
+  )
 import SC2.Spatial (distManhattan)
 import SC2.Spatial qualified as Spatial
 import SC2.TechTree (abilityExecutor, unitToAbility)
@@ -274,7 +285,9 @@ findBuilder obs =
   availableProbe :: Unit -> Bool
   availableProbe unit =
     Prelude.null (unit ^. #orders)
-      || (length (unit ^. #orders) == 1 && HARVESTGATHERPROBE `elem` map (toEnum' . (^. #abilityId)) (unit ^. #orders))
+      || ( length (unit ^. #orders) == 1
+             && HARVESTGATHERPROBE `elem` map (toEnum' . (^. #abilityId)) (unit ^. #orders)
+         )
 
 findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
 findPlacementPos _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
@@ -375,7 +388,15 @@ targetInProgress target uid = do
           .| filterC
             ( \x ->
                 let dist = Spatial.distSquared (x ^. #pos) target
-                 in trace ("[targetInProgress] unit pos: " ++ show (x ^. #pos) ++ ", target: " ++ show target ++ ", dist: " ++ show dist) (dist <= 1)
+                 in trace
+                      ( "[targetInProgress] unit pos: "
+                          ++ show (x ^. #pos)
+                          ++ ", target: "
+                          ++ show target
+                          ++ ", dist: "
+                          ++ show dist
+                      )
+                      (dist <= 1)
             )
 
 expectingPylons :: (HasObs d) => StepMonad d Bool
@@ -410,7 +431,8 @@ liftBuildStepResult = liftLeafStepResult PBuildStructure
 liftTrainStepResult :: UnitTypeId -> TrainPhaseStepResult -> IntentStepResult d
 liftTrainStepResult = liftLeafStepResult PTrainUnit
 
-liftLeafStepResult :: (outer -> leafPhase -> IntentProgram d) -> outer -> StepResult leafPhase -> IntentStepResult d
+liftLeafStepResult ::
+  (outer -> leafPhase -> IntentProgram d) -> outer -> StepResult leafPhase -> IntentStepResult d
 liftLeafStepResult wrap outer = fmap (wrap outer)
 
 tickBuildPhase ::
@@ -420,88 +442,86 @@ tickBuildPhase ::
   BuildStructurePhase ->
   StepMonad d BuildPhaseStepResult
 tickBuildPhase iid uid currentPhase =
-  let
-    goNextFrame = stepBlockResult
-    goNextTick = stepContinueResult
-    retryNextFrame = goNextFrame currentPhase
-    startMonitoring reserved builder target = do
-      agentModifyReservedCost (+ reserved)
-      goNextTick (BSMonitoring builder target)
-   in
-    case currentPhase of
-      BSReserving -> do
-        ucost <- agentUnitCost uid
-        agentModifyReservedCost (\c -> c - ucost)
-        goNextTick (BSWaitResources ucost)
-      BSWaitResources reserved -> do
-        canAfford <- agentCanAffordWith reserved uid
-        canProduce <- abilityAvailableForUnit uid
-        if not (canAfford && canProduce)
-          then retryNextFrame
-          else goNextTick (BSGathering reserved)
-      BSGathering reserved -> do
-        mbBuilder <- agentFindBuilder
-        case mbBuilder of
-          Nothing -> retryNextFrame
-          Just builder -> do
-            placement <- findPlacementTarget uid
-            expectingPylonSupport <- expectingPylons
-            case placement of
-              Nothing ->
-                if expectingPylonSupport
-                  then retryNextFrame
-                  else stepNeedResult ProtossPylon
-              Just target -> do
-                commandBuild builder uid target
-                frame <- (^. #gameLoop) <$> agentObs
-                goNextFrame (BSIssued reserved (builder ^. #tag) target frame)
-      BSIssued reserved builder target startFrame -> do
-        obs <- agentObs
-        si <- agentStatic
-        frame <- (^. #gameLoop) <$> agentObs
-        let ability = unitToAbility (unitTraits si) uid
-            mbBuilder = getUnit obs builder
-            timedOut = buildPhaseTimedOut frame startFrame 0
-        started <- targetInProgress target uid
-        let builderAccepted unit = unitHasOrder ability unit
-            advanceIssuedPhase
-              | started = startMonitoring reserved builder target
-              | isNothing mbBuilder = stepDoneResult IntentFailed
-              | maybe False builderAccepted mbBuilder = do
-                  traceM
-                    ( "[intent]["
-                        ++ show iid
-                        ++ "][build] command accepted; waiting for start"
-                        ++ " uid="
-                        ++ show uid
-                        ++ " builder="
-                        ++ show builder
-                        ++ " frame="
-                        ++ show frame
-                    )
-                  let distToTarget = distManhattan (fromJust mbBuilder) target
-                  agentModifyReservedCost (+ reserved)
-                  goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
-              | timedOut = stepDoneResult IntentFailed
-              | otherwise = retryNextFrame
-        advanceIssuedPhase
-      BSAccepted builder target acceptedFrame distanceToTarget -> do
-        obs <- agentObs
-        frame <- (^. #gameLoop) <$> agentObs
-        let timedOut = buildPhaseTimedOut frame acceptedFrame distanceToTarget
-            builderMissing = isNothing (getUnit obs builder)
-        started <- targetInProgress target uid
-        let advanceAcceptedPhase
-              | started = goNextTick (BSMonitoring builder target)
-              | builderMissing = stepDoneResult IntentFailed
-              | timedOut = stepDoneResult IntentFailed
-              | otherwise = retryNextFrame
-        advanceAcceptedPhase
-      BSMonitoring _ target -> do
-        inProgress <- targetInProgress target uid
-        if inProgress
-          then stepDoneResult IntentCompleted
-          else retryNextFrame
+  let goNextFrame = stepBlockResult
+      goNextTick = stepContinueResult
+      retryNextFrame = goNextFrame currentPhase
+      startMonitoring reserved builder target = do
+        agentModifyReservedCost (+ reserved)
+        goNextTick (BSMonitoring builder target)
+   in case currentPhase of
+        BSReserving -> do
+          ucost <- agentUnitCost uid
+          agentModifyReservedCost (\c -> c - ucost)
+          goNextTick (BSWaitResources ucost)
+        BSWaitResources reserved -> do
+          canAfford <- agentCanAffordWith reserved uid
+          canProduce <- abilityAvailableForUnit uid
+          if not (canAfford && canProduce)
+            then retryNextFrame
+            else goNextTick (BSGathering reserved)
+        BSGathering reserved -> do
+          mbBuilder <- agentFindBuilder
+          case mbBuilder of
+            Nothing -> retryNextFrame
+            Just builder -> do
+              placement <- findPlacementTarget uid
+              expectingPylonSupport <- expectingPylons
+              case placement of
+                Nothing ->
+                  if expectingPylonSupport
+                    then retryNextFrame
+                    else stepNeedResult ProtossPylon
+                Just target -> do
+                  commandBuild builder uid target
+                  frame <- (^. #gameLoop) <$> agentObs
+                  goNextFrame (BSIssued reserved (builder ^. #tag) target frame)
+        BSIssued reserved builder target startFrame -> do
+          obs <- agentObs
+          si <- agentStatic
+          frame <- (^. #gameLoop) <$> agentObs
+          let ability = unitToAbility (unitTraits si) uid
+              mbBuilder = getUnit obs builder
+              timedOut = buildPhaseTimedOut frame startFrame 0
+          started <- targetInProgress target uid
+          let builderAccepted unit = unitHasOrder ability unit
+              advanceIssuedPhase
+                | started = startMonitoring reserved builder target
+                | isNothing mbBuilder = stepDoneResult IntentFailed
+                | maybe False builderAccepted mbBuilder = do
+                    traceM
+                      ( "[intent]["
+                          ++ show iid
+                          ++ "][build] command accepted; waiting for start"
+                          ++ " uid="
+                          ++ show uid
+                          ++ " builder="
+                          ++ show builder
+                          ++ " frame="
+                          ++ show frame
+                      )
+                    let distToTarget = distManhattan (fromJust mbBuilder) target
+                    agentModifyReservedCost (+ reserved)
+                    goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
+                | timedOut = stepDoneResult IntentFailed
+                | otherwise = retryNextFrame
+          advanceIssuedPhase
+        BSAccepted builder target acceptedFrame distanceToTarget -> do
+          obs <- agentObs
+          frame <- (^. #gameLoop) <$> agentObs
+          let timedOut = buildPhaseTimedOut frame acceptedFrame distanceToTarget
+              builderMissing = isNothing (getUnit obs builder)
+          started <- targetInProgress target uid
+          let advanceAcceptedPhase
+                | started = goNextTick (BSMonitoring builder target)
+                | builderMissing = stepDoneResult IntentFailed
+                | timedOut = stepDoneResult IntentFailed
+                | otherwise = retryNextFrame
+          advanceAcceptedPhase
+        BSMonitoring _ target -> do
+          inProgress <- targetInProgress target uid
+          if inProgress
+            then stepDoneResult IntentCompleted
+            else retryNextFrame
 
 tickBuildStructure ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
@@ -526,36 +546,34 @@ tickTrainPhase ::
   TrainUnitPhase ->
   StepMonad d TrainPhaseStepResult
 tickTrainPhase _ uid currentPhase =
-  let
-    goNextFrame = stepBlockResult
-    goNextTick = stepContinueResult
-    retryNextFrame = goNextFrame currentPhase
-   in
-    case currentPhase of
-      TUWaiting -> do
-        canAfford <- agentCanAfford uid
-        canProduce <- abilityAvailableForUnit uid
-        if not (canAfford && canProduce)
-          then retryNextFrame
-          else do
-            ucost <- agentUnitCost uid
-            agentModifyReservedCost (\c -> c - ucost)
-            goNextTick (TUGathering ucost)
-      TUGathering reserved -> do
-        si <- agentStatic
-        obs <- agentObs
-        let ability = unitToAbility (unitTraits si) uid
-            producerType = abilityExecutor HashMap.! ability
-        producer <- findProducerTag producerType
-        case producer of
-          Nothing -> retryNextFrame
-          Just tag ->
-            case getUnit obs tag of
-              Nothing -> stepDoneResult IntentFailed
-              Just executor -> do
-                command [SelfCommand ability [executor]]
-                agentModifyReservedCost (+ reserved)
-                stepDoneResult IntentCompleted
+  let goNextFrame = stepBlockResult
+      goNextTick = stepContinueResult
+      retryNextFrame = goNextFrame currentPhase
+   in case currentPhase of
+        TUWaiting -> do
+          canAfford <- agentCanAfford uid
+          canProduce <- abilityAvailableForUnit uid
+          if not (canAfford && canProduce)
+            then retryNextFrame
+            else do
+              ucost <- agentUnitCost uid
+              agentModifyReservedCost (\c -> c - ucost)
+              goNextTick (TUGathering ucost)
+        TUGathering reserved -> do
+          si <- agentStatic
+          obs <- agentObs
+          let ability = unitToAbility (unitTraits si) uid
+              producerType = abilityExecutor HashMap.! ability
+          producer <- findProducerTag producerType
+          case producer of
+            Nothing -> retryNextFrame
+            Just tag ->
+              case getUnit obs tag of
+                Nothing -> stepDoneResult IntentFailed
+                Just executor -> do
+                  command [SelfCommand ability [executor]]
+                  agentModifyReservedCost (+ reserved)
+                  stepDoneResult IntentCompleted
 
 tickProgram ::
   (HasObs d, HasGrid d, HasReservedCost d) =>

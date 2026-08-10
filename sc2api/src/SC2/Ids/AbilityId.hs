@@ -14,18 +14,18 @@ import Text.Read (readMaybe)
 import Data.Hashable
 
 instance Hashable AbilityId where
-    hash = fromEnum
-    hashWithSalt s val = fromEnum val + s
+  hash = fromEnum
+  hashWithSalt s val = fromEnum val + s
 
 -- TODO: move to TH part
 isBuildAbility :: AbilityId -> Bool
 isBuildAbility x = "BUILD" `isInfixOf` show x
 
 instance ToJSON AbilityId where
-    toJSON = toJSON . show
+  toJSON = toJSON . show
 
 instance FromJSON AbilityId where
-    parseJSON = withText "AbilityId" $ \txt ->
-        case readMaybe (unpack txt) of
-            Just utid -> pure utid
-            Nothing -> fail $ "Invalid AbilityId: " ++ unpack txt
+  parseJSON = withText "AbilityId" $ \txt ->
+    case readMaybe (unpack txt) of
+      Just utid -> pure utid
+      Nothing -> fail $ "Invalid AbilityId: " ++ unpack txt
