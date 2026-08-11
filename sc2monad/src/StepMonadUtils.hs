@@ -73,18 +73,11 @@ withAbilities :: (UnitAbilities -> a) -> StepMonad d a
 withAbilities f = f <$> agentAbilities
 
 withStaticObs :: (HasObs d) => (StaticInfo -> Observation -> a) -> StepMonad d a
-withStaticObs f = do
-  si <- agentStatic
-  obs <- agentObs
-  pure $ f si obs
+withStaticObs f = f <$> agentStatic <*> agentObs
 
 withStaticObsAbilities ::
   (HasObs d) => (StaticInfo -> Observation -> UnitAbilities -> a) -> StepMonad d a
-withStaticObsAbilities f = do
-  si <- agentStatic
-  obs <- agentObs
-  abilities <- agentAbilities
-  pure $ f si obs abilities
+withStaticObsAbilities f = f <$> agentStatic <*> agentObs <*> agentAbilities
 
 unitCost :: UnitTraits -> UnitTypeId -> Cost
 unitCost traits uid =
