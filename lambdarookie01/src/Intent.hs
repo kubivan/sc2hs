@@ -285,38 +285,6 @@ findProducerTag producerType = do
       .| unitTypeC producerType
       .| findC ((== 1) . (^. #buildProgress))
 
-agentFindBuilder :: (HasObs d) => StepMonad d (Maybe Unit)
-agentFindBuilder = findBuilder <$> agentObs
-
-findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
-findPlacementPos obs _ grid gridHeight ProtossPylon =
-  findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos (const True)
- where
-  nexusPos = tilePos $ getNexus obs ^. #pos
-findPlacementPos obs _ grid gridHeight uid = go pylons
- where
-  go (p : ps) =
-    case findPlacementPointInRadius grid gridHeight (getFootprint uid) p 6.5 of
-      Just res -> Just res
-      Nothing -> go ps
-  go [] = Nothing
-  pylons =
-    runC $
-      unitsSelf obs
-        .| unitTypeC ProtossPylon
-        .| mapTilePosC
-
-findPlacementTarget :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe Target)
-findPlacementTarget uid = do
-  obs <- agentObs
-  grid <- agentGrid
-  si <- agentStatic
-  pure $
-    if uid == ProtossAssimilator
-      then TargetUnit <$> findFreeGeyser obs
-      else TargetPos <$> Intent.findPlacementPos obs (expandsPos si) grid (heightMap si) uid
-
 commandBuild ::
   (HasObs d, HasGrid d) =>
   Unit ->
@@ -449,7 +417,7 @@ tickBuildPhase iid uid currentPhase =
             then retryNextFrame
             else goNextTick (BSGathering reserved)
         BSGathering reserved -> do
-          mbBuilder <- Intent.agentFindBuilder
+          mbBuilder <- agentFindBuilder
           case mbBuilder of
             Nothing -> retryNextFrame
             Just builder -> do

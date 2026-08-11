@@ -55,6 +55,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
+import Target (Target (..))
 
 findAssignee :: Observation -> Action -> Maybe Unit
 findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecutors a]) (obs ^. (#rawData . #units))
@@ -86,23 +87,23 @@ pylonRadius :: Float
 pylonRadius = 6.5
 
 findPlacementPos :: Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos _ expands grid heightMap ProtossNexus = find (\x -> canPlaceBuilding grid heightMap x (getFootprint ProtossNexus)) expands
-findPlacementPos obs _ grid heightMap ProtossPylon = findPlacementPoint grid heightMap (getFootprint ProtossPylon) nexusPos (const True)
+findPlacementPos _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
+findPlacementPos obs _ grid gridHeight ProtossPylon =
+  findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos (const True)
  where
-  nexusPos = tilePos . view #pos $ getNexus obs
-findPlacementPos obs _ grid heightMap id = go pylons
+  nexusPos = tilePos $ getNexus obs ^. #pos
+findPlacementPos obs _ grid gridHeight uid = go pylons
  where
-  go :: [TilePos] -> Maybe TilePos
-  go (p : ps) = case findPlacementPointInRadius grid heightMap (getFootprint id) p pylonRadius of
-    Just res -> Just res
-    Nothing -> go ps
+  go (p : ps) =
+    case findPlacementPointInRadius grid gridHeight (getFootprint uid) p 6.5 of
+      Just res -> Just res
+      Nothing -> go ps
   go [] = Nothing
   pylons =
     runC $
       unitsSelf obs
         .| unitTypeC ProtossPylon
-        .| filterC (\u -> u ^. #buildProgress == 1)
-        .| mapC (\x -> tilePos $ x ^. #pos)
+        .| mapTilePosC
 
 findFreeGeyser :: Observation -> Maybe Unit
 findFreeGeyser obs = do
@@ -114,6 +115,16 @@ findFreeGeyser obs = do
           (compare `on` (\u -> Spatial.distSquared u nexusPos))
           (runC $ obsUnitsC obs .| filterC isGeyser)
   find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) geysersSorted
+
+findPlacementTarget :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe Target)
+findPlacementTarget uid = do
+  obs <- agentObs
+  grid <- agentGrid
+  si <- agentStatic
+  pure $
+    if uid == ProtossAssimilator
+      then TargetUnit <$> findFreeGeyser obs
+      else TargetPos <$> findPlacementPos obs (expandsPos si) grid (heightMap si) uid
 
 -- ##################################### UNIT UTILS #####################################################################
 
