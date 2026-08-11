@@ -48,9 +48,11 @@ import Units
   )
 
 import Conduit (filterC, mapC, (.|))
+import Data.Foldable (minimumBy)
 import Data.Function (on)
 import Data.List (find, sortBy)
 import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
 import Safe (headMay)
@@ -101,15 +103,17 @@ findPlacementPos _ obs _ grid gridHeight uid = go pylons
         .| mapTilePosC
 
 findFreeGeyser :: Observation -> Maybe Unit
-findFreeGeyser obs = do
-  let assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
-  nexus <- findNexus obs
-  let nexusPos = tilePos $ nexus ^. #pos
-      geysersSorted =
-        sortBy
-          (compare `on` (`Spatial.distSquared` nexusPos))
-          (runC $ obsUnitsC obs .| filterC isGeyser)
-  find (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) geysersSorted
+findFreeGeyser obs = listToMaybe freeGeysers
+ where
+  assimilatorPositions = Set.fromList $ runC $ unitsSelf obs .| unitTypeC ProtossAssimilator .| mapTilePosC
+  nexuses = runC $ unitsSelf obs .| unitTypeC ProtossNexus .| mapTilePosC
+  freeGeysers =
+    runC $
+      obsUnitsC obs
+        .| filterC isGeyser
+        .| filterC (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) -- not occupied
+        .| filterC
+          (\ug -> 100 >= Spatial.distSquared ug (minimumBy (comparing (Spatial.distSquared ug)) nexuses))
 
 findPlacementTarget :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe Target)
 findPlacementTarget uid = do
