@@ -130,9 +130,9 @@ findPlacementTarget uid = do
 -- TODO: now we check length 1 to filter out the
 -- new assigned builder.
 unitIsHarvesting :: Units.Unit -> Bool
-unitIsHarvesting u = length orders == 1 && (HARVESTGATHERPROBE `elem` orders || HARVESTRETURNPROBE `elem` orders) -- `Utils.dbg` (show orders)
+unitIsHarvesting u = orders == Just HARVESTGATHERPROBE || orders == Just HARVESTRETURNPROBE
  where
-  orders = toEnum' . view #abilityId <$> u ^. #orders
+  orders = listToMaybe $ toEnum' . view #abilityId <$> u ^. #orders
 
 getTargetUnitTag :: Units.UnitOrder -> Maybe UnitTag
 getTargetUnitTag unitOrder = case unitOrder ^. #maybe'target of
