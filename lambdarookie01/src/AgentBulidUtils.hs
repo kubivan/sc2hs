@@ -65,9 +65,6 @@ actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCm
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 
-canAfford :: (HasObs d, HasReservedCost d) => UnitTypeId -> StepMonad d Bool
-canAfford = agentCanAfford
-
 agentFindBuilder :: (HasObs d) => StepMonad d (Maybe Unit)
 agentFindBuilder = findBuilder <$> agentObs
 
