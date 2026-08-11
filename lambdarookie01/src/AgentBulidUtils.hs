@@ -95,7 +95,7 @@ findPlacementPos obs _ grid gridHeight ProtossPylon =
 findPlacementPos obs _ grid gridHeight uid = go pylons
  where
   go (p : ps) =
-    case findPlacementPointInRadius grid gridHeight (getFootprint uid) p 6.5 of
+    case findPlacementPointInRadius grid gridHeight (getFootprint uid) p pylonRadius of
       Just res -> Just res
       Nothing -> go ps
   go [] = Nothing
