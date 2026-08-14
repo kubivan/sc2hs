@@ -26,8 +26,8 @@ boCurrentStep [] = Nothing
 boCurrentStep (step : _) = Just step
 
 boToIntent :: BOStep -> IntentProgram d
-boToIntent (BOBuild uid) = buildStructureIntent uid
-boToIntent (BOTrain uid) = trainUnitIntent uid
+boToIntent (BOBuild uid) = intentBuildStructure uid
+boToIntent (BOTrain uid) = intentTrainUnit uid
 
 spawnCurrentStepIntent :: (HasObs d, HasBuildIntents d) => IntentId -> BOStep -> StepMonad d ()
 spawnCurrentStepIntent iid step = spawnIntent iid (boToIntent step)

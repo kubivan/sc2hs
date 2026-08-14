@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.37.0.
+-- This file has been generated from package.yaml by hpack version 0.39.6.
 --
 -- see: https://github.com/sol/hpack
 
@@ -19,6 +19,7 @@ executable lambdarookie01
       Army.Army
       Army.Class
       ArmyLogic
+      Bot
       BotDynamicState
       Intent
       PlanM
@@ -36,7 +37,6 @@ executable lambdarookie01
       Squad.State
       SquadRetreat
       Target
-      TestBot
       Paths_lambdarookie01
   hs-source-dirs:
       src
@@ -73,6 +73,7 @@ test-suite lambdarookie01-test
       Army.Army
       Army.Class
       ArmyLogic
+      Bot
       BotDynamicState
       Intent
       Main
@@ -91,7 +92,6 @@ test-suite lambdarookie01-test
       Squad.State
       SquadRetreat
       Target
-      TestBot
       TestFixtures
       TestIntegrationRealGame
       TestIntentDsl

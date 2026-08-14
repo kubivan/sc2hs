@@ -166,17 +166,24 @@ maxIntentTransitionsPerFrame = 8
 feedbackRetentionFrames :: Word32
 feedbackRetentionFrames = 32
 
-buildStructureIntent :: UnitTypeId -> IntentProgram d
-buildStructureIntent uid = PBuildStructure uid BSReserving
+intentBuildStructure :: UnitTypeId -> IntentProgram d
+intentBuildStructure uid = PBuildStructure uid BSReserving
 
-trainUnitIntent :: UnitTypeId -> IntentProgram d
-trainUnitIntent uid = PTrainUnit uid TUWaiting
+intentTrainUnit :: UnitTypeId -> IntentProgram d
+intentTrainUnit uid = PTrainUnit uid TUWaiting
 
 andThen :: IntentProgram d -> IntentProgram d -> IntentProgram d
 andThen = PAndThen
 
 orElse :: IntentProgram d -> IntentProgram d -> IntentProgram d
 orElse = POrElse
+
+intentExpandFull :: IntentProgram d
+intentExpandFull =
+  intentBuildStructure ProtossNexus
+    `andThen` intentBuildStructure ProtossAssimilator
+    `andThen` intentBuildStructure ProtossPylon
+    `andThen` intentBuildStructure ProtossAssimilator
 
 matchIntentFromError :: [IssuedCommand] -> PendingActionError -> Maybe IntentId
 matchIntentFromError issued err =
@@ -616,7 +623,7 @@ intentEngine = do
               pure $ Just (iid, IntentFailed)
             IntentNeedsPrerequisite uid ->
               updateIntent i'
-                >> spawnIntentUnique (IntentId ("prereq-" ++ show uid)) (buildStructureIntent uid)
+                >> spawnIntentUnique (IntentId ("prereq-" ++ show uid)) (intentBuildStructure uid)
                 >> pure Nothing
             _ -> updateIntent i' >> pure Nothing
       )

@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module TestBot where
+module Bot where
 
 import Actions
 import Agent
@@ -57,6 +57,7 @@ import Conduit
   , mapC
   , runConduitPure
   , sinkList
+  , sumC
   , yieldMany
   , (.|)
   )
@@ -129,8 +130,7 @@ stepTowardsTechGoal goal = do
       availTechs =
         Set.fromList $
           map TechUnit $
-            catMaybes $
-              (abilityToUnitSafe traits) <$> HashMap.foldl' (++) [] abilities
+            mapMaybe (abilityToUnitSafe traits) (HashMap.foldl' (++) [] abilities)
 
       needToBuild = goal' `Set.difference` (currentTechs `Set.union` inProgress)
       pathTobuild = Set.toList $ availTechs `Set.intersection` needToBuild
@@ -147,11 +147,11 @@ stepTowardsTechGoal goal = do
       TechUnit u -> do
         if isUnitStructure u
           then do
-            -- spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (buildStructureIntent u)
-            spawnIntentUnique (IntentId ("step-towards-goal-build")) (buildStructureIntent u)
+            -- spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (intentBuildStructure u)
+            spawnIntentUnique (IntentId "step-towards-goal-build") (intentBuildStructure u)
           else do
             -- Unit training
-            spawnIntentUnique (IntentId ("step-towards-goal-train")) (trainUnitIntent u)
+            spawnIntentUnique (IntentId "step-towards-goal-train") (intentTrainUnit u)
       TechUpgrade upgrade -> do
         let upgradeAbility = researchDeps HashMap.! upgrade
             producer =
@@ -177,7 +177,7 @@ unitsData :: [Proto.UnitTypeData] -> UnitTraits
 unitsData raw =
   HashMap.fromList . runConduitPure $
     yieldMany raw
-      .| mapC (\a -> (toEnum . fromIntegral $ a ^. #unitId, a))
+      .| mapC (\a -> (toEnum' $ a ^. #unitId, a))
       .| sinkList
 
 canAffordCopies :: (HasObs d, HasReservedCost d) => UnitTypeId -> Int -> StepMonad d Bool
@@ -223,6 +223,26 @@ unitHasOrder :: AbilityId -> Units.Unit -> Bool
 unitHasOrder order u = order `elem` orders
  where
   orders = toEnum' . view #abilityId <$> u ^. #orders
+
+tryExpand :: (HasObs d, HasBuildIntents d) => StepMonad d ()
+tryExpand = do
+  obs <- agentObs
+  let units = unitsSelf obs
+      mineralFields = units .| filterC isMineral
+      countIf :: (a -> Bool) -> [a] -> Int
+      countIf p xs = length $ filter p xs
+
+      mineralsOfNexus n =
+        runConduitPure $
+          mineralFields
+            .| filterC (\m -> Spatial.distManhattan m n < 10)
+            .| mapC (view #mineralContents)
+            .| sumC
+
+      nexusesResources = runC $ units .| unitTypeC ProtossNexus .| mapC (\n -> (tilePos $ n ^. #pos, mineralsOfNexus n))
+
+  when (countIf (\(_, m) -> m < 8 * 300) nexusesResources > 0) $
+    spawnIntentUnique (IntentId "expanding") intentExpandFull
 
 reassignIdleProbes :: (HasObs d) => StepMonad d ()
 reassignIdleProbes = do
@@ -332,7 +352,7 @@ buildPylons = do
 
   -- TODO:
   when (foodCap + expectedFoodCap - foodUsed < 2) $
-    spawnIntentUnique (IntentId "buildPylons") (buildStructureIntent ProtossPylon)
+    spawnIntentUnique (IntentId "buildPylons") (intentBuildStructure ProtossPylon)
 
 debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
 debugUnitPos =
@@ -684,6 +704,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     debugSquads
     when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
     reassignIdleProbes
+    tryExpand
     agentArmyControl
     stepTowardsTechGoal deathBall
     outcomes <- intentEngine

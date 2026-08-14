@@ -1,5 +1,6 @@
 module Main where
 
+import Bot
 import Data.Text qualified as T
 import SC2.Launcher.BotConfig
 import SC2.Launcher.Game
@@ -7,7 +8,6 @@ import SC2.Launcher.LoadConfig
 import SC2.Launcher.Participant
 import SC2.Proto.Data (Map (LocalMap))
 import System.Exit (exitFailure)
-import TestBot
 
 botParticipant :: Participant
 botParticipant = Player EmptyBotAgent
@@ -28,7 +28,7 @@ runHost player cli = do
 
 runJoin :: Participant -> JoinCLI -> IO ()
 runJoin player cli = do
-  cfg <- loadOrFail (joinConfigPath cli)
+  cfg <- loadOrFail $ joinConfigPath cli
   let adjusted = applyJoinOverrides cfg cli
   print "Joining match with the following configuration:"
   print $ "Host: " <> networkHostName (buildNetwork (general adjusted))
