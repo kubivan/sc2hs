@@ -4,13 +4,13 @@ module BotDynamicState where
 
 import Actions (UnitTag)
 import Army.Army
+import Army.Class (HasArmy, getUnitMap)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
 import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
 import Lens.Micro ((%~), (^.))
 import Observation
 import SC2.Grid
-import Squad.Class
 import StepMonad
 import System.Random (Random, StdGen, randomR)
 

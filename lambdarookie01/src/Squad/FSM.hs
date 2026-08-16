@@ -1,12 +1,12 @@
 module Squad.FSM where
 
-import Squad.Class
 import Squad.FSEngage
 import Squad.FSExploreRegion
 import Squad.FSSquadForming
 import Squad.FSSquadIdle
 import SquadRetreat
 
+import Army.Class (HasArmy)
 import SC2.Grid (RegionId)
 import Squad.Squad
 import Squad.State

@@ -1,6 +1,6 @@
 module Squad.FSSquadIdle where
 
-import Squad.Class
+import Army.Class
 import Squad.FSMLog
 import Squad.Squad
 import Squad.State

@@ -11,6 +11,8 @@
 module Squad.Behavior where
 
 import Actions (Action (..), UnitTag)
+
+import Army.Class
 import Footprint
 import SC2.Geometry
 import SC2.Grid.Algo
@@ -18,21 +20,16 @@ import SC2.Grid.TilePos
 import SC2.Ids.AbilityId
 import SC2.Spatial qualified as Spatial
 import SC2.Utils
-import Squad.Class
 import Squad.Squad
 import StepMonad
 import Target (Target)
-import Units
-import Utils
 
+import Army.Army (armyByTag)
 import Control.Monad (filterM, void, when)
 import Data.Char (isDigit)
-import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
-import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Typeable
 import Debug.Trace
 import Lens.Micro
 import Lens.Micro.Extras (view)
@@ -42,7 +39,7 @@ isSquadFull :: (HasArmy d) => FSMSquad a -> StepMonad d Bool
 isSquadFull squad = do
   ds <- agentGet
   let unitMap = getUnitMap ds
-      tags = squadUnits squad
+      tags = squadTags squad
       -- TODO: magic number
       squadSize = 5
   return $
@@ -60,7 +57,7 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
   ds <- agentGet
   let unitByTag t = HashMap.lookup t (getUnitMap ds)
       -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-      (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
+      (leader : units) = catMaybes $ [unitByTag t | t <- squadTags squad]
       -- filter out leader 'c' : leader goes to center
       unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) formation
 
@@ -77,32 +74,30 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
 squadExploreRegion :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad a -> Region -> StepMonad d ()
 squadExploreRegion s region =
   do
-    ds <- agentGet
     grid <- agentGrid
-    let unitByTag t = fromJust $ HashMap.lookup t (getUnitMap ds)
-        targetPos = head $ Set.toList region
-        unitTags@(squadLeaderTag : squadsRest) = squadUnits s
-        leaderPos = tilePos . view #pos . unitByTag $ squadLeaderTag
+    let targetPos = head $ Set.toList region
+        unitTags@(squadLeaderTag : _) = squadTags s
+    leaderPos <- tilePos . view #pos . fromJust <$> armyByTag squadLeaderTag
 
-        GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeighbors grid) (== targetPos) (const False)
+    let GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeighbors grid) (== targetPos) (const False)
         posToGo = fromJust $ backoffList path 3
 
     if isNothing isFound
       then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
       else do
-        command [PointCommand ATTACKATTACK [unitByTag ut | ut <- unitTags] (fromTuple posToGo)]
+        units <- catMaybes <$> mapM armyByTag unitTags
+        command [PointCommand ATTACKATTACK units (fromTuple posToGo)]
 
 squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
 
 isSquadFormed :: (HasArmy d) => FSMSquad a -> TilePos -> Footprint -> StepMonad d Bool
 isSquadFormed squad center formation = do
-  ds <- agentGet
-  let unitByTag t = HashMap.lookup t (getUnitMap ds)
-      -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
-      (leader : units) = catMaybes $ [unitByTag t | t <- squadUnits squad]
-      -- filter out leader 'c' : leader goes to center
+  squadTags <- catMaybes <$> mapM armyByTag (squadTags squad)
+  let -- filter out leader 'c' : leader goes to center
       unitsFormationPos = (\(dx, dy, _) -> center + (dx, dy)) <$> filter (\(_, _, ch) -> isDigit ch) (pixels formation)
+      -- TODO: it shouldn't happen: updateArmy had to remove dead units from squads
+      (_ : units) = squadTags
 
       unitsWithPos = take (length units) unitsFormationPos `zip` units
   return $ all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos

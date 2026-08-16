@@ -8,7 +8,6 @@ import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Spatial qualified as Spatial
 import Squad.Behavior (isSquadFull)
-import Squad.Class
 import Squad.FSMLog
 import Squad.Squad
 import Squad.State
@@ -25,6 +24,7 @@ import Lens.Micro.Extras (view)
 
 import Debug.Trace (trace)
 
+import Army.Class (HasArmy (..))
 import Proto.S2clientprotocol.Common (Point2D)
 import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
 
@@ -128,7 +128,7 @@ engageFarStep squad (FSEngageFar enemyTag) = do
   obs <- agentObs
   let unitByTag t = HashMap.lookup t (getUnitMap ds)
       enemy = fromJust $ getUnit obs enemyTag
-      units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+      units = catMaybes $ [unitByTag t | t <- squadTags squad]
   traceFSM squad "step"
   command [UnitCommand ATTACKATTACK units enemy]
 engageFarStep _ _ = pure ()
@@ -141,7 +141,7 @@ engageCloseStep squad (FSEngageClose enemyTag) = do
   traceFSM squad "step"
   let unitByTag t = HashMap.lookup t (getUnitMap ds)
       enemy = fromJust $ getUnit obs enemyTag
-      units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+      units = catMaybes $ [unitByTag t | t <- squadTags squad]
   debugUnit enemy
   mapM_ (\u -> debugUnitVec u (unitSeek u enemy)) units
   mapM_ (`unitEngageBehaviorTree` enemy) units
@@ -156,7 +156,7 @@ engageCloseUpdate squad st@(FSEngageClose enemyTag) = do
   obs <- agentObs
   ds <- agentGet
   let unitByTag t = HashMap.lookup t (getUnitMap ds)
-      leader = fromJust $ unitByTag (head (squadUnits squad))
+      leader = fromJust $ unitByTag (head (squadTags squad))
       damaged = leader ^. #shield <= leader ^. #shieldMax / 2
   if damaged
     then do
@@ -181,7 +181,7 @@ engageFarUpdate squad st@(FSEngageFar enemyTag) = do
   obs <- agentObs
   let unitByTag t = HashMap.lookup t (getUnitMap ds)
       enemy = getUnit obs enemyTag
-      leader = fromJust $ unitByTag . head . squadUnits $ squad
+      leader = fromJust $ unitByTag . head . squadTags $ squad
   inRange <- case enemy of
     Just e -> isEnemyInRange e leader
     Nothing -> return False

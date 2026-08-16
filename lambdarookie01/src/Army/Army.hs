@@ -1,20 +1,20 @@
 module Army.Army where
 
 import Actions (Action (..), UnitTag)
-import Footprint
-import SC2.Grid.Algo
+import Army.Class
 import SC2.Grid.TilePos
-import Squad
+
+import Squad.Squad
 import StepMonad
 import Units
-import Utils
 
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe
 import Data.Set (Set)
 import Data.Set qualified as Set
-import System.Random (Random, StdGen, randomR)
+import Squad.State (SquadState)
+
+-- import System.Random (Random, StdGen, randomR)
 
 data ArmyUnitData = ArmyUnitData
   { auVisitedTiles :: Set TilePos
@@ -25,8 +25,13 @@ data Army = Army
   { armyUnitsData :: HashMap UnitTag ArmyUnitData
   , armyUnits :: HashMap UnitTag Unit
   , armyUnitsPos :: Set TilePos
-  , armySquads :: [Squad]
+  , armySquads :: [FSMSquad SquadState]
   }
 
+armyByTag :: (HasArmy d) => UnitTag -> StepMonad d (Maybe Unit)
+armyByTag t = do
+  ds <- agentGet
+  let units = getUnitMap ds
+  pure $ HashMap.lookup t units
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []

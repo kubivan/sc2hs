@@ -6,7 +6,6 @@ import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Utils
 import Squad.Behavior
-import Squad.Class
 import Squad.FSMLog
 import Squad.Squad
 import Squad.State
@@ -14,15 +13,14 @@ import StepMonad
 import StepMonadUtils
 
 import Control.Monad
-import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 
 import Footprint
 
-import Data.Char (isDigit)
+import Army.Class (HasArmy)
+import SquadUtils (squadUnits)
 
 -- ---------------------------------------------------------------------------
 -- Step
@@ -40,9 +38,7 @@ exploreRegionUpdate ::
 exploreRegionUpdate squad st@(FSExploreRegion rid region)
   | Set.size region == 0 = return (Transition SSIdle)
   | otherwise = do
-      ds <- agentGet
-      let unitByTag t = HashMap.lookup t (getUnitMap ds)
-          units = catMaybes $ [unitByTag t | t <- squadUnits squad]
+      units <- squadUnits squad
 
       pixelsToRemove <- fmap concat $ forM units $ \u -> do
         sightRange <- siUnitSightRange u

@@ -28,7 +28,6 @@ import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (minimumBy, partition)
 import Data.List.Split (chunksOf)
-import Data.Maybe (catMaybes, fromJust)
 import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
@@ -59,30 +58,30 @@ agentUpdateDsArmy = do
       -- remove dead units
       squads =
         concatMap
-          (\s -> let su = squadUnits s in [s{squadUnits = filter (`HashMap.member` armyHashMap) su}])
+          (\s -> let su = squadTags s in [s{squadTags = filter (`HashMap.member` armyHashMap) su}])
           (armySquads $ dsArmy ds)
 
       fillSquads :: [Squad] -> [UnitTag] -> ([Squad], [UnitTag])
       fillSquads [] rest = ([], rest)
       fillSquads squads [] = (squads, [])
       fillSquads (s : rest) rookies =
-        let aliveUnits = filter (`HashMap.member` armyHashMap) (squadUnits s)
+        let aliveUnits = filter (`HashMap.member` armyHashMap) (squadTags s)
             unitsNeeded = squadSize - length aliveUnits
             (assigned, remaining) = splitAt unitsNeeded rookies
-            s' = s{squadUnits = aliveUnits ++ assigned}
+            s' = s{squadTags = aliveUnits ++ assigned}
             (filledRest, leftover) = fillSquads rest remaining
          in (s' : filledRest, leftover)
 
       isSquadFull :: Squad -> Bool
-      isSquadFull squad = all (`HashMap.member` armyHashMap) (squadUnits squad) && (squadSize == length (squadUnits squad))
+      isSquadFull squad = all (`HashMap.member` armyHashMap) (squadTags squad) && (squadSize == length (squadTags squad))
 
       isSquadEmpty :: Squad -> Bool
-      isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadUnits squad)
+      isSquadEmpty squad = noneOf (`HashMap.member` armyHashMap) (squadTags squad)
 
       (squadsFull, squadsToCheck) = partition isSquadFull squads
       (squadsDead, squadsNotFull) = partition isSquadEmpty squadsToCheck
 
-      squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadUnits squad) [] (squadsFull ++ squadsNotFull)
+      squadedUnitTags = Set.fromList $ foldl' (\acc squad -> acc ++ squadTags squad) [] (squadsFull ++ squadsNotFull)
 
       freeArmyUnitTags =
         runC $
@@ -91,7 +90,7 @@ agentUpdateDsArmy = do
 
       newSquadUnits = chunksOf 5 restUnits
       newSquads =
-        concatMap (\us -> [Squad{squadUnits = us, squadState = SSForming FSFormingUnplaced}]) newSquadUnits
+        concatMap (\us -> [Squad{squadTags = us, squadState = SSForming FSFormingUnplaced}]) newSquadUnits
 
       army' =
         (dsArmy ds)

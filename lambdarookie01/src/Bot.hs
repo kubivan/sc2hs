@@ -99,6 +99,7 @@ import StepMonadUtils (agentUnitCost)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
+import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
 deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
@@ -372,7 +373,7 @@ debugSquads = do
       hashArmy = armyUnits . dsArmy $ ds
 
       squadLeaderTags :: [UnitTag]
-      squadLeaderTags = head . squadUnits <$> squads
+      squadLeaderTags = head . squadTags <$> squads
       squadLeaders = getUnits squadLeaderTags hashArmy
   mapM_ debugSquad squads
   -- debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
@@ -419,11 +420,9 @@ squadSeek squad = case squadState squad of
   SSEngage (FSEngageClose _) -> return True
   SSEngage (FSEngageFar _) -> return True
   _ -> do
-    ds <- agentGet
     obs <- agentObs
-    let unitByTag t = HashMap.lookup t (armyUnits (dsArmy ds))
-        units = catMaybes $ [unitByTag t | t <- squadUnits squad]
-        leader = head $ units
+    units <- squadUnits squad
+    let leader = head $ units
         closestEnemy = runConduitPure $ obsUnitsC obs .| filterC isEnemy .| closestC leader
     case closestEnemy of
       Nothing -> return False
@@ -434,10 +433,9 @@ squadSeek squad = case squadState squad of
 
 squadAssignToExploreBlind :: Squad -> StepMonad BotDynamicState Bool
 squadAssignToExploreBlind squad = do
-  ds <- agentGet
   si <- agentStatic
-  let unitByTag t = HashMap.lookup t (armyUnits (dsArmy ds))
-      units = catMaybes [unitByTag t | t <- squadUnits squad]
+  units <- squadUnits squad
+
   case units of
     [] -> return False
     _ -> do
@@ -446,8 +444,7 @@ squadAssignToExploreBlind squad = do
 
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
 squadAssignToExplore s = do
-  assigned <- isJust <$> runMaybeT (assignSegmented s)
-  return assigned
+  isJust <$> runMaybeT (assignSegmented s)
  where
   assignSegmented :: Squad -> MaybeStepMonad BotDynamicState Bool
   assignSegmented squad = do

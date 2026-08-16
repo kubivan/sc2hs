@@ -1,7 +1,5 @@
 module Squad.FSSquadForming where
 
-import Squad.Class
-
 import Actions (Action (..), UnitTag)
 import SC2.Geometry
 import SC2.Grid
@@ -17,12 +15,12 @@ import StepMonadUtils
 import Control.Monad (void)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
-import Data.Set qualified as Set
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 
 import Footprint
 
+import Army.Class (HasArmy, getUnitMap)
 import Data.Char (isDigit)
 
 -- ---------------------------------------------------------------------------
@@ -44,7 +42,7 @@ formingUpdate s FSFormingUnplaced = do
   ds <- agentGet
   let formation = squadFormationFootprint
       unitByTag t = HashMap.lookup t (getUnitMap ds)
-      units = catMaybes $ [unitByTag t | t <- squadUnits s]
+      units = catMaybes $ [unitByTag t | t <- squadTags s]
       leader = head units
       leaderTpos = tilePos $ leader ^. #pos
   gatherPlace <- findPlacementPointInRadiusSM formation leaderTpos 10
