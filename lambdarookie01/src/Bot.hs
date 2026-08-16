@@ -228,14 +228,14 @@ tryExpand :: (HasObs d, HasBuildIntents d) => StepMonad d ()
 tryExpand = do
   obs <- agentObs
   let units = unitsSelf obs
-      mineralFields = units .| filterC isMineral
+      mineralFields = obsUnitsC obs .| filterC isMineral -- .| filterC (\m -> m ^. #mineralContents > 0)
       countIf :: (a -> Bool) -> [a] -> Int
       countIf p xs = length $ filter p xs
 
       mineralsOfNexus n =
         runConduitPure $
           mineralFields
-            .| filterC (\m -> Spatial.distManhattan m n < 10)
+            .| filterC (\m -> Spatial.distSquared m n < 15 ^ 2)
             .| mapC (view #mineralContents)
             .| sumC
 
