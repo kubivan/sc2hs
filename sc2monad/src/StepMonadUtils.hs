@@ -57,6 +57,7 @@ import Proto.S2clientprotocol.Common_Fields as C
 import Proto.S2clientprotocol.Raw_Fields qualified as PR
 import SC2.Geometry
 
+import Data.Maybe (fromMaybe, listToMaybe)
 import Debug.Trace
 import Lens.Micro (to, (&), (.~), (^.), (^..))
 import Lens.Micro.Extras (view)
@@ -184,8 +185,8 @@ siUnitRange :: Unit -> Unit -> StepMonad d Float
 siUnitRange u e = do
   -- TODO: take into account different data.weapons: air/ground etc
   udata <- siUnitData u
-  let range = view #range $ headF ("no weapons in unit " ++ show u) $ udata ^. #weapons
-  return range
+  let maybeWeaponRange = view #range <$> listToMaybe (udata ^. #weapons)
+  return $ fromMaybe 6.5 maybeWeaponRange
 
 siUnitSightRange :: Unit -> StepMonad d Float
 siUnitSightRange u = do
