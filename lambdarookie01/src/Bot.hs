@@ -355,24 +355,21 @@ debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, Un
 debugUnitPos =
   agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
 
-getUnits :: [UnitTag] -> HashMap.HashMap UnitTag Unit -> [Unit]
-getUnits tags hashArmy = catMaybes $ (\t -> HashMap.lookup t hashArmy) <$> tags
-
 debugSquads :: StepMonad BotDynamicState ()
 debugSquads = do
-  -- agentObs >>= \obs -> debugTexts [("squad " ++ show (), c ^. #pos) | c <- runC $ unitsSelf obs]
   ds <- agentGet
   (si, _) <- agentAsk
   let regionLookupMap = siRegionLookup si
       squads = armySquads . dsArmy $ ds
-      hashArmy :: HashMap.HashMap UnitTag Unit
-      hashArmy = armyUnits . dsArmy $ ds
 
-      squadLeaderTags :: [UnitTag]
-      squadLeaderTags = head . squadTags <$> squads
-      squadLeaders = getUnits squadLeaderTags hashArmy
   mapM_ debugSquad squads
-  -- debugTexts [("s " ++ show (u ^. #tag) ++ " at " ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap) ++ " state " ++ show (armyUnitStateStr $ squadState s) ++ " " ++ show (u ^. #orders), u ^. #pos) | (u, s) <- zip squadLeaders squads]
+
+  squadUnitsList <- mapM squadUnits squads
+
+  -- Pattern matching (u:_) safely extracts the first unit (leader)
+  -- only from non-empty squads, preserving squad association.
+  let squadAndLeaders = [(u, s) | (s, u : _) <- zip squads squadUnitsList]
+
   debugTexts
     [ ( "s "
           ++ show (u ^. #tag)
@@ -382,7 +379,7 @@ debugSquads = do
           ++ show (u ^. #facing)
       , u ^. #pos
       )
-    | (u, s) <- zip squadLeaders squads
+    | (u, _s) <- squadAndLeaders
     ]
 
 agentResetGrid :: (HasObs d, HasGrid d) => StepMonad d ()
