@@ -127,8 +127,6 @@ findPlacementTarget uid = do
 
 -- ##################################### UNIT UTILS #####################################################################
 
--- TODO: now we check length 1 to filter out the
--- new assigned builder.
 unitIsHarvesting :: Units.Unit -> Bool
 unitIsHarvesting u = orders == Just HARVESTGATHERPROBE || orders == Just HARVESTRETURNPROBE
  where
