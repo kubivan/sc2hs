@@ -31,7 +31,7 @@ import PlanM
 import SC2.TechTree
 import SC2.Utils
 import Squad
-import Squad qualified as Squad
+import Squad qualified
 import Squad.Behavior
 import Squad.State
 import StepMonad
@@ -61,6 +61,9 @@ import Conduit
   , yieldMany
   , (.|)
   )
+import Data.Conduit
+import Data.Conduit.Combinators qualified as CC
+
 import Control.Applicative (Alternative (..))
 import Control.Concurrent (forkIO)
 import Control.Monad
@@ -88,14 +91,7 @@ import Proto.S2clientprotocol.Error qualified as E
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
 import SC2.Ids.UpgradeId (UpgradeId (Darktemplarblinkupgrade))
-import StepMonad
-  ( AsyncStaticInfo (..)
-  , StaticInfo (siAsyncStaticInfo)
-  , siRegionLookup
-  , siRegionPathToEnemyResolved
-  , siRegionsResolved
-  )
-import StepMonadUtils (agentUnitCost)
+import StepMonadUtils (agentUnitCost, siUnitRange)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
@@ -394,14 +390,12 @@ agentResetGrid =
   {-# SCC "agentResetGrid" #-}
   do
     obs <- agentObs
-    ds <- agentGet
     gridPlacementStart <- gridFromImage . view (#startRaw . #placementGrid) . gameInfo <$> agentStatic
     gridPathingStart <- gridFromImage . view (#startRaw . #pathingGrid) . gameInfo <$> agentStatic
 
     let gridMerged = gridMerge pixelIsRamp gridPlacementStart gridPathingStart
         grid' = gridUpdate obs gridMerged
 
-    -- agentPut $ setGrid grid' ds
     agentModifyGrid (const grid')
 
 agentUpdateGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
@@ -415,21 +409,39 @@ squadAssign s = do
   canExplore <- squadAssignToExplore' s
   return $ canSeek || canExplore
 
+-- | Finds the best target based on proximity and unit type.
+findTargetC :: (Monad m) => Unit -> Int -> ConduitT Unit o m (Maybe Unit)
+findTargetC leader range = do
+  -- 1. Gather all enemies from the source
+  allEnemies <- CC.sinkList
+
+  -- 2. Separate them into army units and general enemies
+  let armyUnits = filter isArmyUnit allEnemies
+      armyInRange = filter (\u -> Spatial.distSquared leader u <= range ^ 2) armyUnits
+
+  -- 3. Apply your targeting logic
+  return $
+    if not (null armyInRange)
+      then runConduitPure $ yieldMany armyInRange .| closestC leader
+      else runConduitPure $ yieldMany allEnemies .| closestC leader
+
 squadSeek :: Squad -> StepMonad BotDynamicState Bool
 squadSeek squad = case squadState squad of
-  SSEngage (FSEngageClose _) -> return True
-  SSEngage (FSEngageFar _) -> return True
-  _ -> do
-    obs <- agentObs
-    units <- squadUnits squad
-    let leader = head $ units
-        closestEnemy = runConduitPure $ obsUnitsC obs .| filterC isEnemy .| closestC leader
-    case closestEnemy of
-      Nothing -> return False
-      (Just enemy) -> do
-        let squad' = squad{squadState = SSEngage (FSEngageFar (enemy ^. #tag))}
-        agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
-        return True
+  -- SSEngage (FSEngageClose _) -> return True
+  -- SSEngage (FSEngageFar _) -> return True
+  _ ->
+    do
+      obs <- agentObs
+      units <- squadUnits squad
+      let leader = head units
+      range <- floor <$> siUnitRange leader leader -- TODO: fix second param
+      let closestEnemy = runConduitPure $ obsUnitsC obs .| CC.filter isEnemy .| findTargetC leader range
+      case closestEnemy of
+        Nothing -> return False
+        (Just enemy) -> do
+          let squad' = squad{squadState = SSEngage (FSEngageFar (enemy ^. #tag))}
+          agentModifyArmy (\army -> army{armySquads = replaceSquad squad' (armySquads army)})
+          return True
 
 squadAssignToExploreBlind :: Squad -> StepMonad BotDynamicState Bool
 squadAssignToExploreBlind squad = do

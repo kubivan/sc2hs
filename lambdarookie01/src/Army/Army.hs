@@ -33,5 +33,6 @@ armyByTag t = do
   ds <- agentGet
   let units = getUnitMap ds
   pure $ HashMap.lookup t units
+
 emptyArmy :: Army
 emptyArmy = Army HashMap.empty HashMap.empty Set.empty []
