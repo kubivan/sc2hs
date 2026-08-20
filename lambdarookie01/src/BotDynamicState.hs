@@ -60,12 +60,12 @@ agentWithRandGen f = do
   pure value
 
 setRandGen :: StdGen -> BotDynamicState -> BotDynamicState
-setRandGen gen (BotDynamicState obs grid reserved _ army intents) = BotDynamicState obs grid reserved gen army intents
+setRandGen gen ds = ds{dsRandGen = gen}
 
 getRandValue :: (Random a) => (a, a) -> BotDynamicState -> (a, BotDynamicState)
-getRandValue range (BotDynamicState obs grid reserved gen army intents) =
-  let (value, newGen) = randomR range gen
-   in (value, BotDynamicState obs grid reserved newGen army intents)
+getRandValue range ds =
+  let (value, newGen) = randomR range (dsRandGen ds)
+   in (value, ds{dsRandGen = newGen})
 
 bdsUpdateArmyUnitData :: BotDynamicState -> UnitTag -> ArmyUnitData -> BotDynamicState
 bdsUpdateArmyUnitData ds tag newUnitData = ds{dsArmy = dsArmy'}
