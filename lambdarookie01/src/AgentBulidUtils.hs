@@ -64,6 +64,9 @@ findAssignee obs a = find (\u -> (u ^. #tag) `elem` [u ^. #tag | u <- getExecuto
 actionCost :: StaticInfo -> Action -> Cost
 actionCost si = unitCost (unitTraits si) . abilityToUnit (unitTraits si) . getCmd
 
+actionCostSafe :: StaticInfo -> Action -> Maybe Cost
+actionCostSafe si act = unitCost (unitTraits si) <$> (abilityToUnitSafe (unitTraits si) . getCmd $ act)
+
 actionsCost :: StaticInfo -> [Action] -> Cost
 actionsCost si xs = sum $ actionCost si <$> xs
 

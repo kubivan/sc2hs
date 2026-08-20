@@ -63,6 +63,7 @@ import Conduit
   )
 import Data.Conduit
 import Data.Conduit.Combinators qualified as CC
+import Data.Sequence qualified as Seq
 
 import Control.Applicative (Alternative (..))
 import Control.Concurrent (forkIO)
@@ -95,6 +96,7 @@ import StepMonadUtils (agentUnitCost, siUnitRange)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
+import ResourceFlow (ResourceRate (..), ResourceRateState (..), updateResourceRate)
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
@@ -555,7 +557,15 @@ data BotAgent
 makeDynamicState :: Observation -> Grid -> IO BotDynamicState
 makeDynamicState obs grid = do
   gen <- newStdGen
-  return $ BotDynamicState obs grid (Cost 0 0) gen emptyArmy Map.empty
+  return $
+    BotDynamicState
+      obs
+      grid
+      (Cost 0 0)
+      gen
+      emptyArmy
+      Map.empty
+      (ResourceRateState Seq.empty (ResourceRate 0 0))
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
 hasActiveBoIntent = do
@@ -638,20 +648,38 @@ instance Agent BotAgent where
   agentStep (BotAgent phase si ds env) obs abilities = do
     asyncResult <- readTVarIO (chokeVar env)
     let errors = obs ^. #actionErrors
+        obsRaw = obs ^. #observation
         pendingErrors = mapMaybe actionErrorToPending errors
         si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
         sm = agentStepPhase phase
-        dsPrepared = ds{dsObs = obs ^. #observation}
+        dsPrepared = ds{dsObs = obsRaw}
         (phase', plan, ds') = runStepM si' abilities dsPrepared sm
-        actions = obs ^. #actions
+        frameCost = sum $ mapMaybe (actionCostSafe si') (botCommands plan)
+        resourceRate' =
+          updateResourceRate
+            (fromIntegral $ obsRaw ^. #gameLoop)
+            (obsResources obsRaw)
+            frameCost
+            resourceRateWindow
+            (dsResourceRateState ds')
+
         tracedResult =
-          if not (null actions) || not (null errors)
-            then (BotAgent phase' si' ds' env, plan)
-            else (BotAgent phase' si' ds' env, plan)
-    when (not . null $ obs ^. #actionErrors) $
-      traceM $
-        "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)
-    when (not . null $ obs ^. #actions) $ traceM $ "!!!actions: " <> (show $ obs ^. #actions)
+          (BotAgent phase' si' ds'{dsResourceRateState = resourceRate'} env, plan)
+    -- traceM $ "!!! COMMANDS: " <> show commands
+    traceM $
+      "!!! actions: "
+        <> (show $ botCommands plan)
+        <> " income "
+        <> (show $ obsResources obsRaw)
+    traceM $
+      "!!! RESOURCE COLLECTION RATE: "
+        <> (show . rate $ resourceRate')
+        <> " FRAME COST"
+        <> (show frameCost)
+    -- unless (null obs ^. #actionErrors) $
+    --   traceM $
+    --     "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)
+    -- unless (null obs ^. #actions) $ traceM $ "!!!actions: " <> show (obs ^. #actions)
     pure tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase

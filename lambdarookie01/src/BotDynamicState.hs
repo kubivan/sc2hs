@@ -10,9 +10,15 @@ import Data.HashMap.Strict qualified as HashMap
 import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
 import Lens.Micro ((%~), (^.))
 import Observation
+import ResourceFlow (ResourceRateState)
 import SC2.Grid
 import StepMonad
 import System.Random (Random, StdGen, randomR)
+
+data ResourceSample = ResourceSample
+  { rsMinerals :: Int
+  , rsGas :: Int
+  }
 
 data BotDynamicState = BotDynamicState
   { dsObs :: Observation
@@ -21,6 +27,7 @@ data BotDynamicState = BotDynamicState
   , dsRandGen :: StdGen
   , dsArmy :: Army
   , dsIntents :: IntentStore BotDynamicState
+  , dsResourceRateState :: ResourceRateState
   }
 
 instance HasObs BotDynamicState where
