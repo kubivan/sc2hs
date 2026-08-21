@@ -96,7 +96,13 @@ import StepMonadUtils (agentUnitCost, siUnitRange)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
-import ResourceFlow (ResourceRate (..), ResourceRateState (..), updateResourceRate)
+import ResourceFlow
+  ( CostRate (..)
+  , ResourceRate (..)
+  , ResourceRateState (..)
+  , resourceRateWindow
+  , updateResourceRate
+  )
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
@@ -565,7 +571,7 @@ makeDynamicState obs grid = do
       gen
       emptyArmy
       Map.empty
-      (ResourceRateState Seq.empty (ResourceRate 0 0))
+      (ResourceRateState Seq.empty (ResourceRate (CostRate 0 0) (CostRate 0 0)))
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
 hasActiveBoIntent = do
@@ -688,7 +694,7 @@ agentStepPhase Opening =
   do
     obs <- agentObs
 
-    agentModifyGrid (\g -> gridUpdate obs g)
+    agentModifyGrid (gridUpdate obs)
     let nexus = maybeToList $ findNexus obs
         fourGateBuild =
           [ ProtossPylon

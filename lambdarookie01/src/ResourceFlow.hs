@@ -16,6 +16,12 @@ data ResourceRateState = ResourceRateState
   deriving (Show, Eq)
 
 data ResourceRate = ResourceRate
+  { incomeRate :: CostRate
+  , spendRate :: CostRate
+  }
+  deriving (Show, Eq)
+
+data CostRate = CostRate
   { mineralRate :: Double
   , gasRate :: Double
   }
@@ -33,21 +39,42 @@ calculateResourceRate xs =
   case (Seq.lookup 0 xs, Seq.lookup (Seq.length xs - 1) xs) of
     (Just firstSample, Just lastSample)
       | frameDelta > 0 ->
-          let t = lastSample.incomeRes - firstSample.incomeRes + spent
-           in ResourceRate
-                { mineralRate = (fromIntegral t.mineralCost) / fromIntegral frameDelta
-                , gasRate = (fromIntegral t.gasCost) / fromIntegral frameDelta
-                }
+          ResourceRate
+            { incomeRate =
+                CostRate
+                  { mineralRate =
+                      fromIntegral
+                        (resourceDelta.mineralCost + spent.mineralCost)
+                        / fromIntegral frameDelta
+                  , gasRate =
+                      fromIntegral
+                        (resourceDelta.gasCost + spent.gasCost)
+                        / fromIntegral frameDelta
+                  }
+            , spendRate =
+                CostRate
+                  { mineralRate =
+                      fromIntegral spent.mineralCost
+                        / fromIntegral frameDelta
+                  , gasRate =
+                      fromIntegral spent.gasCost
+                        / fromIntegral frameDelta
+                  }
+            }
      where
       frameDelta =
         lastSample.frame - firstSample.frame
 
-      -- Spending associated with frames inside the interval.
-      interval =
-        Seq.drop 1 xs
-      spent = sum $ (.spentRes) <$> interval
+      resourceDelta =
+        lastSample.incomeRes - firstSample.incomeRes
+
+      spent =
+        sum $ (.spentRes) <$> Seq.drop 1 xs
     _ ->
-      ResourceRate 0 0
+      ResourceRate
+        { incomeRate = CostRate 0 0
+        , spendRate = CostRate 0 0
+        }
 
 updateResourceRate ::
   -- | current frame
