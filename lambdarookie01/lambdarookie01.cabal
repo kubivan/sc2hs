@@ -24,6 +24,7 @@ executable lambdarookie01
       Intent
       PlanM
       ResourceFlow
+      ResourceFlowSM
       Squad
       Squad.Behavior
       Squad.Class
@@ -81,6 +82,7 @@ test-suite lambdarookie01-test
       Main
       PlanM
       ResourceFlow
+      ResourceFlowSM
       Squad
       Squad.Behavior
       Squad.Class

@@ -43,12 +43,12 @@ where
 import Actions (Action, DebugCommand (..), getCmd, getExecutors)
 import Agent
 import Observation
-import SC2.Grid
-import SC2.Ids.UnitTypeId
-import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo, UnitTypeData)
+import SC2.Grid.Algo (Region, RegionGraph, RegionId)
+import SC2.Grid.Core (Grid)
+import SC2.Grid.TilePos (TilePos)
+import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo)
 import SC2.TechTree
 import UnitAbilities
-import Utils
 
 import Control.Monad (unless)
 import Control.Monad.Reader
@@ -58,7 +58,7 @@ import Control.Monad.Writer.Strict
 import Data.Functor
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Text (Text, pack)
+import Data.Text (pack)
 import Debug.Trace (traceM)
 import Lens.Micro (Lens', (%~), (^.))
 

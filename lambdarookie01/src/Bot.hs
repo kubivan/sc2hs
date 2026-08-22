@@ -103,6 +103,7 @@ import ResourceFlow
   , resourceRateWindow
   , updateResourceRate
   )
+import ResourceFlowSM (updateResourceRateSM)
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
@@ -657,31 +658,20 @@ instance Agent BotAgent where
         obsRaw = obs ^. #observation
         pendingErrors = mapMaybe actionErrorToPending errors
         si' = maybe si (\result -> si{siAsyncStaticInfo = Just result}) asyncResult
-        sm = agentStepPhase phase
-        dsPrepared = ds{dsObs = obsRaw}
-        (phase', plan, ds') = runStepM si' abilities dsPrepared sm
-        frameCost = sum $ mapMaybe (actionCostSafe si') (botCommands plan)
-        resourceRate' =
-          updateResourceRate
-            (fromIntegral $ obsRaw ^. #gameLoop)
-            (obsResources obsRaw)
-            frameCost
-            resourceRateWindow
-            (dsResourceRateState ds')
+        (phase', plan, ds') =
+          runStepM
+            si'
+            abilities
+            ds{dsObs = obsRaw}
+            (agentStepPhase phase >>= (\r -> updateResourceRateSM (botCommands plan) >> pure r))
 
-        tracedResult =
-          (BotAgent phase' si' ds'{dsResourceRateState = resourceRate'} env, plan)
+        tracedResult = (BotAgent{botPhase = phase', botStaticInfo = si', botDynState = ds', botEnv = env}, plan)
+    -- frameCost = sum $ mapMaybe (actionCostSafe si') (botCommands plan)
+
     -- traceM $ "!!! COMMANDS: " <> show commands
     traceM $
-      "!!! actions: "
-        <> (show $ botCommands plan)
-        <> " income "
-        <> (show $ obsResources obsRaw)
-    traceM $
       "!!! RESOURCE COLLECTION RATE: "
-        <> (show . rate $ resourceRate')
-        <> " FRAME COST"
-        <> (show frameCost)
+        <> (show . rate . dsResourceRateState $ ds')
     -- unless (null obs ^. #actionErrors) $
     --   traceM $
     --     "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)
