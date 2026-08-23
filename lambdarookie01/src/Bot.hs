@@ -817,7 +817,6 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     trainMassUnit ProtossStalker
 
     -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
-    spawnIntentUnique (IntentId "train-tempest") (intentTrainUnit ProtossTempest)
     issueSelfCommandReserveAware
       (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER)
       idleGates
@@ -826,15 +825,3 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
 
     return $ BuildArmyAndWin obs deathBall
 
--- --------------------------------
--- instance Agent TestBot BotDynamicState where
---     type DynamicState TestBot = BotDynamicState
-
---     agentStep :: a -> A.ResponseObservation -> UnitAbilities -> (a, StepPlan)
-
---     makeDynamicState :: Observation -> Grid -> IO BotDynamicState
---     makeDynamicState obs grid = do
---         gen <- newStdGen -- Initialize a new random generator
---         return $ BotDynamicState obs grid gen emptyArmy
-
---     agentRace _ = C.Protoss
