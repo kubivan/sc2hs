@@ -40,6 +40,7 @@ executable lambdarookie01
       SquadRetreat
       SquadUtils
       Target
+      Utils
       Paths_lambdarookie01
   hs-source-dirs:
       src
@@ -99,6 +100,7 @@ test-suite lambdarookie01-test
       SquadRetreat
       SquadUtils
       Target
+      Utils
       TestFixtures
       TestIntegrationRealGame
       TestIntentDsl

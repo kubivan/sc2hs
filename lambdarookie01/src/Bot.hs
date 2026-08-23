@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -25,13 +26,13 @@ import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
 import SC2.Spatial qualified as Spatial
+import "sc2monad" Utils
 
 import Intent hiding (unitHasOrder)
 import PlanM
 import SC2.TechTree
 import SC2.Utils
 import Squad
-import Squad qualified
 import Squad.Behavior
 import Squad.State
 import StepMonad
@@ -75,25 +76,18 @@ import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
 
 import Data.Conduit.List qualified as CL
-import Data.Foldable (toList)
-import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
-import Data.List (find, isPrefixOf, nub, partition, sortOn, (\\))
+import Data.List (isPrefixOf, partition, sortOn)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromJust, isJust, listToMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromJust, isJust, listToMaybe, mapMaybe, maybeToList)
 
-import Data.ProtoLens (defMessage)
-import Data.Sequence (Seq (..), empty, (|>))
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
-import Lens.Micro (to, (&), (.~), (^.), (^..))
+import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Error qualified as E
-import Proto.S2clientprotocol.Raw_Fields (facing)
-import SC2.Grid.Algo (regionGraphBfs)
-import SC2.Ids.UpgradeId (UpgradeId (..))
 import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
@@ -102,13 +96,15 @@ import ResourceFlow
   ( CostRate (..)
   , ResourceRate (..)
   , ResourceRateState (..)
-  , resourceRateWindow
-  , updateResourceRate
   )
 import ResourceFlowSM (unitCostRate, updateResourceRateSM)
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
+-- deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
+-- deathBall = [TechUnit ProtossObserver, TechUnit ProtossImmortal]
+
+-- deathBall = [TechUnit ProtossTempest]
 deathBall = [TechUnit ProtossStalker]
 
 stepTowardsTechGoal ::
@@ -225,12 +221,6 @@ trainProbes = do
   when (optimalCount - probeCount > 0) $ issueSelfCommandReserveAware NEXUSTRAINPROBE nexuses
 
 -- `Utils.dbg` ("trainProbes: optCount" ++ show optimalCount ++ " probes: " ++ show probeCount )
-
--- TODO: merge unitHasOrder && unitIsHarvesting
-unitHasOrder :: AbilityId -> Units.Unit -> Bool
-unitHasOrder order u = order `elem` orders
- where
-  orders = toEnum' . view #abilityId <$> u ^. #orders
 
 tryExpand :: (HasObs d, HasBuildIntents d) => StepMonad d ()
 tryExpand = do
@@ -634,11 +624,6 @@ formatActionError err =
 formatActionErrors :: [Proto.ActionError] -> String
 formatActionErrors errs = show (map formatActionError errs)
 
-foodUsed :: (HasObs d) => StepMonad d Int
-foodUsed = withObs (fromIntegral . view (#playerCommon . #foodUsed))
-
-isFullLimit = (==) 200 <$> foodUsed
-
 trainMassUnit :: UnitTypeId -> StepMonad BotDynamicState ()
 trainMassUnit uid = unlessM isFullLimit $ do
   ds <- agentGet
@@ -730,6 +715,11 @@ instance Agent BotAgent where
     -- frameCost = sum $ mapMaybe (actionCostSafe si') (botCommands plan)
 
     -- traceM $ "!!! COMMANDS: " <> show commands
+    -- traceM $
+    --   "!!! actions: "
+    --     <> (show $ botCommands plan)
+    --     <> " income "
+    --     <> (show $ obsResources obsRaw)
     traceM $
       "!!! RESOURCE COLLECTION RATE: "
         <> (show . rate . dsResourceRateState $ ds')
@@ -747,6 +737,22 @@ agentStepPhase Opening =
 
     agentModifyGrid (gridUpdate obs)
     let nexus = maybeToList $ findNexus obs
+        -- fourGateBuild =
+        --   [ ProtossPylon
+        --   , ProtossAssimilator
+        --   , ProtossGateway
+        --   , ProtossCyberneticsCore
+        --   , ProtossAssimilator
+        --   , ProtossGateway
+        --   ]
+        -- expandBuild =
+        --   [ ProtossNexus
+        --   , ProtossRoboticsFacility
+        --   , ProtossGateway
+        --   , ProtossGateway
+        --   , ProtossAssimilator
+        --   , ProtossAssimilator
+        --   ]
         opening =
           [ ProtossPylon
           , ProtossAssimilator
@@ -755,6 +761,14 @@ agentStepPhase Opening =
           , ProtossCyberneticsCore
           , ProtossNexus
           ]
+    -- expandBuild =
+    --   [ ProtossNexus
+    --   , ProtossRoboticsFacility
+    --   , ProtossGateway
+    --   , ProtossGateway
+    --   , ProtossAssimilator
+    --   , ProtossAssimilator
+    --   ]
 
     issueSelfCommandReserveAware NEXUSTRAINPROBE nexus
     return $ BuildOrderExecutor (boFromUnits opening) obs (HashMap.fromList [])
@@ -803,6 +817,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     trainMassUnit ProtossStalker
 
     -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
+    spawnIntentUnique (IntentId "train-tempest") (intentTrainUnit ProtossTempest)
     issueSelfCommandReserveAware
       (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER)
       idleGates

@@ -124,3 +124,5 @@ trimSamples window xs =
       Seq.dropWhileL
         (\sample -> newest.frame - sample.frame > window)
         xs
+
+-- unitBuildRate :: Unit -> CostRate

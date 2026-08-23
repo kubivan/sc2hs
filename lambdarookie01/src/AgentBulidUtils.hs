@@ -11,12 +11,9 @@ module AgentBulidUtils where
 
 import Actions
 import Lens.Micro ((^.))
-import Lens.Micro.Extras (view)
 import Observation
   ( Cost
   , Observation
-  , findNexus
-  , obsResources
   , obsUnitsC
   , unitsSelf
   )
@@ -46,16 +43,15 @@ import Units
   , toEnum'
   , unitTypeC
   )
+import Utils
 
 import Conduit (filterC, mapC, (.|))
 import Data.Foldable (minimumBy)
-import Data.Function (on)
-import Data.List (find, sortBy)
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.List (find)
+import Data.Maybe (listToMaybe)
 import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
-import Safe (headMay)
 import Target (Target (..))
 
 findAssignee :: Observation -> Action -> Maybe Unit
@@ -129,39 +125,6 @@ findPlacementTarget uid = do
       else TargetPos <$> findPlacementPos si obs (expandsPos si) grid (heightMap si) uid
 
 -- ##################################### UNIT UTILS #####################################################################
-
-unitIsHarvesting :: Units.Unit -> Bool
-unitIsHarvesting u = orders == Just HARVESTGATHERPROBE || orders == Just HARVESTRETURNPROBE
- where
-  orders = listToMaybe $ toEnum' . view #abilityId <$> u ^. #orders
-
-getTargetUnitTag :: Units.UnitOrder -> Maybe UnitTag
-getTargetUnitTag unitOrder = case unitOrder ^. #maybe'target of
-  Just (R.UnitOrder'TargetUnitTag tag) -> Just tag
-  _ -> Nothing
-
-unitIsAssignedTo :: Units.Unit -> Units.Unit -> Bool
-unitIsAssignedTo building unit
-  | isAssimilator building || isMineral building = building ^. #tag `elem` targets
-  | toEnum' (building ^. #unitType) == ProtossNexus =
-      unitIsHarvesting unit && closeEnough && withoutVespene
-  | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
- where
-  targets = mapMaybe getTargetUnitTag (unit ^. #orders)
-  closeEnough = Spatial.distManhattan building unit <= 12
-  withoutVespene = unit ^. #vespeneContents == 0
-
-unitIsAssignedToAny :: [Units.Unit] -> Units.Unit -> Bool
-unitIsAssignedToAny buildings unit = any (`unitIsAssignedTo` unit) buildings
-
--- TODO: maybe the vespen & return check is enough
--- (probably units inside assimilators is not presented in the obs)
--- TODO: check if so: probes count between loops
-unitIsVespeneHarvester :: [Units.Unit] -> Units.Unit -> Bool
-unitIsVespeneHarvester assimilators u = unitIsAssignedToAny assimilators u || isReturnsVespene
- where
-  orders = toEnum' . view #abilityId <$> u ^. #orders
-  isReturnsVespene = listToMaybe orders == Just HARVESTRETURNPROBE && u ^. #vespeneContents > 0
 
 getOverWorkersFrom :: [Units.Unit] -> [Units.Unit] -> [Units.Unit]
 getOverWorkersFrom buildings workers = concatMap getFrom buildings
