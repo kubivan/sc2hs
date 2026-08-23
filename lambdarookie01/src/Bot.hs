@@ -245,9 +245,27 @@ tryExpand = do
             .| mapC (view #mineralContents)
             .| sumC
 
-      nexusesResources = runC $ units .| unitTypeC ProtossNexus .| mapC (\n -> (tilePos $ n ^. #pos, mineralsOfNexus n))
+      nexusesResources =
+        runC $
+          units
+            .| unitTypeC ProtossNexus
+            .| filterC ((== 1) . view #buildProgress)
+            .| mapC (\n -> (tilePos $ n ^. #pos, mineralsOfNexus n))
 
-  when (countIf (\(_, m) -> m < 8 * 300) nexusesResources > 0) $
+      depleetingBasesCount = countIf (\(_, m) -> m < 8 * 300) nexusesResources
+
+  lift $ traceM $ "!!!!!!! MINERALFIELDS:  " ++ (show . length . runC $ mineralFields)
+  when ((length nexusesResources) - depleetingBasesCount < 1) $ do
+    lift $
+      traceM $
+        "!!! EXPANDING:  "
+          ++ (show nexusesResources)
+          ++ " "
+          ++ " depleting: "
+          ++ show (depleetingBasesCount)
+          ++ " nexues: "
+          ++ show (length nexusesResources)
+
     spawnIntentUnique (IntentId "expanding") intentExpandFull
 
 reassignIdleProbes :: (HasObs d) => StepMonad d ()
