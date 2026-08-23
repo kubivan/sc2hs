@@ -1,14 +1,24 @@
-module ResourceFlowSM (updateResourceRateSM) where
+module ResourceFlowSM (updateResourceRateSM, unitCostRate) where
 
 import BotDynamicState (BotDynamicState (..))
 import Data.Maybe (mapMaybe)
-import StepMonad (StepMonad, agentModify, agentObs, agentStatic)
+import StepMonad (StepMonad, agentModify, agentObs, agentStatic, unitTraits)
 
 import Actions (Action)
 import AgentBulidUtils (actionCostSafe)
+import Data.HashMap.Strict ((!))
+import Data.HashMap.Strict qualified as HashMap
 import Lens.Micro ((^.))
+import Lens.Micro.Extras (view)
 import Observation (obsResources)
-import ResourceFlow (resourceRateWindow, updateResourceRate)
+import Proto.S2clientprotocol.Data_Fields qualified as Proto
+import ResourceFlow (CostRate (CostRate), resourceRateWindow, updateResourceRate)
+import SC2.Ids.UnitTypeId
+import SC2.Proto.Data (UnitTypeData (..))
+import SC2.Proto.Data qualified as Proto
+import SC2.TechTreeSM
+import StepMonadUtils (withStatic)
+import Units (Unit, fromEnum', toEnum', unitTypeId)
 
 -- calculateResourceRate :: Seq ResourceSample -> ResourceRate
 
@@ -29,3 +39,11 @@ updateResourceRateSM actions = do
                 (dsResourceRateState ds)
           }
     )
+
+unitCostRate :: UnitTypeId -> StepMonad BotDynamicState CostRate
+unitCostRate uid = do
+  traits <- withStatic (\si -> unitTraits si HashMap.! uid)
+  let buildTime = realToFrac $ traits ^. #buildTime
+      minCost = fromIntegral . view #mineralCost $ traits
+      gasCost = fromIntegral . view #vespeneCost $ traits
+  pure $ CostRate (minCost / buildTime) (gasCost / buildTime)

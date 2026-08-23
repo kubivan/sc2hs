@@ -52,6 +52,7 @@ executable lambdarookie01
       base >=4.12
     , conduit
     , containers
+    , extra
     , free
     , hashable
     , microlens
@@ -116,6 +117,7 @@ test-suite lambdarookie01-test
     , conduit
     , containers
     , directory
+    , extra
     , filepath
     , free
     , hashable

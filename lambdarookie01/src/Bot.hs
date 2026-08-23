@@ -68,10 +68,12 @@ import Data.Sequence qualified as Seq
 import Control.Applicative (Alternative (..))
 import Control.Concurrent (forkIO)
 import Control.Monad
+import Control.Monad.Extra
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State
 import Control.Monad.Writer.Strict
+
 import Data.Conduit.List qualified as CL
 import Data.Foldable (toList)
 import Data.HashMap.Strict (HashMap)
@@ -91,8 +93,8 @@ import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Error qualified as E
 import Proto.S2clientprotocol.Raw_Fields (facing)
 import SC2.Grid.Algo (regionGraphBfs)
-import SC2.Ids.UpgradeId (UpgradeId (Darktemplarblinkupgrade))
-import StepMonadUtils (agentUnitCost, siUnitRange)
+import SC2.Ids.UpgradeId (UpgradeId (..))
+import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
@@ -103,11 +105,11 @@ import ResourceFlow
   , resourceRateWindow
   , updateResourceRate
   )
-import ResourceFlowSM (updateResourceRateSM)
+import ResourceFlowSM (unitCostRate, updateResourceRateSM)
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
-deathBall = [TechUnit ProtossDarkTemplar, TechUpgrade Darktemplarblinkupgrade]
+deathBall = [TechUnit ProtossStalker]
 
 stepTowardsTechGoal ::
   (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => [Tech] -> StepMonad d ()
@@ -632,6 +634,47 @@ formatActionError err =
 formatActionErrors :: [Proto.ActionError] -> String
 formatActionErrors errs = show (map formatActionError errs)
 
+foodUsed :: (HasObs d) => StepMonad d Int
+foodUsed = withObs (fromIntegral . view (#playerCommon . #foodUsed))
+
+isFullLimit = (==) 200 <$> foodUsed
+
+trainMassUnit :: UnitTypeId -> StepMonad BotDynamicState ()
+trainMassUnit uid = unlessM isFullLimit $ do
+  ds <- agentGet
+  obs <- agentObs
+  si <- agentStatic
+  urate <- unitCostRate uid
+  let income = incomeRate . rate . dsResourceRateState $ ds
+      spent = consumptionRate . rate . dsResourceRateState $ ds
+      quota = income - spent
+      minRatio = mineralRate quota / mineralRate urate
+      gasRatio = gasRate quota / gasRate urate
+
+      ability = unitToAbility (unitTraits si) uid
+      producerType = abilityExecutor HashMap.! ability
+
+  let maxToTrain = floor (min minRatio gasRatio)
+      producersLen = length $ runC $ unitsSelf obs .| unitTypeC producerType
+      producersIdle =
+        runC $
+          unitsSelf obs .| unitTypeC producerType .| filterC ((== 1) . view #buildProgress) .| unitIdleC
+
+  traceM $ "!!! TRAIN MAX: CAN BUILD " <> show maxToTrain <> " " <> show uid
+  if maxToTrain > producersLen
+    then
+      mapM_
+        ( \i ->
+            spawnIntentUnique (IntentId ("build-starport-" ++ (show i))) (intentBuildStructure producerType)
+        )
+        [1 .. (maxToTrain - producersLen)]
+    else
+      mapM_
+        ( \sp ->
+            spawnIntentUnique (IntentId ("train-" ++ show (uid) ++ (show $ sp ^. #tag))) (intentTrainUnit uid)
+        )
+        producersIdle
+
 instance Agent BotAgent where
   makeAgent ::
     BotAgent ->
@@ -704,25 +747,17 @@ agentStepPhase Opening =
 
     agentModifyGrid (gridUpdate obs)
     let nexus = maybeToList $ findNexus obs
-        fourGateBuild =
+        opening =
           [ ProtossPylon
           , ProtossAssimilator
           , ProtossGateway
+          , ProtossAssimilator
           , ProtossCyberneticsCore
-          , ProtossAssimilator
-          , ProtossGateway
-          ]
-        expandBuild =
-          [ ProtossNexus
-          , ProtossRoboticsFacility
-          , ProtossGateway
-          , ProtossGateway
-          , ProtossAssimilator
-          , ProtossAssimilator
+          , ProtossNexus
           ]
 
     issueSelfCommandReserveAware NEXUSTRAINPROBE nexus
-    return $ BuildOrderExecutor (boFromUnits (fourGateBuild ++ expandBuild)) obs (HashMap.fromList [])
+    return $ BuildOrderExecutor (boFromUnits opening) obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
   {-# SCC "agentStep:BuildOrderExecutor" #-}
   do
@@ -764,6 +799,9 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
         idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
         gameLoop = obs ^. #gameLoop
+
+    trainMassUnit ProtossStalker
+
     -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
     issueSelfCommandReserveAware
       (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER)

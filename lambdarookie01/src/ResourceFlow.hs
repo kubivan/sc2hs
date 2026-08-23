@@ -17,7 +17,7 @@ data ResourceRateState = ResourceRateState
 
 data ResourceRate = ResourceRate
   { incomeRate :: CostRate
-  , spendRate :: CostRate
+  , consumptionRate :: CostRate
   }
   deriving (Show, Eq)
 
@@ -25,7 +25,16 @@ data CostRate = CostRate
   { mineralRate :: Double
   , gasRate :: Double
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
+
+instance Num CostRate where
+  a + b = CostRate (mineralRate a + mineralRate b) (gasRate a + gasRate b)
+  a - b = CostRate (mineralRate a - mineralRate b) (gasRate a - gasRate b)
+  a * b = CostRate (mineralRate a * mineralRate b) (gasRate a * gasRate b)
+  negate (CostRate mc gc) = CostRate (-mc) (-gc)
+  abs (CostRate mc gc) = CostRate (abs mc) (abs gc)
+  signum (CostRate mc gc) = CostRate (signum mc) (signum gc)
+  fromInteger n = CostRate (fromInteger n) (fromInteger n)
 
 data ResourceSample = ResourceSample
   { frame :: Int
@@ -51,7 +60,7 @@ calculateResourceRate xs =
                         (resourceDelta.gasCost + spent.gasCost)
                         / fromIntegral frameDelta
                   }
-            , spendRate =
+            , consumptionRate =
                 CostRate
                   { mineralRate =
                       fromIntegral spent.mineralCost
@@ -73,7 +82,7 @@ calculateResourceRate xs =
     _ ->
       ResourceRate
         { incomeRate = CostRate 0 0
-        , spendRate = CostRate 0 0
+        , consumptionRate = CostRate 0 0
         }
 
 updateResourceRate ::

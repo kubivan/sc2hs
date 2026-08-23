@@ -57,6 +57,7 @@ library:
     - Utils
     # SC2 modules
     - SC2.TechTree
+    - SC2.TechTreeSM
     - SC2.Utils
     - SC2.Spatial
     # Grid system
