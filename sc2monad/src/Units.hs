@@ -30,6 +30,7 @@ module Units
   , fromEnum'
   , unitsBoundingBox
   , unitVelocityVec
+  , unitTypeId
   )
 where
 
@@ -76,46 +77,37 @@ isBuilding = isBuildingType . toEnum' . view PR.unitType
 
 isMineral :: Unit -> Bool
 isMineral u =
-  utype == NeutralMineralField
-    || utype == NeutralMineralField750
+  unitTypeId u `elem` [NeutralMineralField, NeutralMineralField750]
     -- TODO: for some reason this check doesn't work: finds 36 patches from 148
     || (u ^. #mineralContents > 0 && u ^. #alliance == Neutral)
- where
-  -- TODO: add missing minerals
 
-  -- \|| utype == NeutralMineralField750
-  -- \|| utype == NeutralLabMineralField
-  -- \|| utype == NeutralLabMineralField
-  -- \|| utype == NeutralLabMineralField750
-  -- \|| utype == NeutralRichMineralField
-  -- \|| utype == NeutralRichMineralField750
-  -- \|| utype == NeutralPurifierrichMineralField750
-  -- \|| utype == NeutralPurifierrichMineralField
-  -- \|| utype == NeutralBattlestationMineralField
-  -- \|| utype == NeutralBattlestationMineralField750
+-- TODO: add missing minerals
 
-  utype = toEnum' $ u ^. PR.unitType
+-- \|| utype == NeutralMineralField750
+-- \|| utype == NeutralLabMineralField
+-- \|| utype == NeutralLabMineralField
+-- \|| utype == NeutralLabMineralField750
+-- \|| utype == NeutralRichMineralField
+-- \|| utype == NeutralRichMineralField750
+-- \|| utype == NeutralPurifierrichMineralField750
+-- \|| utype == NeutralPurifierrichMineralField
+-- \|| utype == NeutralBattlestationMineralField
+-- \|| utype == NeutralBattlestationMineralField750
 
 isGeyser :: Unit -> Bool
-isGeyser u =
-  utype == NeutralVespeneGeyser
-    || utype == NeutralRichVespeneGeyser
-    || hasGas
+isGeyser u = unitTypeId u `elem` [NeutralVespeneGeyser, NeutralRichVespeneGeyser] || hasGas
  where
   -- \|| utype == NeutralProtossvespenegeyser
   -- \|| utype == NeutralSpaceplatformGeyser
   -- \|| utype == NeutralPurifierVespeneGeyser
   -- \|| utype == NeutralShakurasVespeneGeyser
-
-  utype = toEnum' $ u ^. PR.unitType
   hasGas = u ^. #vespeneContents > 0
 
 isAssimilator :: Unit -> Bool
-isAssimilator u =
-  utype == ProtossAssimilator
-    || utype == ProtossAssimilatorRich
- where
-  utype = toEnum' $ u ^. PR.unitType
+isAssimilator u = unitTypeId u `elem` [ProtossAssimilator, ProtossAssimilatorRich]
+
+unitTypeId :: Unit -> UnitTypeId
+unitTypeId u = toEnum' $ u ^. PR.unitType
 
 equalsC :: (Monad m, Eq a) => Getting a s a -> a -> ConduitT s s m ()
 equalsC label value = filterC (\u -> u ^. label == value)
