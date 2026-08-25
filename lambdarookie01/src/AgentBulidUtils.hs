@@ -47,6 +47,7 @@ import Utils
 
 import Conduit (filterC, mapC, (.|))
 import Data.Foldable (minimumBy)
+import Data.Foldable.Extra (asum)
 import Data.List (find)
 import Data.Maybe (listToMaybe)
 import Data.Ord (comparing)
@@ -86,8 +87,15 @@ pylonRadius = 6.5
 findPlacementPos ::
   StaticInfo -> Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
 findPlacementPos _ _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
-findPlacementPos si _ _ grid gridHeight ProtossPylon =
-  findPlacementPoint grid gridHeight (getFootprint ProtossPylon) (startLocation si) (const True)
+findPlacementPos si obs _ grid gridHeight ProtossPylon =
+  asum
+    [ findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos distantEnough
+    | -- TODO: currenty startpos + all nexuses is add first nexus pos twice
+    nexusPos <- startLocation si : runC (unitsSelf obs .| unitTypeC ProtossNexus .| mapTilePosC)
+    ]
+ where
+  pylons = runC (unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC)
+  distantEnough pos = all (\p -> Spatial.distSquared pos p >= 3 * 3) pylons
 findPlacementPos _ obs _ grid gridHeight uid = go pylons
  where
   go (p : ps) =

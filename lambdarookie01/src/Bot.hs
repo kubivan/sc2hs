@@ -347,7 +347,6 @@ reassignIdleProbes = do
 buildPylons :: (HasObs d, HasGrid d, HasBuildIntents d, HasReservedCost d) => StepMonad d ()
 buildPylons = do
   obs <- agentObs
-  grid <- agentGrid
   let foodCap = fromIntegral $ obs ^. (#playerCommon . #foodCap) -- `Utils.debug` ("minerals: " ++ show minerals)
       foodUsed = fromIntegral $ obs ^. (#playerCommon . #foodUsed)
 
