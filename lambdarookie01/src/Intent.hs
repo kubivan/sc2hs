@@ -47,7 +47,7 @@ import SC2.TechTree (abilityExecutor, unitToAbility)
 import StepMonad
 import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWith, agentUnitCost)
 import Target (Target (..))
-import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitTypeC)
+import Units (Unit, isGeyser, mapTilePosC, runC, toEnum', unitOrders, unitTypeC)
 
 newtype IntentId = IntentId [Char]
   deriving (Eq, Ord, Show)
@@ -309,15 +309,10 @@ commandBuild builder uid target = do
       command [UnitCommand ability [builder] targetUnit]
 
 unitHasOrder :: AbilityId -> Unit -> Bool
-unitHasOrder order u = order `elem` orders
- where
-  orders = toEnum' . view #abilityId <$> u ^. #orders
+unitHasOrder order u = order `elem` unitOrders u
 
 formatUnitOrders :: Unit -> String
-formatUnitOrders unit = show orders
- where
-  orders :: [AbilityId]
-  orders = map (toEnum' . (^. #abilityId)) (unit ^. #orders)
+formatUnitOrders = show . unitOrders
 
 traceBuilderOrders :: (HasObs d) => IntentId -> BuildStructurePhase -> StepMonad d ()
 traceBuilderOrders iid phase =
@@ -447,7 +442,7 @@ tickBuildPhase iid uid currentPhase =
               mbBuilder = getUnit obs builder
               timedOut = buildPhaseTimedOut frame startFrame 0
           started <- targetInProgress target uid
-          let builderAccepted unit = unitHasOrder ability unit
+          let builderAccepted = unitHasOrder ability
               advanceIssuedPhase
                 | started = startMonitoring reserved builder target
                 | isNothing mbBuilder = stepDoneResult IntentFailed
@@ -628,7 +623,7 @@ intentEngine = do
             _ -> updateIntent i' >> pure Nothing
       )
       intents
-  pure $ (Map.fromList $ catMaybes outcomes)
+  pure $ Map.fromList (catMaybes outcomes)
 
 spawnIntent ::
   (HasObs d, HasBuildIntents d) =>

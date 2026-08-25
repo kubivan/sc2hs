@@ -31,6 +31,7 @@ module Units
   , unitsBoundingBox
   , unitVelocityVec
   , unitTypeId
+  , unitOrders
   )
 where
 
@@ -193,3 +194,6 @@ unitVelocityVec unit =
       vx = speed * cos rotation
       vy = speed * sin rotation
    in defMessage & x .~ vx & y .~ vy
+
+unitOrders :: Unit -> [AbilityId]
+unitOrders unit = map (toEnum' . (^. #abilityId)) (unit ^. #orders)
