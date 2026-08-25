@@ -629,7 +629,8 @@ trainMassUnit uid = unlessM isFullLimit $ do
   obs <- agentObs
   si <- agentStatic
   urate <- unitCostRate uid
-  let income = incomeRate . rate . dsResourceRateState $ ds
+  let resources = obsResources obs
+      income = incomeRate . rate . dsResourceRateState $ ds
       spent = consumptionRate . rate . dsResourceRateState $ ds
       quota = income - spent
       minRatio = mineralRate quota / mineralRate urate
@@ -644,20 +645,35 @@ trainMassUnit uid = unlessM isFullLimit $ do
         runC $
           unitsSelf obs .| unitTypeC producerType .| filterC ((== 1) . view #buildProgress) .| unitIdleC
 
+  producerCost <- agentUnitCost producerType
   traceM $ "!!! TRAIN MAX: CAN BUILD " <> show maxToTrain <> " " <> show uid
   if maxToTrain > producersLen
     then
       mapM_
         ( \i ->
-            spawnIntentUnique (IntentId ("build-starport-" ++ (show i))) (intentBuildStructure producerType)
+            spawnIntentUnique
+              (IntentId ("build-" ++ show producerType ++ show i))
+              (intentBuildStructure producerType)
         )
         [1 .. (maxToTrain - producersLen)]
+    -- spent minerals
     else
-      mapM_
-        ( \sp ->
-            spawnIntentUnique (IntentId ("train-" ++ show (uid) ++ (show $ sp ^. #tag))) (intentTrainUnit uid)
-        )
-        producersIdle
+      if gasCost producerCost == 0 && mineralCost resources > 1000
+        then do
+          let mineralsToSpend = mineralCost resources - 1000
+          mapM_
+            ( \i ->
+                spawnIntentUnique
+                  (IntentId ("build-additional-" ++ show producerType ++ show i))
+                  (intentBuildStructure producerType)
+            )
+            [1 .. mineralsToSpend `div` mineralCost producerCost]
+        else
+          mapM_
+            ( \sp ->
+                spawnIntentUnique (IntentId ("train-" ++ show uid ++ show (sp ^. #tag))) (intentTrainUnit uid)
+            )
+            producersIdle
 
 instance Agent BotAgent where
   makeAgent ::
@@ -823,4 +839,3 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     trainProbes
 
     return $ BuildArmyAndWin obs deathBall
-
