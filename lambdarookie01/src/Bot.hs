@@ -91,6 +91,7 @@ import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
+import Istar (istarEmpty, updateIstar)
 import ResourceFlow
   ( CostRate (..)
   , ResourceRate (..)
@@ -581,6 +582,7 @@ makeDynamicState obs grid = do
       emptyArmy
       Map.empty
       (ResourceRateState Seq.empty (ResourceRate (CostRate 0 0) (CostRate 0 0)))
+      istarEmpty
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
 hasActiveBoIntent = do
@@ -673,6 +675,12 @@ trainMassUnit uid = unlessM isFullLimit $ do
                 spawnIntentUnique (IntentId ("train-" ++ show uid ++ show (sp ^. #tag))) (intentTrainUnit uid)
             )
             producersIdle
+
+dsUpdateIstar :: StepMonad BotDynamicState ()
+dsUpdateIstar = do
+  ds <- agentGet
+  istar' <- updateIstar (dsIstar ds)
+  agentModify $ \ds -> ds{dsIstar = istar'}
 
 instance Agent BotAgent where
   makeAgent ::
@@ -809,7 +817,6 @@ agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
 agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
   {-# SCC "agentStep:BuildArmyAndWin" #-}
   do
-    si <- agentStatic
     obs <- agentObs
     agentUpdateArmy obsPrev
     debugSquads

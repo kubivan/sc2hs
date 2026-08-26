@@ -8,6 +8,7 @@ import Army.Class (HasArmy, getUnitMap)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
 import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
+import Istar (Istar)
 import Lens.Micro ((%~), (^.))
 import Observation
 import ResourceFlow (ResourceRateState)
@@ -28,6 +29,7 @@ data BotDynamicState = BotDynamicState
   , dsArmy :: Army
   , dsIntents :: IntentStore BotDynamicState
   , dsResourceRateState :: ResourceRateState
+  , dsIstar :: Istar
   }
 
 instance HasObs BotDynamicState where

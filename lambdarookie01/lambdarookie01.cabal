@@ -22,6 +22,7 @@ executable lambdarookie01
       Bot
       BotDynamicState
       Intent
+      Istar
       PlanM
       ResourceFlow
       ResourceFlowSM
@@ -81,6 +82,7 @@ test-suite lambdarookie01-test
       Bot
       BotDynamicState
       Intent
+      Istar
       Main
       PlanM
       ResourceFlow
