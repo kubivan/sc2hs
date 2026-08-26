@@ -6,7 +6,7 @@ import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import SC2.Spatial qualified as Spatial
+import SC2.Spatial
 import Squad.Behavior (isSquadFull)
 import Squad.FSMLog
 import Squad.Squad
@@ -34,7 +34,7 @@ isWeaponReady u = (u ^. #weaponCooldown) == 0
 isEnemyInRange :: Unit -> Unit -> StepMonad d Bool
 isEnemyInRange e u = do
   range <- siUnitRange u e
-  return $ Spatial.distSquared2D u e <= range * range
+  return $ distSquaredF u e <= range * range
 
 canAttack :: Unit -> Unit -> StepMonad d Bool
 canAttack u e = do
@@ -51,7 +51,7 @@ unitIsNotMoving u = noOrders || notMoving
 stepForwardOrBack :: (HasObs d) => Unit -> Unit -> StepMonad d ()
 stepForwardOrBack u e = when (unitIsNotMoving u) $ do
   range <- siUnitRange u e
-  let distSq = Spatial.distSquared2D u e
+  let distSq = distSquaredF u e
       upos = toPoint2D $ u ^. #pos
   if distSq / 2 >= (range / 2) * (range / 2)
     then do

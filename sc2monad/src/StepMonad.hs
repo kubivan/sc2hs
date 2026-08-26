@@ -45,7 +45,8 @@ import Agent
 import Observation
 import SC2.Grid.Algo (Region, RegionGraph, RegionId)
 import SC2.Grid.Core (Grid)
-import SC2.Grid.TilePos (TilePos)
+import SC2.TilePos (TilePos)
+import SC2.Spatial
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo)
 import SC2.TechTree
 import UnitAbilities

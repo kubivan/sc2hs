@@ -2,7 +2,7 @@ module Army.Army where
 
 import Actions (Action (..), UnitTag)
 import Army.Class
-import SC2.Grid.TilePos
+import SC2.TilePos
 
 import Squad.Squad
 import StepMonad

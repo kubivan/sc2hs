@@ -19,7 +19,7 @@ module SC2.Grid.Core
 where
 
 import Footprint
-import SC2.Grid.TilePos
+import SC2.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
 
 import Data.Bits

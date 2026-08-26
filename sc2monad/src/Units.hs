@@ -37,7 +37,8 @@ where
 
 import Data.Maybe (isJust)
 import SC2.Geometry
-import SC2.Grid.TilePos
+import SC2.TilePos
+import SC2.Spatial
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D, Unit, UnitOrder)
@@ -131,8 +132,8 @@ closestC to = await >>= foldlC (\mu u -> closest <$> mu <*> pure u)
  where
   toPos = to ^. PR.pos
   closest a b =
-    if distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D toPos)
-      < distSquared (toPoint2D $ b ^. PR.pos) (toPoint2D toPos)
+    if distSquaredI a toPos
+      < distSquaredI b toPos
       then a
       else b
 
@@ -147,9 +148,6 @@ unitsBoundingBox cluster = ((tileX3D minX, tileY3D minY), (tileX3D maxX, tileY3D
 
   points = view PR.pos <$> cluster
 
-distSquaredU :: Unit -> Unit -> Float
-distSquaredU a b = distSquared (toPoint2D $ a ^. PR.pos) (toPoint2D $ b ^. PR.pos)
-
 type ClusterId = Int
 data PointLabel = Noise | Cluster ClusterId
   deriving (Show, Eq, Ord)
@@ -157,7 +155,7 @@ data PointLabel = Noise | Cluster ClusterId
 type MapClusters = Map.Map Unit PointLabel
 
 rangeQuery :: Float -> Unit -> [Unit] -> [Unit]
-rangeQuery eps p = filter (\q -> distSquaredU p q <= eps * eps)
+rangeQuery eps p = filter (\q -> distSquaredF p q <= eps * eps)
 
 expandCluster :: Float -> Unit -> ClusterId -> MapClusters -> [Unit] -> MapClusters
 expandCluster eps point clusterId pointStatusMap points =

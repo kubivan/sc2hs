@@ -26,23 +26,21 @@ import Observation
   , obsUnitsC
   , unitsSelf
   )
-import SC2.Geometry (fromTuple)
+import SC2.Geometry
 import SC2.Grid
   ( Grid
-  , TilePos
   , addMark
   , canPlaceBuilding
   , findPlacementPoint
   , findPlacementPointInRadius
   , removeMark
-  , tilePos
   )
+import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
   ( UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon)
   )
-import SC2.Spatial (distManhattan)
-import SC2.Spatial qualified as Spatial
+import SC2.Spatial
 import SC2.TechTree (abilityExecutor, unitToAbility)
 import StepMonad
 import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWith, agentUnitCost)
@@ -304,7 +302,7 @@ commandBuild builder uid target = do
   case target of
     TargetPos pos -> do
       agentModifyGrid (\grid -> addMark grid (getFootprint uid) pos)
-      command [PointCommand ability [builder] (fromTuple pos)]
+      command [PointCommand ability [builder] (toPoint2D pos)]
     TargetUnit targetUnit ->
       command [UnitCommand ability [builder] targetUnit]
 
@@ -346,7 +344,7 @@ targetInProgress target uid = do
           .| unitTypeC uid
           .| filterC
             ( \x ->
-                let dist = Spatial.distSquared (x ^. #pos) target
+                let dist = distSquaredI (x ^. #pos) target
                  in trace
                       ( "[targetInProgress] unit pos: "
                           ++ show (x ^. #pos)

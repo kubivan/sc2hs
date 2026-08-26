@@ -29,10 +29,10 @@ where
 
 import Actions (UnitTag)
 import Footprint
-import SC2.Geometry
+import SC2.Spatial
 import SC2.Grid
 import SC2.Grid.Algo
-import SC2.Grid.TilePos
+import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
@@ -108,9 +108,9 @@ findExpandPosInCluster grid heightMap cluster =
       canPlaceDist69
       (const False)
  where
-  clusterTiles = tilePos . view #pos <$> cluster
+  -- clusterTiles = tilePos . view #pos <$> cluster
   canPlaceDist69 p =
-    all (\c -> Spatial.distSquared p c >= 6 * 6 && Spatial.distSquared p c < 9 * 9) clusterTiles
+    all (\c -> distSquaredI p c >= 6 * 6 && distSquaredI p c < 9 * 9) cluster
       && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 findExpands :: Observation -> Grid -> Grid -> [TilePos]
@@ -134,7 +134,7 @@ enemyBaseLocation :: Proto.ResponseGameInfo -> Observation -> Point2D
 enemyBaseLocation gi obs = head $ filter notCloseToNexus enemyBases
  where
   nexus = getNexus obs
-  notCloseToNexus p = distSquared p (toPoint2D $ nexus ^. #pos) > 1
+  notCloseToNexus p = Spatial.distSquaredI p nexus > 1
   enemyBases = gi ^. (#startRaw . #startLocations)
 
 -- TODO: move to a separate file

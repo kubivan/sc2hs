@@ -1,6 +1,6 @@
 module Target (Target (..)) where
 
-import SC2.Grid.TilePos (TilePos)
+import SC2.TilePos (TilePos)
 import SC2.Spatial (Spatial (..))
 import Units (Unit)
 

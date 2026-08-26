@@ -2,7 +2,7 @@ module Footprint (getFootprint, Footprint (..), createFootprint, footprintRect) 
 
 import Control.Monad (join)
 import Data.List (elemIndices)
-import SC2.Grid.TilePos (TilePos)
+import SC2.TilePos (TilePos)
 import SC2.Ids.UnitTypeId
 
 newtype Footprint = Footprint {pixels :: [(Int, Int, Char)]} deriving (Show, Eq)

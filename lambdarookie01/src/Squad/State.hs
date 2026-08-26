@@ -3,7 +3,7 @@ module Squad.State where
 import Actions (UnitTag)
 import Footprint (Footprint)
 import SC2.Grid (Region, RegionId)
-import SC2.Grid.TilePos (TilePos)
+import SC2.TilePos (TilePos)
 
 type SquadFormation = (TilePos, Footprint)
 

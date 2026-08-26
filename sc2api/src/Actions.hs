@@ -24,6 +24,7 @@ import SC2.Geometry
 import SC2.Ids.AbilityId
 import SC2.Proto.Data (Point, Point2D, Unit)
 import SC2.Proto.Data qualified as Proto
+import SC2.Spatial
 
 import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()
@@ -56,7 +57,7 @@ getCmd (PointCommand a _ _) = a
 
 getTarget :: Action -> Point2D
 getTarget (PointCommand _ _ t) = t
-getTarget (UnitCommand _ _ t) = toPoint2D (tPos)
+getTarget (UnitCommand _ _ t) = toPoint2D tPos
  where
   tPos :: Point
   tPos = t ^. #pos

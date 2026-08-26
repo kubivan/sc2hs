@@ -20,15 +20,14 @@ import Observation
 import Proto.S2clientprotocol.Raw qualified as R
 import SC2.Grid
   ( Grid
-  , TilePos
   , canPlaceBuilding
   , findPlacementPoint
   , findPlacementPointInRadius
-  , tilePos
   )
+import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
-import SC2.Spatial qualified as Spatial
+import SC2.Spatial
 import SC2.TechTree
 import StepMonad
 import StepMonadUtils (agentCanAfford, unitCost)
@@ -95,7 +94,7 @@ findPlacementPos si obs _ grid gridHeight ProtossPylon =
     ]
  where
   pylons = runC (unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC)
-  distantEnough pos = all (\p -> Spatial.distSquared pos p >= 3 * 3) pylons
+  distantEnough pos = all (\p -> distSquaredI pos p >= 3 * 3) pylons
 findPlacementPos _ obs _ grid gridHeight uid = go pylons
  where
   go (p : ps) =
@@ -120,7 +119,7 @@ findFreeGeyser obs = listToMaybe freeGeysers
         .| filterC isGeyser
         .| filterC (\u -> not (tilePos (u ^. #pos) `Set.member` assimilatorPositions)) -- not occupied
         .| filterC
-          (\ug -> 100 >= Spatial.distSquared ug (minimumBy (comparing (Spatial.distSquared ug)) nexuses))
+          (\ug -> 100 >= distSquaredI ug (minimumBy (comparing (distSquaredI ug)) nexuses))
 
 findPlacementTarget :: (HasObs d, HasGrid d) => UnitTypeId -> StepMonad d (Maybe Target)
 findPlacementTarget uid = do

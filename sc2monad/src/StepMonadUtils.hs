@@ -32,6 +32,8 @@ import Agent
 import Footprint
 import Observation
 import SC2.Grid
+import SC2.Spatial
+import SC2.TilePos
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (PlayerInfo, Point, Point2D, ResponseGameInfo, UnitTypeData)
 import SC2.TechTree (UnitTraits, abilityExecutor, unitToAbility)

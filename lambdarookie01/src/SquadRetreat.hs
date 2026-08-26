@@ -5,6 +5,8 @@ import Army.Class
 import Observation
 import SC2.Geometry
 import SC2.Grid
+import SC2.TilePos
+import SC2.Spatial
 import SC2.Ids.AbilityId (AbilityId (ATTACKATTACK))
 import SC2.Spatial qualified as Spatial
 import Squad.FSMLog
@@ -29,7 +31,7 @@ retreatStep squad (Just rallyPos) = do
   units <- squadUnits squad
   if null units
     then pure ()
-    else command [PointCommand ATTACKATTACK units (fromTuple rallyPos)]
+    else command [PointCommand ATTACKATTACK units (toPoint2D rallyPos)]
 
 -- ---------------------------------------------------------------------------
 -- Update

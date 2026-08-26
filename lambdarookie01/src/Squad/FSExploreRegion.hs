@@ -5,6 +5,7 @@ import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Utils
+import SC2.Spatial
 import Squad.Behavior
 import Squad.FSMLog
 import Squad.Squad

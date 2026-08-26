@@ -16,9 +16,9 @@ import Army.Class
 import Footprint
 import SC2.Geometry
 import SC2.Grid.Algo
-import SC2.Grid.TilePos
+import SC2.TilePos
 import SC2.Ids.AbilityId
-import SC2.Spatial qualified as Spatial
+import SC2.Spatial
 import SC2.Utils
 import Squad.Squad
 import StepMonad
@@ -64,11 +64,11 @@ squadMoveToFormation squad center@(cx, cy) (Footprint formation) = do
       unitsWithPos = take (length units) unitsFormationPos `zip` units
 
   -- if all (\(p, u) -> p == (tilePos . view #pos $ u) ) unitsWithPos
-  if all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+  if all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos
     then return True
     else do
-      command [PointCommand ATTACKATTACK [leader] (fromTuple center)]
-      command [PointCommand ATTACKATTACK [u] (fromTuple p) | (p, u) <- unitsWithPos]
+      command [PointCommand ATTACKATTACK [leader] (toPoint2D center)]
+      command [PointCommand ATTACKATTACK [u] (toPoint2D p) | (p, u) <- unitsWithPos]
       return False
 
 squadExploreRegion :: (HasArmy d, HasGrid d, HasObs d) => FSMSquad a -> Region -> StepMonad d ()
@@ -86,7 +86,7 @@ squadExploreRegion s region =
       then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
       else do
         units <- catMaybes <$> mapM armyByTag unitTags
-        command [PointCommand ATTACKATTACK units (fromTuple posToGo)]
+        command [PointCommand ATTACKATTACK units (toPoint2D posToGo)]
 
 squadDoAttack :: FSMSquad a -> Target -> StepMonad d ()
 squadDoAttack squad target = return ()
@@ -100,4 +100,4 @@ isSquadFormed squad center formation = do
       (_ : units) = squadTags
 
       unitsWithPos = take (length units) unitsFormationPos `zip` units
-  return $ all (\(p, u) -> 2 >= Spatial.distManhattan p (tilePos . view #pos $ u)) unitsWithPos
+  return $ all (\(p, u) -> 2 >= distManhattan p (tilePos . view #pos $ u)) unitsWithPos

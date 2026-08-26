@@ -19,13 +19,13 @@ import ArmyLogic
 import BotDynamicState
 import Footprint (getFootprint)
 import Observation
-import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
-import SC2.Spatial qualified as Spatial
+import SC2.Spatial
+import SC2.TilePos
 import "sc2monad" Utils
 
 import Intent hiding (unitHasOrder)
@@ -41,7 +41,6 @@ import Units
   , closestC
   , isAssimilator
   , isMineral
-  , mapTilePosC
   , runC
   , toEnum'
   , unitIdleC
@@ -233,7 +232,7 @@ tryExpand = do
       mineralsOfNexus n =
         runConduitPure $
           mineralFields
-            .| filterC (\m -> Spatial.distSquared m n < 15 ^ 2)
+            .| filterC (\m -> distSquaredI m n < 15 ^ 2)
             .| mapC (view #mineralContents)
             .| sumC
 
@@ -330,7 +329,7 @@ reassignIdleProbes = do
                   runConduitPure $
                     obsUnitsC obs
                       .| filterC isMineral
-                      .| findC (\m -> Spatial.distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
+                      .| findC (\m -> distManhattan (m ^. #pos) (nexus ^. #pos) <= 12)
           command
             [ UnitCommand HARVESTGATHERPROBE [harvester] (closestMineralTo nexus)
             | (nexus, harvester) <- zip nexusesUnder probePool
@@ -432,7 +431,7 @@ findTargetC leader range = do
 
   -- 2. Separate them into army units and general enemies
   let armyUnits = filter isArmyUnit allEnemies
-      armyInRange = filter (\u -> Spatial.distSquared leader u <= range ^ 2) armyUnits
+      armyInRange = filter (\u -> distSquaredI leader u <= range ^ 2) armyUnits
 
   -- 3. Apply your targeting logic
   return $
@@ -466,7 +465,7 @@ squadAssignToExploreBlind squad = do
   case units of
     [] -> return False
     _ -> do
-      command [PointCommand ATTACKATTACK units (fromTuple (enemyStartLocation si))]
+      command [PointCommand ATTACKATTACK units (toPoint2D (enemyStartLocation si))]
       return True
 
 squadAssignToExplore :: Squad -> StepMonad BotDynamicState Bool
@@ -693,8 +692,8 @@ instance Agent BotAgent where
         grid = gridMerge pixelIsRamp gridPlacement gridPathing
         nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
         -- TODO: sort expands based on region connectivity: closest is not always the next one
-        expands = sortOn (Spatial.distSquared nexusPos) $ findExpands obsRaw grid heightMap
-        enemyStart = Spatial.toTilePos $ enemyBaseLocation gi obsRaw
+        expands = sortOn (distSquaredI nexusPos) $ findExpands obsRaw grid heightMap
+        enemyStart = toTilePos $ enemyBaseLocation gi obsRaw
 
         playerInfos = gi ^. #playerInfo
         playerGameInfo = head $ filter (\gi -> gi ^. #playerId == playerId) playerInfos

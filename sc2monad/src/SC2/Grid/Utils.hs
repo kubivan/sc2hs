@@ -15,10 +15,10 @@ module SC2.Grid.Utils
 where
 
 import Footprint
-import SC2.Geometry
+import SC2.Spatial
 import SC2.Grid.Algo (GridBfsRes (..), getAllNeighbors, gridBfs)
 import SC2.Grid.Core
-import SC2.Grid.TilePos
+import SC2.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
 
 import Data.Bits
@@ -81,4 +81,4 @@ findPlacementPointInRadius grid heightMap footprint start radius =
   bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptWhen terminateWhen
  where
   acceptWhen p = canPlaceBuilding grid heightMap p footprint
-  terminateWhen p = distSquared (fromTuple start) (fromTuple p) > (radius * radius)
+  terminateWhen p = distSquaredF start p > radius * radius

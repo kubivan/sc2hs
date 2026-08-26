@@ -26,8 +26,8 @@ module SC2.Grid.Algo (
 where
 
 import SC2.Grid.Core
-import SC2.Grid.TilePos (TilePos)
-import SC2.Spatial (distSquared)
+import SC2.TilePos (TilePos)
+import SC2.Spatial
 import Utils (dbg)
 
 import Control.Monad (guard)
@@ -146,7 +146,7 @@ findChokePoint grid threshold start =
     rayShortEnough :: Ray -> Bool
     rayShortEnough ray =
         threshold * threshold
-            >= distSquared (head ray) (last ray)
+            >= distSquaredI (head ray) (last ray)
     -- `Utils.dbg` ("findChokePoint checking threshold " ++ show threshold ++ " " ++ show (ray) ++ " " ++ show (sqrt $ distSquared (head ray) (last ray)))
 
     rays :: [(Ray, Ray)]

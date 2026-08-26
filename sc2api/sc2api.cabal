@@ -1,11 +1,11 @@
 cabal-version: 1.24
 
--- This file has been generated from package.yaml by hpack version 0.37.0.
+-- This file has been generated from package.yaml by hpack version 0.39.6.
 --
 -- see: https://github.com/sol/hpack
 
 name:           sc2api
-version:        0.4.2.0
+version:        0.5.0.0
 synopsis:       Low-level StarCraft II bot API - minimal interface for bot implementation
 category:       Game
 license:        MIT
@@ -60,6 +60,8 @@ library
       SC2.Proto.Data
       SC2.Proto.Requests
       SC2.Client
+      SC2.TilePos
+      SC2.Spatial
       SC2.Launcher.Participant
       SC2.Launcher.BotConfig
       SC2.Launcher.Config
