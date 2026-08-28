@@ -831,16 +831,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
 
     buildPylons
 
-    let idleGates = runC $ unitsSelf obs .| unitTypeC ProtossGateway .| unitIdleC
-        idleRobos = runC $ unitsSelf obs .| unitTypeC ProtossRoboticsFacility .| unitIdleC
-        gameLoop = obs ^. #gameLoop
-
     trainMassUnit ProtossStalker
-
-    -- command [SelfCommand ROBOTICSFACILITYTRAINIMMORTAL idleRobos]
-    issueSelfCommandReserveAware
-      (if (gameLoop `div` 5) == 0 then GATEWAYTRAINZEALOT else GATEWAYTRAINSTALKER)
-      idleGates
 
     trainProbes
 
