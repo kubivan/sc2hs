@@ -24,11 +24,11 @@ import SC2.Grid
   , findPlacementPoint
   , findPlacementPointInRadius
   )
-import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Spatial
 import SC2.TechTree
+import SC2.TilePos
 import StepMonad
 import StepMonadUtils (agentCanAfford, unitCost)
 import Units
@@ -83,10 +83,18 @@ findBuilder obs =
 pylonRadius :: Float
 pylonRadius = 6.5
 
+distantFromAll :: (Foldable t, Spatial a, Spatial b) => a -> Int -> t b -> Bool
+distantFromAll p dist = all (\e -> distSquaredI p e >= dist ^ (2 :: Integer))
+
 findPlacementPos ::
   StaticInfo -> Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos _ _ expands grid gridHeight ProtossNexus = find (\pos -> canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)) expands
-findPlacementPos si obs _ grid gridHeight ProtossPylon =
+findPlacementPos _ _ expands grid gridHeight ProtossNexus =
+  find
+    ( \pos ->
+        canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)
+    )
+    expands
+findPlacementPos si obs expands grid gridHeight ProtossPylon =
   asum
     [ findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos distantEnough
     | -- TODO: currenty startpos + all nexuses is add first nexus pos twice
@@ -94,7 +102,7 @@ findPlacementPos si obs _ grid gridHeight ProtossPylon =
     ]
  where
   pylons = runC (unitsSelf obs .| unitTypeC ProtossPylon .| mapTilePosC)
-  distantEnough pos = all (\p -> distSquaredI pos p >= 3 * 3) pylons
+  distantEnough pos = distantFromAll pos 5 expands && distantFromAll pos 3 pylons
 findPlacementPos _ obs _ grid gridHeight uid = go pylons
  where
   go (p : ps) =
