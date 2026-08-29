@@ -38,7 +38,7 @@ intentDslTests = describe "Intent DSL combinators" $ do
                     { intentId = IntentId "andThen-fail-fast"
                     , intentProgram =
                         andThen
-                            (PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (20, 20)) 0))
+                            (PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (20, 20)) 0 0))
                             (PBuildStructure ProtossPylon (BSMonitoring 1 (TargetPos (3, 3))))
                     , intentStartedFrame = 0
                     }
@@ -53,7 +53,7 @@ intentDslTests = describe "Intent DSL combinators" $ do
                     { intentId = IntentId "orElse-fallback"
                     , intentProgram =
                         orElse
-                            (PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (20, 20)) 0))
+                            (PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (20, 20)) 0 0))
                             (PBuildStructure ProtossPylon (BSMonitoring 1 (TargetPos (3, 3))))
                     , intentStartedFrame = 0
                     }

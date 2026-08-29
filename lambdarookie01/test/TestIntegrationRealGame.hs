@@ -29,7 +29,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
-import TestBot (BotAgent (..), BotPhase (..))
+import Bot (BotAgent (..), BotPhase (..))
 import Units (toEnum')
 
 integrationRealGameTests :: Spec

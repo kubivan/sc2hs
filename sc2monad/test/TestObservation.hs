@@ -11,10 +11,11 @@ import Proto.S2clientprotocol.Raw_Fields qualified as R
 import Proto.S2clientprotocol.Sc2api (ResponseGameInfo)
 import Proto.S2clientprotocol.Sc2api_Fields qualified as S
 import SC2.Grid (Grid, gridFromLines, gridPixel)
-import SC2.Grid.TilePos (TilePos, tilePos)
 import SC2.Ids.AbilityId (AbilityId (HARVESTGATHERPROBE))
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (Self), Point2D)
+import SC2.Spatial
+import SC2.TilePos
 import Test.Hspec
 import Units qualified
 

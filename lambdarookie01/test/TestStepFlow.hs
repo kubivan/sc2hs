@@ -17,7 +17,7 @@ import SC2.Proto.Data (Alliance (Self))
 import StepMonad (StaticInfo (..), runStepM)
 import StepMonadUtils (agentCanAfford, agentCanAffordWith)
 import Test.Hspec
-import TestBot (BotPhase (..), agentStepPhase)
+import Bot (BotPhase (..), agentStepPhase)
 import TestFixtures (mkDynamicState, mkObservation, mkStaticInfo, mockUnit)
 import Units (fromEnum')
 

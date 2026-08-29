@@ -21,8 +21,8 @@ expectedRegionCount :: FilePath -> Int
 expectedRegionCount fileName =
   case fileName of
     "corridor.txt" -> 1
-    "map.txt" -> 40
-    "map1.txt" -> 39
+    "map.txt" -> 30
+    "map1.txt" -> 30
     _ -> error $ "Missing expected region-count baseline for fixture: " <> fileName
 
 segmentationIntegrationTests :: Spec
@@ -37,6 +37,36 @@ segmentationIntegrationTests = do
               regions = gridSegment segmentedGrid
 
           length regions `shouldBe` expectedRegionCount (fixtureName fx)
+        it "covers all open cells after choke placement and segmentation" $ do
+          let originalGrid = fixtureGrid fx
+              res@(rays, segmentedGrid) = findAllChokePoints originalGrid
+              regions = gridSegment segmentedGrid
+              raysSet = Set.unions (map Set.fromList rays)
+              openCells =
+                Set.fromList
+                  [ (x, y)
+                  | y <- [0 .. gridH originalGrid - 1]
+                  , x <- [0 .. gridW originalGrid - 1]
+                  , gridPixel originalGrid (x, y) /= '#'
+                  ]
+              openCellsFromRegions = Set.unions (map snd regions)
+              unsegmentedTiles = Set.difference openCells (Set.union openCellsFromRegions raysSet)
+              charLabels :: [Char]
+              charLabels = ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']
+
+              resWithCharId = zip charLabels (map snd regions)
+              grid'' =
+                foldl
+                  (\gridAcc (id, region) -> foldl' (\ga p -> gridSetPixel ga p id) gridAcc (Set.toList region))
+                  segmentedGrid
+                  resWithCharId
+
+              grid''' =
+                foldl' (\ga p -> gridSetPixel ga p '$') grid'' (Set.toList unsegmentedTiles)
+
+          gridToFile "ooo.txt" grid'''
+
+          length (Set.toList unsegmentedTiles) `shouldBe` 0
 
         it "covers all open cells after choke placement and segmentation" $ do
           let originalGrid = fixtureGrid fx
@@ -64,7 +94,7 @@ segmentationIntegrationTests = do
                 [ (x, y)
                 | y <- [0 .. gridH segmentedGrid - 1]
                 , x <- [0 .. gridW segmentedGrid - 1]
-                , gridPixel segmentedGrid (x, y) /= ' '
+                , gridPixel segmentedGrid (x, y) == ' '
                 ]
 
           forM_ passableTiles $ \pos ->

@@ -6,6 +6,8 @@ import Footprint
 import SC2.Geometry
 import SC2.Grid
 import SC2.Ids.UnitTypeId
+import SC2.Spatial
+import SC2.TilePos
 
 import qualified Data.ByteString as B
 import Data.ProtoLens (decodeMessage)

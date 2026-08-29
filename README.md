@@ -62,7 +62,7 @@ A complete Protoss bot example using both `sc2api` and `sc2monad`.
 
 **Modules:**
 - `Main` — Game loop orchestration
-- `TestBot` — Agent implementation with multi-phase logic
+- `Bot` — Agent implementation with multi-phase logic
 - `BotDynamicState` — Mutable bot state (grid, army, observation)
 - `ArmyLogic` — Macro logic (squad forming, unit production)
 - `AgentBulidUtils` — Build order utilities and placement finding

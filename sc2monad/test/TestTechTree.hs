@@ -2,6 +2,7 @@ module TestTechTree (techTreeUnitTests) where
 
 import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe (fromJust)
+import SC2.Ids.Deps
 import SC2.Ids.UnitTypeId
 import SC2.Ids.UpgradeId
 import SC2.TechTree
