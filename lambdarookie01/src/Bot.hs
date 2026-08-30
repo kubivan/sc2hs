@@ -151,7 +151,6 @@ stepTowardsTechGoal goal = do
       TechUnit u -> do
         if isUnitStructure u
           then do
-            -- spawnIntent (IntentId ("step-towards-goal-build-" <> show (u))) (intentBuildStructure u)
             spawnIntentUnique (IntentId "step-towards-goal-build") (intentBuildStructure u)
           else do
             -- Unit training
@@ -247,14 +246,14 @@ tryExpand = do
       depleetingBasesCount = countIf (\(_, m) -> m < 8 * 300) nexusesResources
 
   lift $ traceM $ "!!!!!!! MINERALFIELDS:  " ++ (show . length . runC $ mineralFields)
-  when ((length nexusesResources) - depleetingBasesCount < 1) $ do
+  when (length nexusesResources - depleetingBasesCount < 1) $ do
     lift $
       traceM $
         "!!! EXPANDING:  "
-          ++ (show nexusesResources)
+          ++ show nexusesResources
           ++ " "
           ++ " depleting: "
-          ++ show (depleetingBasesCount)
+          ++ show depleetingBasesCount
           ++ " nexues: "
           ++ show (length nexusesResources)
 
