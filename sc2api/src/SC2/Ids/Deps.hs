@@ -12,22 +12,28 @@ module SC2.Ids.Deps
   , MorphDeps
   , Tech (..)
   , TechPath
+  , TechPathCache
   ) where
 
 import SC2.Ids.AbilityId (AbilityId (..))
+import SC2.Ids.Ids
 import SC2.Ids.UnitTypeId (UnitTypeId (..))
 import SC2.Ids.UpgradeId (UpgradeId (..))
 
 import Control.Applicative ((<|>))
+import Control.Monad.State.Strict (State (..), execState, get, modify')
 import Data.Aeson
 import Data.Aeson.Lens
 import Data.ByteString.Lazy qualified as B
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
+import Data.HashSet qualified as HashSet
 import Data.Hashable
-import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
+import Data.List (foldl')
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
+import Debug.Trace
 import GHC.Generics (Generic)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
@@ -53,6 +59,7 @@ type ResearchDeps = HashMap.HashMap UpgradeId AbilityId
 type AbilityProducer = HashMap.HashMap AbilityId UnitTypeId
 
 type UnitAbilityDeps = HashMap.HashMap UnitTypeId [(AbilityId, [Tech])]
+type UnitAbilityDepsDict = HashMap.HashMap UnitTypeId (HashMap.HashMap AbilityId [Tech])
 
 type TechDeps = HashMap.HashMap Tech [Tech]
 type TechPath = HashMap.HashMap Tech [Tech]
@@ -79,110 +86,195 @@ findDataJson = do
               then error $ "data/data.json not found in any parent directory of: " ++ dir
               else go parent
 
-generateDeps :: Q [Dec]
-generateDeps = do
-  dataFile <- findDataJson
-  qAddDependentFile dataFile
-  content <- runIO $ B.readFile dataFile
+type TechPathCache = HashMap Tech [Tech]
+
+isTechUnit :: Tech -> Bool
+isTechUnit (TechUnit _) = True
+isTechUnit _ = False
+
+isTechWorker (TechUnit u) = isUnitWorker u
+isTechWorker _ = False
+
+generateTechPathes dataFile = do
+  content <- B.readFile dataFile
   let Just rootVal = decode content :: Maybe Value
       Just (Array abilitiesArray) = rootVal ^? key "Ability"
       abilitiesList = V.toList abilitiesArray
-
       Just (Array unitsArray) = rootVal ^? key "Unit"
       unitAbilitiesList = V.toList unitsArray
+
+      isTechUnit :: Tech -> Bool
+      isTechUnit (TechUnit _) = True
+      isTechUnit _ = False
+
+      unitAbilitiesGrouped :: HashMap UnitTypeId (HashMap AbilityId [Tech])
+      unitAbilitiesGrouped =
+        HashMap.map HashMap.fromList $
+          HashMap.fromList $
+            mapMaybe extractUnitAbilities unitAbilitiesList
+
+      abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
+
+      allProductionAbilities :: [AbilityId]
+      allProductionAbilities = map snd trainPairs ++ map snd buildPairs ++ map snd morphPairs ++ map snd researchPairs
+
+      abilityToProducerUnit :: HashMap.HashMap AbilityId UnitTypeId
+      abilityToProducerUnit =
+        HashMap.fromList
+          [ (abid, minimum units)
+          | abid <- Set.toList (Set.fromList allProductionAbilities)
+          , let units =
+                  [ uid
+                  | (uid, abList) <- HashMap.toList unitAbilitiesGrouped
+                  , any (\(a, _) -> a == abid) (HashMap.toList abList)
+                  ]
+          , not (null units)
+          ]
 
       trainPairs = mapMaybe extractTrainDep abilitiesList
       buildPairs = mapMaybe extractBuildDep abilitiesList
       morphPairs = mapMaybe extractMorphDep abilitiesList
       researchPairs = mapMaybe extractResearchDep abilitiesList
 
-      unitAbilitiesGrouped :: UnitAbilityDeps
-      unitAbilitiesGrouped = HashMap.fromList $ mapMaybe extractUnitAbilities unitAbilitiesList
+      buildAbilitiesDict = HashMap.fromListWith (++) [(k, [v]) | (k, v) <- buildPairs]
+      morphAbilitiesDict = HashMap.fromListWith (++) [(k, [v]) | (k, v) <- morphPairs]
+      trainAbilitiesDict = HashMap.fromListWith (++) [(k, [v]) | (k, v) <- trainPairs]
+      researchAbilitiesDict = HashMap.fromListWith (++) [(k, [v]) | (k, v) <- researchPairs]
 
-      -- abilityProducer :: AbilityProducer
-      abilityProducerPairs = concatMap extractAbilityProducers unitAbilitiesList
+      buildTechPath :: Tech -> State TechPathCache [Tech]
+      buildTechPath start = do
+        traceM $ "building techpath for " ++ show start
+        path <- bfs [(start, [start])] HashSet.empty
+        modify' (HashMap.insert start path)
+        pure path
+       where
+        bfs [] _ =
+          pure []
+        bfs ((tech, path) : queue) visited = do
+          let deps = directDeps tech
 
-      techAbilityDeps :: [(Tech, [Tech])]
-      techAbilityDeps =
-        [ (TechAbility abid, deps)
-        | abList <- HashMap.elems unitAbilitiesGrouped
-        , (abid, deps) <- abList
-        ]
+          traceM $
+            "visiting "
+              ++ show tech
+              ++ " path: "
+              ++ show path
+              ++ " deps: "
+              ++ show deps
 
-      techUnitBuilds :: [(Tech, [Tech])]
-      techUnitBuilds =
-        [ (TechUnit uid, [TechAbility abid])
-        | (uid, abid) <- trainPairs
-        ]
+          if null deps
+            then do
+              traceM $ "FOUND: " ++ show path
+              pure path
+            else
+              let visited' = HashSet.insert tech visited
+                  queue' =
+                    queue
+                      ++ [ (dep, dep : path)
+                         | dep <- deps
+                         , not (HashSet.member dep visited')
+                         ]
+               in bfs queue' visited'
 
-      techBuildDeps :: [(Tech, [Tech])]
-      techBuildDeps =
-        [ (TechUnit uid, [TechAbility abid])
-        | (uid, abid) <- buildPairs
-        ]
+      directDeps :: Tech -> [Tech]
+      directDeps tech = fromMaybe [] (directDepsMaybe tech)
 
-      techUpgradeDeps :: [(Tech, [Tech])]
-      techUpgradeDeps =
-        [ (TechUpgrade uid, [TechAbility abid])
-        | (uid, abid) <- researchPairs
-        ]
+      directDepsMaybe :: Tech -> Maybe [Tech]
+      directDepsMaybe (TechUpgrade uid) = do
+        abilityIds <-
+          HashMap.lookup uid researchAbilitiesDict
+        traceM $ "research abilityIds: " ++ show abilityIds
+        producer <- listToMaybe (mapMaybe (`HashMap.lookup` abilityToProducerUnit) abilityIds)
 
-      extraAbilityLinks :: [(Tech, [Tech])]
-      extraAbilityLinks =
-        [ (TechAbility abid, [TechUnit uid])
-        | (uid, abList) <- HashMap.toList unitAbilitiesGrouped
-        , (abid, _) <- abList
-        ]
+        traceM $ "producer: " ++ show producer
 
-      -- Final direct dependency graph
-      techDeps :: TechDeps
-      techDeps =
-        HashMap.fromListWith
-          (++)
-          (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
+        producerAbilitiesWithDeps <- HashMap.lookup producer unitAbilitiesGrouped
+        traceM $ "producerAbilitiesWithDeps: " ++ show producerAbilitiesWithDeps
+        producingAbilityDep <-
+          listToMaybe (mapMaybe (`HashMap.lookup` producerAbilitiesWithDeps) abilityIds)
+        traceM $ "producingAbilityDep: " ++ show producingAbilityDep
+        pure $
+          if null producingAbilityDep
+            then [TechUnit producer]
+            else producingAbilityDep
+      directDepsMaybe (TechUnit uid)
+        | isUnitAddon uid =
+            Nothing
+        | isUnitStructure uid =
+            let abilities =
+                  HashMap.lookup uid buildAbilitiesDict
+                    <|> HashMap.lookup uid morphAbilitiesDict
 
-      -- Build full paths (transitive closure)
-      rawTechPath :: TechPath
-      rawTechPath = buildTechPaths techDeps
+                resolve abilityId =
+                  fromMaybe [] $ do
+                    builder <- HashMap.lookup abilityId abilityToProducerUnit
+                    traceM $ "Builder: " ++ show builder
+                    deps <- HashMap.lookup builder unitAbilitiesGrouped
+                    traceM $ "deps: " ++ show deps
+                    HashMap.lookup abilityId deps
+             in Just $
+                  maybe [] (concatMap resolve) abilities
+        | otherwise = do
+            abilityIds <-
+              HashMap.lookup uid trainAbilitiesDict
+                <|> HashMap.lookup uid morphAbilitiesDict
+            traceM $ "abilityIds: " ++ show abilityIds
+            producer <- listToMaybe (mapMaybe (`HashMap.lookup` abilityToProducerUnit) abilityIds)
 
-      -- Remove TechAbility from final path values
-      isTechAbility (TechAbility _) = True
-      isTechAbility _ = False
+            traceM $ "producer: " ++ show producer
 
-      techPathFiltered :: TechPath
-      techPathFiltered = HashMap.map (filter (not . isTechAbility)) rawTechPath
+            producerAbilitiesWithDeps <- HashMap.lookup producer unitAbilitiesGrouped
+            traceM $ "producerAbilitiesWithDeps: " ++ show producerAbilitiesWithDeps
+            producingAbilityDep <-
+              listToMaybe (mapMaybe (`HashMap.lookup` producerAbilitiesWithDeps) abilityIds)
+            traceM $ "producingAbilityDep: " ++ show producingAbilityDep
+            pure $
+              if null producingAbilityDep
+                then [TechUnit producer]
+                else producingAbilityDep
+      directDepsMaybe _ =
+        Just [TechUnit ProtossStalker]
 
+      allUnits = HashMap.keys unitAbilitiesGrouped
+      allTechs = [TechUnit uid | uid <- allUnits] ++ [TechUpgrade uid | uid <- HashMap.keys researchAbilitiesDict]
+      precomputeTechPaths :: [Tech] -> HashMap Tech [Tech]
+      precomputeTechPaths techs = execState (mapM buildTechPath techs) HashMap.empty
+
+      techPaths :: HashMap Tech [Tech]
+      techPaths = precomputeTechPaths allTechs
+
+  traceM $ "!!! " ++ show abilityProducerPairs
+  traceM $ "====================================================================="
+  traceM $ "!!! " ++ show unitAbilitiesGrouped
+  return (techPaths, abilityProducerPairs, researchPairs, trainPairs)
+
+generateDeps :: Q [Dec]
+generateDeps = do
+  dataFile <- findDataJson
+  qAddDependentFile dataFile
+  (techPaths, abilityProducerPairs, researchPairs, trainPairs) <- runIO (generateTechPathes dataFile)
   [d|
     trainDeps :: TrainDeps
     trainDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList trainPairs)
 
-    buildDeps :: BuildDeps
-    buildDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList buildPairs)
-
-    morphDeps :: MorphDeps
-    morphDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList morphPairs)
-
+    --
+    -- buildDeps :: BuildDeps
+    -- buildDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList buildPairs)
+    --
+    -- morphDeps :: MorphDeps
+    -- morphDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList morphPairs)
+    --
     researchDeps :: ResearchDeps
     researchDeps = HashMap.fromList $(liftHashMap $ HashMap.fromList researchPairs)
 
-    unitAbilitiesDeps :: UnitAbilityDeps
-    unitAbilitiesDeps = HashMap.fromList $(liftHashMap unitAbilitiesGrouped)
-
+    --
+    -- unitAbilitiesDeps :: UnitAbilityDeps
+    -- unitAbilitiesDeps = HashMap.fromList $(liftHashMap unitAbilitiesGrouped)
+    --
     abilityExecutor :: AbilityProducer
     abilityExecutor = HashMap.fromList $(liftHashMap $ HashMap.fromList abilityProducerPairs)
 
-    techDeps :: TechDeps
-    techDeps =
-      HashMap.fromListWith
-        (++)
-        $( liftHashMap $
-             HashMap.fromListWith
-               (++)
-               (techAbilityDeps ++ techUnitBuilds ++ techUpgradeDeps ++ techBuildDeps ++ extraAbilityLinks)
-         )
-
     techPath :: TechPath
-    techPath = HashMap.fromList $(liftHashMap techPathFiltered)
+    techPath = HashMap.fromList $(liftHashMap techPaths)
     |]
 
 extractTrainDep :: Value -> Maybe (UnitTypeId, AbilityId)

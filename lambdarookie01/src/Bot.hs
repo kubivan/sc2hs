@@ -21,6 +21,8 @@ import Footprint (getFootprint)
 import Observation
 import SC2.Grid
 import SC2.Ids.AbilityId
+import SC2.Ids.Deps
+import SC2.Ids.Ids
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Race (..))
 import SC2.Proto.Data qualified as Proto
