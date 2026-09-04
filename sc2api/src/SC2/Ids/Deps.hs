@@ -29,8 +29,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
 import Data.Hashable
-import Data.List (foldl')
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe, maybeToList)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 import Debug.Trace
@@ -58,10 +57,6 @@ type ResearchDeps = HashMap.HashMap UpgradeId AbilityId
 
 type AbilityProducer = HashMap.HashMap AbilityId UnitTypeId
 
-type UnitAbilityDeps = HashMap.HashMap UnitTypeId [(AbilityId, [Tech])]
-type UnitAbilityDepsDict = HashMap.HashMap UnitTypeId (HashMap.HashMap AbilityId [Tech])
-
-type TechDeps = HashMap.HashMap Tech [Tech]
 type TechPath = HashMap.HashMap Tech [Tech]
 
 {- | Walk up parent directories from the splice-site source file
@@ -102,10 +97,6 @@ generateTechPathes dataFile = do
       abilitiesList = V.toList abilitiesArray
       Just (Array unitsArray) = rootVal ^? key "Unit"
       unitAbilitiesList = V.toList unitsArray
-
-      isTechUnit :: Tech -> Bool
-      isTechUnit (TechUnit _) = True
-      isTechUnit _ = False
 
       unitAbilitiesGrouped :: HashMap UnitTypeId (HashMap AbilityId [Tech])
       unitAbilitiesGrouped =
@@ -334,31 +325,6 @@ extractAbilityDeps obj =
 
 liftHashMap :: (Lift k, Lift v) => HashMap.HashMap k v -> Q Exp
 liftHashMap = lift . HashMap.toList
-
-buildTechPaths :: TechDeps -> TechPath
-buildTechPaths deps = HashMap.fromList [(t, ordNub . reverse $ go t Set.empty []) | t <- HashMap.keys deps]
- where
-  go :: Tech -> Set.Set Tech -> [Tech] -> [Tech]
-  go tech visited acc
-    | tech `Set.member` visited = acc
-    | otherwise =
-        let visited' = Set.insert tech visited
-            children = fromMaybe [] (HashMap.lookup tech deps)
-            acc' = foldl' (\a child -> go child visited' a) acc children
-         in tech : acc'
-
-reverseHashMap :: (Hashable v) => HashMap k [v] -> HashMap v [k]
-reverseHashMap input =
-  HashMap.fromListWith (++) $
-    [(v, [k]) | (k, vs) <- HashMap.toList input, v <- vs]
-
-ordNub :: (Ord a) => [a] -> [a]
-ordNub = go Set.empty
- where
-  go _ [] = []
-  go seen (x : xs)
-    | x `Set.member` seen = go seen xs
-    | otherwise = x : go (Set.insert x seen) xs
 
 extractAbilityProducers :: Value -> [(AbilityId, UnitTypeId)]
 extractAbilityProducers unitValue =
