@@ -7,7 +7,6 @@ import SC2.Ids.AbilityId
 import SC2.Utils
 import SC2.Spatial
 import Squad.Behavior
-import Squad.FSMLog
 import Squad.Squad
 import Squad.State
 import StepMonad
@@ -35,9 +34,9 @@ exploreRegionStep s (FSExploreRegion _ region) = squadExploreRegion s region
 
 exploreRegionUpdate ::
   (HasArmy d, HasObs d, HasGrid d) =>
-  FSMSquad SquadState -> FSExploreRegion -> StepMonad d UpdateResult
+  FSMSquad SquadState -> FSExploreRegion -> StepMonad d SquadState
 exploreRegionUpdate squad st@(FSExploreRegion rid region)
-  | Set.size region == 0 = return (Transition SSIdle)
+  | Set.size region == 0 = return SSIdle
   | otherwise = do
       units <- squadUnits squad
 
@@ -50,14 +49,5 @@ exploreRegionUpdate squad st@(FSExploreRegion rid region)
 
       return $
         if Set.size region' == 0
-          then Transition SSIdle
-          else Continue (SSExploreRegion state')
-
--- ---------------------------------------------------------------------------
--- Enter / Exit / Transition
-
-exploreRegionOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-exploreRegionOnEnter squad = traceFSM squad "enter"
-
-exploreRegionOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-exploreRegionOnExit squad = traceFSM squad "exit"
+          then SSIdle
+          else SSExploreRegion state'

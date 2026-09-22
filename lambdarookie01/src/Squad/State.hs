@@ -23,7 +23,3 @@ data SquadState
   | SSExploreRegion FSExploreRegion
   | SSEngage FSEngage
   | SSRetreat (Maybe TilePos)
-
-data UpdateResult
-  = Continue SquadState
-  | Transition SquadState

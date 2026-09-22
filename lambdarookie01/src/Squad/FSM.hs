@@ -7,10 +7,12 @@ import Squad.FSSquadIdle
 import SquadRetreat
 
 import Army.Class (HasArmy)
+import Control.Monad (void)
 import SC2.Grid (RegionId)
 import Squad.Squad
 import Squad.State
 import StepMonad
+import StepMonadUtils (removeMarkSM)
 
 isSquadIdle :: FSMSquad SquadState -> Bool
 isSquadIdle s = case squadState s of
@@ -23,59 +25,42 @@ squadAssignedRegion squad = case squadState squad of
   _ -> Nothing
 
 -- ---------------------------------------------------------------------------
--- Dispatch
+-- State updates and actions
 
-dispatchUpdate ::
+updateState ::
   (HasArmy d, HasObs d, HasGrid d) =>
-  FSMSquad SquadState -> SquadState -> StepMonad d UpdateResult
-dispatchUpdate squad SSIdle = idleUpdate squad
-dispatchUpdate squad (SSForming s) = formingUpdate squad s
-dispatchUpdate squad (SSExploreRegion s) = exploreRegionUpdate squad s
-dispatchUpdate squad (SSEngage s@(FSEngageFar _)) = engageFarUpdate squad s
-dispatchUpdate squad (SSEngage s@(FSEngageClose _)) = engageCloseUpdate squad s
-dispatchUpdate squad (SSRetreat s) = retreatUpdate squad s
+  FSMSquad SquadState -> SquadState -> StepMonad d SquadState
+updateState squad SSIdle = idleUpdate squad
+updateState squad (SSForming s) = formingUpdate squad s
+updateState squad (SSExploreRegion s) = exploreRegionUpdate squad s
+updateState squad (SSEngage s@(FSEngageFar _)) = engageFarUpdate squad s
+updateState squad (SSEngage s@(FSEngageClose _)) = engageCloseUpdate squad s
+updateState squad (SSRetreat s) = retreatUpdate squad s
 
-dispatchStep ::
+stepState ::
   (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchStep squad SSIdle = idleStep squad
-dispatchStep squad (SSForming f) = formingStep squad f
-dispatchStep squad (SSExploreRegion s) = exploreRegionStep squad s
-dispatchStep squad (SSEngage s@(FSEngageFar _)) = engageFarStep squad s
-dispatchStep squad (SSEngage s@(FSEngageClose _)) = engageCloseStep squad s
-dispatchStep squad (SSRetreat s) = retreatStep squad s
+stepState squad SSIdle = idleStep squad
+stepState squad (SSForming f) = formingStep squad f
+stepState squad (SSExploreRegion s) = exploreRegionStep squad s
+stepState squad (SSEngage s@(FSEngageFar _)) = engageFarStep squad s
+stepState squad (SSEngage s@(FSEngageClose _)) = engageCloseStep squad s
+stepState squad (SSRetreat s) = retreatStep squad s
 
-dispatchOnEnter ::
-  (HasArmy d, HasObs d, HasGrid d) =>
-  FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnEnter squad SSIdle = idleOnEnter squad
-dispatchOnEnter squad (SSForming _) = formingOnEnter squad
-dispatchOnEnter squad (SSExploreRegion _) = exploreRegionOnEnter squad
-dispatchOnEnter squad (SSEngage _) = engageOnEnter squad
-dispatchOnEnter squad (SSRetreat _) = retreatOnEnter squad
-
-dispatchOnExit ::
-  (HasArmy d, HasObs d, HasGrid d) =>
-  FSMSquad SquadState -> SquadState -> StepMonad d ()
-dispatchOnExit squad SSIdle = idleOnExit squad
-dispatchOnExit squad (SSForming _) = formingOnExit squad
-dispatchOnExit squad (SSExploreRegion _) = exploreRegionOnExit squad
-dispatchOnExit squad (SSEngage _) = engageOnExit squad
-dispatchOnExit squad (SSRetreat _) = retreatOnExit squad
+-- | The only state-exit resource is a placed formation's grid mark.  Keep its
+-- cleanup next to the state replacement so callers cannot bypass it.
+setSquadState ::
+  (HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
+setSquadState squad state' = do
+  case (squadState squad, state') of
+    (SSForming (FSFormingPlaced _), SSForming _) -> pure ()
+    (SSForming (FSFormingPlaced (center, footprint)), _) -> void $ removeMarkSM footprint center
+    _ -> pure ()
+  pure squad{squadState = state'}
 
 processSquad ::
   (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
 processSquad squad = do
-  result <- dispatchUpdate squad (squadState squad)
-  case result of
-    Continue state' -> do
-      let squad' = squad{squadState = state'}
-      dispatchStep squad' state'
-      return squad'
-    Transition stNew -> do
-      dispatchOnExit squad (squadState squad)
-      let squad' = squad{squadState = stNew}
-      dispatchOnEnter squad' stNew
-      processSquad squad'
-
--- dispatchStep squad stNew
--- return squad { squadState = stNew }
+  state' <- updateState squad (squadState squad)
+  squad' <- setSquadState squad state'
+  stepState squad' state'
+  pure squad'

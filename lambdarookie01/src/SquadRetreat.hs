@@ -9,7 +9,6 @@ import SC2.TilePos
 import SC2.Spatial
 import SC2.Ids.AbilityId (AbilityId (ATTACKATTACK))
 import SC2.Spatial qualified as Spatial
-import Squad.FSMLog
 import Squad.Squad
 import Squad.State
 import StepMonad
@@ -26,7 +25,7 @@ import SquadUtils (squadUnits)
 
 retreatStep ::
   (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d ()
-retreatStep _ Nothing = error "retreatStep for Nothing rallypoint shouldnt happen"
+retreatStep _ Nothing = pure ()
 retreatStep squad (Just rallyPos) = do
   units <- squadUnits squad
   if null units
@@ -74,10 +73,10 @@ findRetreatPoint squad = do
   return $ fromMaybe fallback retreatPoint
 
 retreatUpdate ::
-  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d UpdateResult
+  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> Maybe TilePos -> StepMonad d SquadState
 retreatUpdate squad Nothing = do
   pos <- findRetreatPoint squad
-  return (Continue (SSRetreat (Just pos)))
+  return (SSRetreat (Just pos))
 retreatUpdate squad st@(Just rallyPos) = do
   leader <- fromJust <$> armyByTag (head . squadTags $ squad)
 
@@ -86,14 +85,5 @@ retreatUpdate squad st@(Just rallyPos) = do
 
   pure $
     if arrived || healed
-      then Transition SSIdle
-      else Continue (SSRetreat st)
-
--- ---------------------------------------------------------------------------
--- Enter / Exit / Transition
-
-retreatOnEnter :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-retreatOnEnter squad = traceFSM squad "enter"
-
-retreatOnExit :: (HasArmy d) => FSMSquad SquadState -> StepMonad d ()
-retreatOnExit squad = traceFSM squad "exit"
+      then SSIdle
+      else SSRetreat st
