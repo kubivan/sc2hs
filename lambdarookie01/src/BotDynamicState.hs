@@ -8,7 +8,7 @@ import Army.Class (HasArmy, getUnitMap)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
 import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
-import Istar (Istar)
+import Istar
 import Lens.Micro ((%~), (^.))
 import Observation
 import ResourceFlow (ResourceRateState)
@@ -29,7 +29,7 @@ data BotDynamicState = BotDynamicState
   , dsArmy :: Army
   , dsIntents :: IntentStore BotDynamicState
   , dsResourceRateState :: ResourceRateState
-  , dsIstar :: Istar
+  , dsIstar :: IstarState
   }
 
 instance HasObs BotDynamicState where
@@ -46,6 +46,11 @@ instance HasBuildIntents BotDynamicState where
 
 instance HasArmy BotDynamicState where
   getUnitMap bds = armyUnits $ dsArmy bds
+
+instance HasIstar BotDynamicState where
+  scoutingL f s = f (dsIstar s) <&> \o -> s{dsIstar = o}
+
+getUnitMap bds = armyUnits $ dsArmy bds
 
 agentGetBuildIntents :: (HasBuildIntents d) => StepMonad d (IntentStore d)
 agentGetBuildIntents = agentGet <&> (^. buildIntentsL)

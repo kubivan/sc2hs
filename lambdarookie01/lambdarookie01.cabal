@@ -69,6 +69,7 @@ executable lambdarookie01
     , text
     , transformers
     , unordered-containers
+    , vector
   default-language: Haskell2010
 
 test-suite lambdarookie01-test
@@ -139,5 +140,6 @@ test-suite lambdarookie01-test
     , text
     , transformers
     , unordered-containers
+    , vector
     , websockets
   default-language: Haskell2010

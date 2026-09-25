@@ -93,7 +93,7 @@ import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
-import Istar (istarEmpty, updateIstar)
+import Istar
 import ResourceFlow
   ( CostRate (..)
   , ResourceRate (..)
@@ -677,12 +677,6 @@ trainMassUnit uid = unlessM isFullLimit $ do
             )
             producersIdle
 
-dsUpdateIstar :: StepMonad BotDynamicState ()
-dsUpdateIstar = do
-  ds <- agentGet
-  istar' <- updateIstar (dsIstar ds)
-  agentModify $ \ds -> ds{dsIstar = istar'}
-
 instance Agent BotAgent where
   makeAgent ::
     BotAgent ->
@@ -800,6 +794,7 @@ agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
   do
     debugUnitPos
     reassignIdleProbes
+    stepIstar
     obs <- agentObs
     abilities <- agentAbilities
     when (buildingsSelfChanged obs obsPrev) $ do
@@ -821,6 +816,7 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
     obs <- agentObs
     agentUpdateArmy obsPrev
     debugSquads
+    stepIstar
     when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
     reassignIdleProbes
     tryExpand
