@@ -6,10 +6,11 @@ import Actions
 import Conduit
 import Conduit (filterC, mapC)
 import Control.Monad.Extra (when)
+import Control.Monad.Trans.Maybe
 import Data.Conduit ((.|))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
@@ -30,6 +31,7 @@ import SC2.Utils (isArmyUnit)
 import StepMonad
   ( AsyncStaticInfo (..)
   , HasObs
+  , MaybeStepMonad
   , StaticInfo (..)
   , StepMonad
   , agentGet
@@ -51,77 +53,84 @@ visionDecayEmpty = (0, 0, VU.fromList [])
 maxDecay :: Word64
 maxDecay = maxBound
 
-data ScoutState
-  = ScoutStateIdle
-  | ScoutStateMove Unit TilePos
-  | ScoutStateRetreat Unit TilePos
-  | ScoutStateScouting Unit RegionId
+data ScoutTask
+  = ScoutTaskIdle
+  | ScoutTaskMove TilePos
+  | ScoutTaskRetreat TilePos
+  | ScoutTaskScout RegionId (Set TilePos)
   deriving (Eq, Show)
 
-data ScoutTask = ScoutTask
-  { scoutUnit :: Unit
-  , scoutRegionId :: Int
+data ScoutContext = ScoutContext
+  { scoutUnit :: Maybe Unit
+  , scoutTask :: ScoutTask
   }
   deriving (Eq, Show)
 
-stepScouting :: (HasIstar d, HasObs d) => StepMonad d ScoutState
+getJust :: (Applicative m) => Maybe a -> MaybeT m a
+getJust = MaybeT . pure
+
+stepScouting :: (HasIstar d, HasObs d) => MaybeStepMonad d ScoutContext
 stepScouting = do
-  istar <- getIstar
-
-  si <- agentStatic
-  obs <- agentObs
-  let masi = siAsyncStaticInfo si
-      scoutState = istarScoutState istar
-  traceM $ "IstarScouting: " ++ show scoutState
-  if isJust masi
-    then do
-      let asi = fromJust masi
-          enemyBaseRegionId = last $ asiRegionPathToEnemy asi
-          enemyBaseRegion = asiRegions asi HashMap.! enemyBaseRegionId
-          enemyBaseRegionPos = Set.findMin enemyBaseRegion
-
-          units = unitsSelf obs
-      case scoutState of
-        ScoutStateIdle -> do
-          let probe = head $ runC $ units .| unitTypeC ProtossProbe .| filterC unitIsHarvesting
-          pure $ ScoutStateMove probe enemyBaseRegionPos
-        ScoutStateMove scout destPos -> do
-          let mu = runConduitPure $ units .| filterC (\u -> scout ^. #tag == u ^. #tag) .| headC
-          case mu of
-            Nothing -> pure ScoutStateIdle
-            Just unitAlive -> do
-              if unitAlive ^. #shield < unitAlive ^. #shieldMax
-                then
-                  pure $ ScoutStateRetreat unitAlive (startLocation si)
-                else do
-                  let dist = distManhattan unitAlive destPos
-                  traceM $ "!! dist to " ++ show dist
-                  if dist < 20
-                    then
-                      pure $ ScoutStateRetreat unitAlive (startLocation si)
-                    else
-                      pure $ ScoutStateMove unitAlive destPos
-        ScoutStateRetreat scout destPos -> do
-          let mu = runConduitPure $ units .| filterC (\u -> scout ^. #tag == u ^. #tag) .| headC
-          case mu of
-            Nothing -> pure ScoutStateIdle
-            Just unitAlive -> do
-              let dist = distManhattan unitAlive destPos
-              traceM $ "!! dist to " ++ show dist
-              if dist < 20
-                then
-                  pure $ ScoutStateMove unitAlive enemyBaseRegionPos
-                else
-                  pure ScoutStateIdle
-        _ -> pure scoutState
-    else
-      pure ScoutStateIdle
+  istar <- lift getIstar
+  si <- lift agentStatic
+  obs <- lift agentObs
+  asi <- getJust $ siAsyncStaticInfo si
+  enemyBaseRegionId <- getJust $ listToMaybe $ reverse $ asiRegionPathToEnemy asi
+  enemyBaseRegion <- getJust $ HashMap.lookup enemyBaseRegionId $ asiRegions asi
+  enemyBaseRegionPos <- getJust $ Set.lookupMin enemyBaseRegion
+  let scoutContext = istarScoutContext istar
+      units = unitsSelf obs
+      findScout scout =
+        runConduitPure $
+          units .| filterC (\unit -> scout ^. #tag == unit ^. #tag) .| headC
+  traceM $ "IstarScouting: " ++ show scoutContext
+  case scoutTask scoutContext of
+    ScoutTaskIdle -> do
+      probe <- getJust $ listToMaybe $ runC $ units .| unitTypeC ProtossProbe .| filterC unitIsHarvesting
+      pure $
+        ScoutContext
+          { scoutUnit = Just probe
+          , scoutTask = ScoutTaskMove enemyBaseRegionPos
+          }
+    ScoutTaskMove destPos -> do
+      scout <- getJust $ scoutUnit scoutContext
+      unitAlive <- getJust $ findScout scout
+      if unitAlive ^. #shield < unitAlive ^. #shieldMax
+        then
+          pure $
+            ScoutContext
+              { scoutUnit = Just unitAlive
+              , scoutTask = ScoutTaskRetreat (startLocation si)
+              }
+        else do
+          let dist = distManhattan unitAlive destPos
+          traceM $ "!! dist to " ++ show dist
+          if dist < 20
+            then
+              pure $
+                ScoutContext
+                  { scoutUnit = Just unitAlive
+                  , scoutTask = ScoutTaskRetreat (startLocation si)
+                  }
+            else pure $ ScoutContext{scoutUnit = Just unitAlive, scoutTask = ScoutTaskMove destPos}
+    ScoutTaskRetreat destPos -> do
+      scout <- getJust $ scoutUnit scoutContext
+      unitAlive <- getJust $ findScout scout
+      if distManhattan unitAlive destPos < 20
+        then
+          pure $
+            ScoutContext
+              { scoutUnit = Just unitAlive
+              , scoutTask = ScoutTaskMove enemyBaseRegionPos
+              }
+        else pure $ ScoutContext{scoutUnit = Just unitAlive, scoutTask = ScoutTaskRetreat destPos}
+    _ -> pure scoutContext
 
 data IstarState = IstarState
   { istarSeenEnemies :: Set UnitTypeId
   , istarSeenBuildings :: Set UnitTypeId
   , istarVisionDecay :: VisionDecay
-  , istarScoutState :: ScoutState
+  , istarScoutContext :: ScoutContext
   }
 
 class HasIstar d where
@@ -130,12 +139,11 @@ class HasIstar d where
 getIstar :: (HasIstar d) => StepMonad d IstarState
 getIstar = (^. scoutingL) <$> agentGet
 
-commandScouting :: (HasObs d) => ScoutState -> StepMonad d ()
-commandScouting scoutingState = do
-  case scoutingState of
-    ScoutStateMove u dest -> command [PointCommand MOVE [u] (toPoint2D dest)]
-    -- ScoutStateScouting r RegionId
-    _ -> pure ()
+commandScouting :: (HasObs d) => Maybe ScoutContext -> StepMonad d ()
+commandScouting Nothing = pure ()
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting _ = pure ()
 
 modifyIstar ::
   (HasIstar d) =>
@@ -144,7 +152,7 @@ modifyIstar ::
 modifyIstar f = agentModify (scoutingL %~ f)
 
 istarEmpty :: IstarState
-istarEmpty = IstarState Set.empty Set.empty visionDecayEmpty ScoutStateIdle
+istarEmpty = IstarState Set.empty Set.empty visionDecayEmpty (ScoutContext Nothing ScoutTaskIdle)
 
 stepIstar :: (StepMonad.HasObs d, HasIstar d) => StepMonad d ()
 stepIstar = do
@@ -158,14 +166,14 @@ stepIstar = do
         Set.fromList $
           runC $
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC unitTypeId
-  scoutState' <- stepScouting
+  scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'
   modifyIstar $
     const
       ( istar
           { istarSeenEnemies = istarSeenEnemies istar `Set.union` enemies
           , istarSeenBuildings = istarSeenBuildings istar `Set.union` enemyBuildings
-          , istarScoutState = scoutState'
+          , istarScoutContext = fromMaybe (istarScoutContext istar) scoutState'
           }
       )
 
