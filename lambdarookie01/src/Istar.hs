@@ -168,20 +168,9 @@ stepIstar = do
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC unitTypeId
   scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'
-  modifyIstar $
-    const
-      ( istar
-          { istarSeenEnemies = istarSeenEnemies istar `Set.union` enemies
-          , istarSeenBuildings = istarSeenBuildings istar `Set.union` enemyBuildings
-          , istarScoutContext = fromMaybe (istarScoutContext istar) scoutState'
-          }
-      )
-
-type UnitComposition = [UnitTypeId]
-
--- counter
-
--- data UnitComposition = UnitComposition
---   { uc
---
---   }
+  modifyIstar $ \current ->
+    current
+      { istarSeenEnemies = istarSeenEnemies current `Set.union` enemies
+      , istarSeenBuildings = istarSeenBuildings current `Set.union` enemyBuildings
+      , istarScoutContext = fromMaybe (istarScoutContext current) scoutState'
+      }
