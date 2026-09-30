@@ -16,6 +16,9 @@ module SC2.Grid.Core
   , gridPixelSafe
   , (!?)
   , (!)
+  , gridFromList
+  , inBounds
+  , gridIndex
   )
 where
 
@@ -78,6 +81,21 @@ gridSetPixelForce grid@(w, h, g) (x, y) value =
  where
   -- `Utils.dbg` ("gridSetPixel index: " ++ show index  ++ " v:" ++ show value ++ " "  ++ show (x, y) ++ " for " ++ show (w, h, VU.length g)) where
   index = x + y * w
+
+gridFromList :: (VU.Unbox t) => Int -> Int -> [t] -> GridBase t
+gridFromList w h ps = (w, h, VU.fromList ps)
+
+inBounds :: GridBase a -> TilePos -> Bool
+inBounds g (x, y) =
+  x >= 0
+    && x < gridW g
+    && y >= 0
+    && y < gridH g
+
+gridIndex :: GridBase a -> TilePos -> Maybe Int
+gridIndex g p@(x, y)
+  | inBounds g p = Just (y * gridW g + x)
+  | otherwise = Nothing
 
 gridFromImage :: P.ImageData -> GridBase Char
 gridFromImage image =
