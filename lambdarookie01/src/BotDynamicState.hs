@@ -7,6 +7,7 @@ import Army.Army
 import Army.Class (HasArmy, getUnitMap)
 import Data.Functor ((<&>))
 import Data.HashMap.Strict qualified as HashMap
+import EnemiesHeatMap
 import Intent (HasBuildIntents (..), IntentStore, IssuedCommand, PendingActionError)
 import Istar
 import Lens.Micro ((%~), (^.))
@@ -46,6 +47,11 @@ instance HasBuildIntents BotDynamicState where
 
 instance HasArmy BotDynamicState where
   getUnitMap bds = armyUnits $ dsArmy bds
+
+instance HasEnemiesHeatMap BotDynamicState where
+  heatGroundEnemiesL f s =
+    f (istarGroundHeatMap (dsIstar s))
+      <&> \o -> s{dsIstar = (dsIstar s){istarGroundHeatMap = o}}
 
 instance HasIstar BotDynamicState where
   scoutingL f s = f (dsIstar s) <&> \o -> s{dsIstar = o}

@@ -93,6 +93,7 @@ import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
 import Control.Concurrent.STM
+import EnemiesHeatMap
 import Istar
 import ResourceFlow
   ( CostRate (..)
@@ -370,9 +371,14 @@ buildPylons = do
   when (foodCap + expectedFoodCap - foodUsed < 2) $
     spawnIntentUnique (IntentId "buildPylons") (intentBuildStructure ProtossPylon)
 
-debugUnitPos :: WriterT StepPlan (StateT BotDynamicState (Reader (StaticInfo, UnitAbilities))) ()
-debugUnitPos =
-  agentObs >>= \obs -> debugTexts [("upos " ++ show (tilePos . view #pos $ c), c ^. #pos) | c <- runC $ unitsSelf obs]
+debugUnitPos = do
+  heatMap <- (^. heatGroundEnemiesL) <$> agentGet
+  obs <- agentObs
+  debugTexts
+    [ ("heat:  " ++ show (gridPixel heatMap (tilePos . view #pos $ c)), c ^. #pos)
+    | c <- runC $ unitsSelf obs
+    ]
+
 
 debugSquads :: StepMonad BotDynamicState ()
 debugSquads = do
@@ -583,7 +589,7 @@ makeDynamicState obs grid = do
       emptyArmy
       Map.empty
       (ResourceRateState Seq.empty (ResourceRate (CostRate 0 0) (CostRate 0 0)))
-      istarEmpty
+      (istarEmpty (gridW grid) (gridH grid))
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
 hasActiveBoIntent = do
@@ -815,8 +821,9 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
   do
     obs <- agentObs
     agentUpdateArmy obsPrev
-    debugSquads
+    -- debugSquads
     stepIstar
+    debugUnitPos
     when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
     reassignIdleProbes
     tryExpand

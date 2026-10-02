@@ -16,9 +16,11 @@ import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
 import Data.Word
 import Debug.Trace (traceM)
+import EnemiesHeatMap
 import Lens.Micro ((%~), (^.))
 import Lens.Micro.Type (Lens')
 import Observation (obsUnitsC, unitsSelf)
+import SC2.Grid (gridFromList)
 import SC2.Grid.Algo (RegionId)
 import SC2.Grid.Core (Grid)
 import SC2.Ids.Ids
@@ -30,6 +32,7 @@ import SC2.TilePos (TilePos)
 import SC2.Utils (isArmyUnit)
 import StepMonad
   ( AsyncStaticInfo (..)
+  , HasGrid
   , HasObs
   , MaybeStepMonad
   , StaticInfo (..)
@@ -131,6 +134,7 @@ data IstarState = IstarState
   , istarSeenBuildings :: Set UnitTypeId
   , istarVisionDecay :: VisionDecay
   , istarScoutContext :: ScoutContext
+  , istarGroundHeatMap :: HeatMap
   }
 
 class HasIstar d where
@@ -151,12 +155,17 @@ modifyIstar ::
   StepMonad d ()
 modifyIstar f = agentModify (scoutingL %~ f)
 
-istarEmpty :: IstarState
-istarEmpty = IstarState Set.empty Set.empty visionDecayEmpty (ScoutContext Nothing ScoutTaskIdle)
+istarEmpty :: Int -> Int -> IstarState
+istarEmpty w h =
+  IstarState
+    Set.empty
+    Set.empty
+    visionDecayEmpty
+    (ScoutContext Nothing ScoutTaskIdle)
+    (gridFromList w h (replicate (w * h) 0))
 
-stepIstar :: (StepMonad.HasObs d, HasIstar d) => StepMonad d ()
+stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasEnemiesHeatMap d) => StepMonad d ()
 stepIstar = do
-  istar <- getIstar
   obs <- agentObs
   let enemies =
         Set.fromList $
@@ -166,6 +175,8 @@ stepIstar = do
         Set.fromList $
           runC $
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC unitTypeId
+  updateHeatMap
+  debugHeatMap
   scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'
   modifyIstar $ \current ->

@@ -21,6 +21,7 @@ executable lambdarookie01
       ArmyLogic
       Bot
       BotDynamicState
+      EnemiesHeatMap
       Intent
       Istar
       PlanM
@@ -82,6 +83,7 @@ test-suite lambdarookie01-test
       ArmyLogic
       Bot
       BotDynamicState
+      EnemiesHeatMap
       Intent
       Istar
       Main
