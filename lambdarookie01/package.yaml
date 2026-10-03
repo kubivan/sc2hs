@@ -8,6 +8,7 @@ description: >
 
 dependencies:
   - base >= 4.12
+  - bytestring
   - conduit
   - containers
   - extra

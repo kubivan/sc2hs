@@ -43,6 +43,7 @@ executable lambdarookie01
       SquadUtils
       Target
       Utils
+      VisionDecay
       Paths_lambdarookie01
   hs-source-dirs:
       src
@@ -53,6 +54,7 @@ executable lambdarookie01
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.12
+    , bytestring
     , conduit
     , containers
     , extra
@@ -106,6 +108,7 @@ test-suite lambdarookie01-test
       SquadUtils
       Target
       Utils
+      VisionDecay
       TestFixtures
       TestIntegrationRealGame
       TestIntentDsl
@@ -121,6 +124,7 @@ test-suite lambdarookie01-test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-missing-home-modules
   build-depends:
       base
+    , bytestring
     , conduit
     , containers
     , directory

@@ -8,6 +8,8 @@ import Conduit (filterC, mapC)
 import Control.Monad.Extra (when)
 import Control.Monad.Trans.Maybe
 import Data.Conduit ((.|))
+import Data.Foldable (find)
+import Data.Function ((&))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
@@ -16,18 +18,19 @@ import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
 import Data.Word
 import Debug.Trace (traceM)
-import EnemiesHeatMap
 import Lens.Micro ((%~), (^.))
 import Lens.Micro.Type (Lens')
 import Observation (obsUnitsC, unitsSelf)
+import SC2.Grid
 import SC2.Grid (gridFromList)
 import SC2.Grid.Algo (RegionId)
 import SC2.Grid.Core (Grid)
+import SC2.Grid.Core qualified as Grid
 import SC2.Ids.Ids
 import SC2.Ids.UnitTypeId (UnitTypeId)
 import SC2.Proto.Data (Alliance (..))
 import SC2.Proto.Data qualified as Proto
-import SC2.Spatial (Spatial (..), distManhattan)
+import SC2.Spatial (Spatial (..), distManhattan, tilePos)
 import SC2.TilePos (TilePos)
 import SC2.Utils (isArmyUnit)
 import StepMonad
@@ -46,15 +49,8 @@ import StepMonad
 import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
-type VisionDecay = (Int, Int, VU.Vector Word64)
-
-visionDecayFromGrid :: Grid -> VisionDecay
-visionDecayFromGrid (w, h, _) = (w, h, VU.replicate (w * h) maxDecay)
-
-visionDecayEmpty = (0, 0, VU.fromList [])
-
-maxDecay :: Word64
-maxDecay = maxBound
+import EnemiesHeatMap
+import VisionDecay
 
 data ScoutTask
   = ScoutTaskIdle
@@ -155,14 +151,14 @@ modifyIstar ::
   StepMonad d ()
 modifyIstar f = agentModify (scoutingL %~ f)
 
-istarEmpty :: Int -> Int -> IstarState
-istarEmpty w h =
+istarEmpty :: Grid -> IstarState
+istarEmpty grid =
   IstarState
     Set.empty
     Set.empty
-    visionDecayEmpty
+    (visionDecayEmpty grid)
     (ScoutContext Nothing ScoutTaskIdle)
-    (gridFromList w h (replicate (w * h) 0))
+    (gridFromList (gridW grid) (gridH grid) (replicate (gridW grid * gridH grid) 0))
 
 stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasEnemiesHeatMap d) => StepMonad d ()
 stepIstar = do
@@ -184,4 +180,5 @@ stepIstar = do
       { istarSeenEnemies = istarSeenEnemies current `Set.union` enemies
       , istarSeenBuildings = istarSeenBuildings current `Set.union` enemyBuildings
       , istarScoutContext = fromMaybe (istarScoutContext current) scoutState'
+      , istarVisionDecay = stepVisionDecay obs (istarVisionDecay current)
       }

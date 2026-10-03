@@ -589,7 +589,7 @@ makeDynamicState obs grid = do
       emptyArmy
       Map.empty
       (ResourceRateState Seq.empty (ResourceRate (CostRate 0 0) (CostRate 0 0)))
-      (istarEmpty (gridW grid) (gridH grid))
+      (istarEmpty grid)
 
 hasActiveBoIntent :: StepMonad BotDynamicState Bool
 hasActiveBoIntent = do
