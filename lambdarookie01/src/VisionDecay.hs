@@ -8,8 +8,10 @@ import Conduit (filterC, (.|))
 import Data.Bits
 import Data.ByteString qualified as BS
 import Data.Conduit.Combinators (sinkList)
+import Data.ProtoLens (defMessage)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
+import Debug.Trace (trace)
 import GHC.Word (Word64, Word8)
 import Lens.Micro
 import Observation (Observation, obsUnitsC)
@@ -63,8 +65,9 @@ visionDecayEmpty grid =
       , fogTileState =
           case grid Grid.! pos of
             ' ' -> FogTileUnknown
+            '/' -> FogTileUnknown
             '#' -> FogTileBlocked
-            c -> error ("assert: invalid grid pixel: " ++ show c)
+            c -> error ("!!! assert: invalid grid pixel: " ++ show c)
       }
 
 indexToPos :: Int -> Int -> TilePos
@@ -111,15 +114,15 @@ imageDataByteAt image (x, y) =
   width = fromIntegral $ image ^. (P.size . P.x)
   bytes = image ^. P.data'
 
-visibilityAt :: P.ImageData -> TilePos -> Bool
+visibilityAt :: P.ImageData -> TilePos -> Word8
 visibilityAt image pos =
   case fromIntegral (image ^. P.bitsPerPixel) of
     8 ->
-      imageDataByteAt image pos /= 0
+      imageDataByteAt image pos
     1 ->
       let byte = imageDataByteAt image (x `div` 8, y)
           bit = 7 - x `mod` 8
-       in testBit byte bit
+       in fromIntegral . fromEnum $ testBit byte bit
     bpp ->
       error $ "Unsupported visibility bits per pixel: " ++ show bpp
  where
@@ -132,8 +135,11 @@ visionDecayClearVisible visibility vision =
         Vector.imap clearVisible (vdTiles vision)
     }
  where
+  -- optional ImageData visibility_map = 2;
+  -- // uint8. 0=Hidden, 1=Fogged, 2=Visible, 3=FullHidden
+
   clearVisible i tile
-    | visibilityAt visibility (indexToPos (vdWidth vision) i) =
+    | visibilityAt visibility (indexToPos (vdWidth vision) i) == 2 =
         tile
           { fogTileAge = 0
           , fogTileState =
@@ -146,11 +152,13 @@ visionDecayClearVisible visibility vision =
 
 visionDecayAddEnemy :: VisionDecay -> Unit -> VisionDecay
 visionDecayAddEnemy vision unit =
-  vision
-    { vdTiles =
-        vdTiles vision
-          Vector.// updates
-    }
+  trace
+    ("!!! add enemy to vision " ++ show unit)
+    vision
+      { vdTiles =
+          vdTiles vision
+            Vector.// updates
+      }
  where
   newPos = tilePos unit
 
@@ -182,13 +190,13 @@ stepVisionDecay obs vision =
   vision
     & visionDecayStep
     & visionDecayClearVisible (obs ^. (#rawData . #mapState . #visibility))
-    & addEnemies enemies
+    & addEnemies enemyUnits
  where
-  enemies =
+  enemyUnits =
     runC $
       obsUnitsC obs
         .| allianceC Enemy
-        .| filterC isArmyUnit
+  -- .| filterC isArmyUnit
   addEnemies :: [Unit] -> VisionDecay -> VisionDecay
   addEnemies enemies v =
     foldl' visionDecayAddEnemy v enemies

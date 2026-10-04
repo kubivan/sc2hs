@@ -13,12 +13,13 @@ import Data.Function ((&))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.ProtoLens (defMessage)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
 import Data.Word
 import Debug.Trace (traceM)
-import Lens.Micro ((%~), (^.))
+import Lens.Micro ((%~), (.~), (^.))
 import Lens.Micro.Type (Lens')
 import Observation (obsUnitsC, unitsSelf)
 import SC2.Grid
@@ -28,11 +29,11 @@ import SC2.Grid.Core (Grid)
 import SC2.Grid.Core qualified as Grid
 import SC2.Ids.Ids
 import SC2.Ids.UnitTypeId (UnitTypeId)
-import SC2.Proto.Data (Alliance (..))
+import SC2.Proto.Data
 import SC2.Proto.Data qualified as Proto
-import SC2.Spatial (Spatial (..), distManhattan, tilePos)
+import SC2.Spatial (Spatial (..), distManhattan, distSquaredI, tilePos)
 import SC2.TilePos (TilePos)
-import SC2.Utils (isArmyUnit)
+import SC2.Utils (isArmyUnit, tilesInRadius)
 import StepMonad
   ( AsyncStaticInfo (..)
   , HasGrid
@@ -41,15 +42,20 @@ import StepMonad
   , StaticInfo (..)
   , StepMonad
   , agentGet
+  , agentGrid
   , agentModify
   , agentObs
   , agentStatic
   , command
+  , debugTexts
   )
 import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
+import Data.List (maximumBy)
+import Data.Ord (comparing)
 import EnemiesHeatMap
+import Lens.Micro.Extras (view)
 import VisionDecay
 
 data ScoutTask
@@ -139,9 +145,62 @@ class HasIstar d where
 getIstar :: (HasIstar d) => StepMonad d IstarState
 getIstar = (^. scoutingL) <$> agentGet
 
-commandScouting :: (HasObs d) => Maybe ScoutContext -> StepMonad d ()
+tilesInViewRadius :: (HasGrid d) => Unit -> StepMonad d [TilePos]
+tilesInViewRadius u = do
+  traitsMap <- unitTraits <$> agentStatic
+  grid <- agentGrid
+  let traits = traitsMap HashMap.! Units.unitTypeId u
+      visionRadius = traits ^. #sightRange :: Float
+      tiles = [t | t <- tilesInRadius (floor visionRadius) (tilePos u), gridPixel grid t /= '#']
+  pure tiles
+
+destinationProgress :: TilePos -> TilePos -> TilePos -> Float
+destinationProgress current candidate dest =
+  fromIntegral $
+    distSquaredI current dest - distSquaredI candidate dest
+
+scoutScorePos ::
+  (HasIstar d) =>
+  Unit ->
+  TilePos ->
+  TilePos ->
+  StepMonad d Float
+scoutScorePos u candidate dest = do
+  traitsMap <- unitTraits <$> agentStatic
+  vision <- istarVisionDecay . view scoutingL <$> agentGet
+
+  let traits = traitsMap HashMap.! Units.unitTypeId u
+      visionRadius = traits ^. #sightRange :: Float
+      tiles = tilesInRadius (floor visionRadius) candidate
+
+      ageScore =
+        foldl'
+          ( \s tpos ->
+              s + fromIntegral (tileAge (visionDecayTile vision tpos))
+          )
+          0
+          tiles
+
+      progress = destinationProgress (tilePos u) candidate dest
+
+  pure $
+    ageScore
+      + 10 * progress
+
+commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = do
+  candidates <- tilesInSpeedRadius u
+  scored <-
+    mapM
+      ( \candidate -> do
+          score <- scoutScorePos u candidate dest
+          pure (candidate, score)
+      )
+      candidates
+
+  let (dest, _) = maximumBy (comparing snd) scored
+  command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()
 
@@ -166,13 +225,14 @@ stepIstar = do
   let enemies =
         Set.fromList $
           runC $
-            obsUnitsC obs .| allianceC Enemy .| filterC isArmyUnit .| mapC unitTypeId
+            obsUnitsC obs .| allianceC Enemy .| filterC isArmyUnit .| mapC Units.unitTypeId
       enemyBuildings =
         Set.fromList $
           runC $
-            obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC unitTypeId
+            obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC Units.unitTypeId
   updateHeatMap
   debugHeatMap
+  debugVisionDecay
   scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'
   modifyIstar $ \current ->
@@ -182,3 +242,28 @@ stepIstar = do
       , istarScoutContext = fromMaybe (istarScoutContext current) scoutState'
       , istarVisionDecay = stepVisionDecay obs (istarVisionDecay current)
       }
+
+debugVisionDecay :: (HasIstar d) => StepMonad d ()
+debugVisionDecay = do
+  vision <- istarVisionDecay . view scoutingL <$> agentGet
+  heights <- heightMap <$> agentStatic
+
+  debugTexts
+    [ (show visionUnit, point3D (fromIntegral x) (fromIntegral y) (fromIntegral z + 10))
+    | x <- [0 .. vdWidth vision - 1]
+    , y <- [0 .. vdHeight vision - 1]
+    , FogTile age (FogTileUnit u) <- [visionDecayTile vision (x, y)]
+    , let visionUnit = (u ^. #tag, age)
+    , let z = fromEnum $ gridPixel heights (x, y)
+    -- , danger > 0
+    ]
+ where
+  point3D x y z = defMessage & #x .~ x & #y .~ y & #z .~ z :: Point
+
+tileAge :: FogTile -> Word64
+tileAge tile =
+  case fogTileState tile of
+    FogTileBlocked -> 0
+    FogTileUnknown -> maxBound
+    _ -> fromIntegral (fogTileAge tile)
+
