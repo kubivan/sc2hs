@@ -4,10 +4,10 @@ import Footprint
 import Observation
 import SC2.Geometry
 import SC2.Grid
-import SC2.TilePos
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
 import SC2.Spatial
+import SC2.TilePos
 import Units
 
 import Conduit (filterC)
@@ -46,7 +46,7 @@ tilesInRadius r (x, y) =
   | dx <- [-r .. r]
   , dy <- [-r .. r]
   , dx * dx + dy * dy <= r * r -- circular mask
-  -- , (dx, dy) /= (0, 0)          -- exclude center
+  , (dx, dy) /= (0, 0) -- exclude center
   ]
 
 backoffList :: [a] -> Int -> Maybe a

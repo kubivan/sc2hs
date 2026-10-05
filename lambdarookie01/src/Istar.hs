@@ -168,6 +168,7 @@ scoutScorePos ::
 scoutScorePos u candidate dest = do
   traitsMap <- unitTraits <$> agentStatic
   vision <- istarVisionDecay . view scoutingL <$> agentGet
+  enemiesHeatMap <- istarGroundHeatMap . view scoutingL <$> agentGet
 
   let traits = traitsMap HashMap.! Units.unitTypeId u
       visionRadius = traits ^. #sightRange :: Float
@@ -182,10 +183,18 @@ scoutScorePos u candidate dest = do
           tiles
 
       progress = destinationProgress (tilePos u) candidate dest
+      candidateThreat =
+        maximum
+          [ gridPixel enemiesHeatMap t
+          | t <- tilesInRadius 3 candidate
+          ]
+  -- distance (tilePos u) dest
+  --   - distance candidate dest
 
   pure $
     ageScore
       + 10 * progress
+      - 20 * candidateThreat
 
 commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
@@ -201,7 +210,7 @@ commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = do
 
   let (dest, _) = maximumBy (comparing snd) scored
   command [PointCommand MOVE [u] (toPoint2D dest)]
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (pointShift + toPoint2D dest)]
 commandScouting _ = pure ()
 
 modifyIstar ::
