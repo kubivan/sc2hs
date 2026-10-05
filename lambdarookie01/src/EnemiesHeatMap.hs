@@ -107,22 +107,21 @@ enemyHeatMap utraits w h enemies =
         when (dx * dx + dy * dy <= range * range) $
           addToGrid w x y damage grid
 
-point3D :: Float -> Float -> Float -> Point
-point3D x y z = defMessage & #x .~ x & #y .~ y & #z .~ z
-
 debugHeatMap :: (HasEnemiesHeatMap d) => StepMonad d ()
 debugHeatMap = do
   heights <- heightMap <$> agentStatic
   heatMap <- (^. heatGroundEnemiesL) <$> agentGet
 
   debugTexts
-    [ (show $ danger, point3D (fromIntegral x) (fromIntegral y) (fromIntegral z + 10))
+    [ (show danger, point3D (fromIntegral x) (fromIntegral y) (fromIntegral z + 10))
     | x <- [0 .. gridW heatMap - 1]
     , y <- [0 .. gridH heatMap - 1]
     , let danger = gridPixel heatMap (x, y)
     , let z = fromEnum $ gridPixel heights (x, y)
     , danger > 0
     ]
+ where
+  point3D x y z = defMessage & #x .~ x & #y .~ y & #z .~ z :: Point
 
 updateHeatMap :: (HasObs d, HasGrid d, HasEnemiesHeatMap d) => StepMonad d ()
 updateHeatMap = do
