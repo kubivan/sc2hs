@@ -2,9 +2,13 @@ cradle:
   stack:
     - path: "./lambdarookie01/src/"
       component: "lambdarookie01:exe:lambdarookie01"
+    - path: "./lambdarookie01/test/"
+      component: "lambdarookie01:test:lambdarookie01-test"
     - path: "./sc2api/src/"
       component: "sc2api:lib"
     - path: "./sc2monad/src/"
       component: "sc2monad:lib"
+    - path: "./sc2monad/test/"
+      component: "sc2monad:test:sc2monad-test"
     - path: "./sc2mapdump/src/"
       component: "sc2mapdump:exe:sc2mapdump"
