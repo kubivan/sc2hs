@@ -153,7 +153,7 @@ visionDecayClearVisible visibility vision =
 visionDecayAddEnemy :: VisionDecay -> Unit -> VisionDecay
 visionDecayAddEnemy vision unit =
   trace
-    ("!!! add enemy to vision " ++ show unit)
+    ("!!! add enemy to visiom " ++ show unit)
     vision
       { vdTiles =
           vdTiles vision
