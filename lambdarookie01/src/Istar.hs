@@ -47,6 +47,7 @@ import StepMonad
   , agentObs
   , agentStatic
   , command
+  , debug
   , debugTexts
   )
 import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
@@ -56,6 +57,7 @@ import Data.List (maximumBy)
 import Data.Ord (comparing)
 import EnemiesHeatMap
 import Lens.Micro.Extras (view)
+import SC2.Grid.Algo (adjacent8)
 import VisionDecay
 
 data ScoutTask
@@ -145,13 +147,18 @@ class HasIstar d where
 getIstar :: (HasIstar d) => StepMonad d IstarState
 getIstar = (^. scoutingL) <$> agentGet
 
-tilesInViewRadius :: (HasGrid d) => Unit -> StepMonad d [TilePos]
-tilesInViewRadius u = do
+tileCenter :: TilePos -> Point2D
+tileCenter (tx, ty) =
+  defMessage & #x .~ fromIntegral tx + 0.5 & #y .~ fromIntegral ty + 0.5
+
+tilesCandidates :: (HasGrid d) => Unit -> StepMonad d [TilePos]
+tilesCandidates u = do
   traitsMap <- unitTraits <$> agentStatic
   grid <- agentGrid
   let traits = traitsMap HashMap.! Units.unitTypeId u
       visionRadius = traits ^. #sightRange :: Float
-      tiles = [t | t <- tilesInRadius (floor visionRadius) (tilePos u), gridPixel grid t /= '#']
+      -- tiles = [t | t <- tilesInRadius (floor visionRadius) (tilePos u), gridPixel grid t /= '#']
+      tiles = [t | t <- adjacent8 (tilePos u), gridPixel grid t /= '#']
   pure tiles
 
 destinationProgress :: TilePos -> TilePos -> TilePos -> Float
@@ -159,8 +166,25 @@ destinationProgress current candidate dest =
   fromIntegral $
     distSquaredI current dest - distSquaredI candidate dest
 
+addZ :: Float -> Point2D -> Point
+addZ pz p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y) & #z .~ pz
+
+beamObstacleLen :: (HasGrid d) => Unit -> TilePos -> StepMonad d Int
+beamObstacleLen u end = do
+  grid <- agentGrid
+  let start = tilePos u
+      z = u ^. (#pos . #z)
+      direction = end - start
+      ray = fromMaybe [] $ gridRaycastTile grid start direction
+      rayEnd = fromMaybe start (listToMaybe ray)
+      line = defMessage & #p0 .~ (addZ z (tileCenter start)) & #p1 .~ (addZ z (tileCenter rayEnd))
+      colorGreen = defMessage & #r .~ 0 & #g .~ 1 & #b .~ 0
+  StepMonad.debug [DebugLine [(colorGreen, line)]]
+
+  pure $ length ray
+
 scoutScorePos ::
-  (HasIstar d) =>
+  (HasIstar d, HasGrid d) =>
   Unit ->
   TilePos ->
   TilePos ->
@@ -169,6 +193,8 @@ scoutScorePos u candidate dest = do
   traitsMap <- unitTraits <$> agentStatic
   vision <- istarVisionDecay . view scoutingL <$> agentGet
   enemiesHeatMap <- istarGroundHeatMap . view scoutingL <$> agentGet
+
+  deadEndScore <- fromIntegral <$> beamObstacleLen u candidate
 
   let traits = traitsMap HashMap.! Units.unitTypeId u
       visionRadius = traits ^. #sightRange :: Float
@@ -182,7 +208,7 @@ scoutScorePos u candidate dest = do
           0
           tiles
 
-      progress = destinationProgress (tilePos u) candidate dest
+      progressScore = destinationProgress (tilePos u) candidate dest
       candidateThreat =
         maximum
           [ gridPixel enemiesHeatMap t
@@ -193,13 +219,14 @@ scoutScorePos u candidate dest = do
 
   pure $
     ageScore
-      + 10 * progress
+      + 10 * progressScore
       - 20 * candidateThreat
+      + 50 * deadEndScore
 
 commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = do
-  candidates <- tilesInSpeedRadius u
+  candidates <- tilesCandidates u
   scored <-
     mapM
       ( \candidate -> do
@@ -209,8 +236,8 @@ commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = do
       candidates
 
   let (dest, _) = maximumBy (comparing snd) scored
-  command [PointCommand MOVE [u] (toPoint2D dest)]
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (pointShift + toPoint2D dest)]
+  command [PointCommand MOVE [u] (tileCenter dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()
 
 modifyIstar ::
@@ -275,4 +302,3 @@ tileAge tile =
     FogTileBlocked -> 0
     FogTileUnknown -> maxBound
     _ -> fromIntegral (fogTileAge tile)
-

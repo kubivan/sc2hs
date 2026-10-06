@@ -22,6 +22,8 @@ module SC2.Grid.Algo
   , RegionGraph
   , regionGraphBfs
   , complementRegionLookup
+  , adjacent8
+  , adjacent4
   )
 where
 
@@ -300,6 +302,7 @@ gridSegment grid =
 adjacent4 :: TilePos -> [TilePos]
 adjacent4 (x, y) = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
 
+adjacent8 :: TilePos -> [TilePos]
 adjacent8 (x, y) =
   [ (x + dx, y + dy)
   | dx <- [-1, 0, 1]
