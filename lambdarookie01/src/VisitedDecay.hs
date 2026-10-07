@@ -63,4 +63,4 @@ visitedDecayScore :: VisitedDecay -> TilePos -> Float
 visitedDecayScore visits pos =
   case visitedDecayAge visits pos of
     Nothing -> 0
-    Just age -> fromIntegral age -- 1 / (1 + fromIntegral age)
+    Just age -> 1 / (1 + fromIntegral age)

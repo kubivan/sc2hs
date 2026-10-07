@@ -59,6 +59,7 @@ import EnemiesHeatMap
 import Lens.Micro.Extras (view)
 import SC2.Grid.Algo (adjacent8)
 import VisionDecay
+import VisitedDecay
 
 data ScoutTask
   = ScoutTaskIdle
@@ -70,6 +71,7 @@ data ScoutTask
 data ScoutContext = ScoutContext
   { scoutUnit :: Maybe Unit
   , scoutTask :: ScoutTask
+  , scVisitedDecay :: VisitedDecay
   }
   deriving (Eq, Show)
 
@@ -98,6 +100,7 @@ stepScouting = do
         ScoutContext
           { scoutUnit = Just probe
           , scoutTask = ScoutTaskMove enemyBaseRegionPos
+          , scVisitedDecay = scVisitedDecay scoutContext
           }
     ScoutTaskMove destPos -> do
       scout <- getJust $ scoutUnit scoutContext
@@ -108,6 +111,7 @@ stepScouting = do
             ScoutContext
               { scoutUnit = Just unitAlive
               , scoutTask = ScoutTaskRetreat (startLocation si)
+              , scVisitedDecay = scVisitedDecay scoutContext
               }
         else do
           let dist = distManhattan unitAlive destPos
@@ -118,8 +122,15 @@ stepScouting = do
                 ScoutContext
                   { scoutUnit = Just unitAlive
                   , scoutTask = ScoutTaskRetreat (startLocation si)
+                  , scVisitedDecay = scVisitedDecay scoutContext
                   }
-            else pure $ ScoutContext{scoutUnit = Just unitAlive, scoutTask = ScoutTaskMove destPos}
+            else
+              pure $
+                ScoutContext
+                  { scoutUnit = Just unitAlive
+                  , scoutTask = ScoutTaskMove destPos
+                  , scVisitedDecay = scVisitedDecay scoutContext
+                  }
     ScoutTaskRetreat destPos -> do
       scout <- getJust $ scoutUnit scoutContext
       unitAlive <- getJust $ findScout scout
@@ -129,8 +140,15 @@ stepScouting = do
             ScoutContext
               { scoutUnit = Just unitAlive
               , scoutTask = ScoutTaskMove enemyBaseRegionPos
+              , scVisitedDecay = scVisitedDecay scoutContext
               }
-        else pure $ ScoutContext{scoutUnit = Just unitAlive, scoutTask = ScoutTaskRetreat destPos}
+        else
+          pure $
+            ScoutContext
+              { scoutUnit = Just unitAlive
+              , scoutTask = ScoutTaskRetreat destPos
+              , scVisitedDecay = scVisitedDecay scoutContext
+              }
     _ -> pure scoutContext
 
 data IstarState = IstarState
@@ -188,8 +206,9 @@ scoutScorePos ::
   Unit ->
   TilePos ->
   TilePos ->
+  VisitedDecay ->
   StepMonad d Float
-scoutScorePos u candidate dest = do
+scoutScorePos u candidate dest visited = do
   traitsMap <- unitTraits <$> agentStatic
   vision <- istarVisionDecay . view scoutingL <$> agentGet
   enemiesHeatMap <- istarGroundHeatMap . view scoutingL <$> agentGet
@@ -214,6 +233,8 @@ scoutScorePos u candidate dest = do
           [ gridPixel enemiesHeatMap t
           | t <- tilesInRadius 3 candidate
           ]
+
+      visitedScore = visitedDecayScore visited candidate
   -- distance (tilePos u) dest
   --   - distance candidate dest
 
@@ -221,23 +242,24 @@ scoutScorePos u candidate dest = do
     ageScore
       + 10 * progressScore
       - 20 * candidateThreat
+      - 100 * visitedScore
       + 50 * deadEndScore
 
 commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest))) = do
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited)) = do
   candidates <- tilesCandidates u
   scored <-
     mapM
       ( \candidate -> do
-          score <- scoutScorePos u candidate dest
+          score <- scoutScorePos u candidate dest visited
           pure (candidate, score)
       )
       candidates
 
   let (dest, _) = maximumBy (comparing snd) scored
   command [PointCommand MOVE [u] (tileCenter dest)]
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest))) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest) _)) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()
 
 modifyIstar ::
@@ -252,7 +274,7 @@ istarEmpty grid =
     Set.empty
     Set.empty
     (visionDecayEmpty grid)
-    (ScoutContext Nothing ScoutTaskIdle)
+    (ScoutContext Nothing ScoutTaskIdle (visitedDecayEmpty grid))
     (gridFromList (gridW grid) (gridH grid) (replicate (gridW grid * gridH grid) 0))
 
 stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasEnemiesHeatMap d) => StepMonad d ()
@@ -272,12 +294,17 @@ stepIstar = do
   scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'
   modifyIstar $ \current ->
-    current
-      { istarSeenEnemies = istarSeenEnemies current `Set.union` enemies
-      , istarSeenBuildings = istarSeenBuildings current `Set.union` enemyBuildings
-      , istarScoutContext = fromMaybe (istarScoutContext current) scoutState'
-      , istarVisionDecay = stepVisionDecay obs (istarVisionDecay current)
-      }
+    let scoutContext = fromMaybe (istarScoutContext current) scoutState'
+        agedVisits = visitedDecayStep (scVisitedDecay scoutContext)
+        visited =
+          maybe agedVisits (\unit -> visitedDecayVisit (tilePos unit) agedVisits) $
+            scoutState' >>= scoutUnit
+     in current
+          { istarSeenEnemies = istarSeenEnemies current `Set.union` enemies
+          , istarSeenBuildings = istarSeenBuildings current `Set.union` enemyBuildings
+          , istarScoutContext = scoutContext{scVisitedDecay = visited}
+          , istarVisionDecay = stepVisionDecay obs (istarVisionDecay current)
+          }
 
 debugVisionDecay :: (HasIstar d) => StepMonad d ()
 debugVisionDecay = do
