@@ -17,7 +17,6 @@ import Data.ProtoLens (defMessage)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Vector.Unboxed qualified as VU
-import Data.Word
 import Debug.Trace (traceM)
 import Lens.Micro ((%~), (.~), (^.))
 import Lens.Micro.Type (Lens')
@@ -181,8 +180,8 @@ tilesCandidates u = do
 
 destinationProgress :: TilePos -> TilePos -> TilePos -> Float
 destinationProgress current candidate dest =
-  fromIntegral $
-    distSquaredI current dest - distSquaredI candidate dest
+  sqrt (fromIntegral $ distSquaredI current dest)
+    - sqrt (fromIntegral $ distSquaredI candidate dest)
 
 addZ :: Float -> Point2D -> Point
 addZ pz p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y) & #z .~ pz
@@ -220,30 +219,52 @@ scoutScorePos u candidate dest visited = do
       tiles = tilesInRadius (floor visionRadius) candidate
 
       ageScore =
-        foldl'
-          ( \s tpos ->
-              s + fromIntegral (tileAge (visionDecayTile vision tpos))
-          )
-          0
-          tiles
-
-      progressScore = destinationProgress (tilePos u) candidate dest
-      candidateThreat =
-        maximum
-          [ gridPixel enemiesHeatMap t
-          | t <- tilesInRadius 3 candidate
+        average
+          [ case fogTileState tile of
+              FogTileUnknown -> 1
+              FogTileBlocked -> 0
+              _ -> saturatingScore (fromIntegral $ fogTileAge tile) 500
+          | tpos <- tiles
+          , let tile = visionDecayTile vision tpos
           ]
 
-      visitedScore = visitedDecayScore visited candidate
-  -- distance (tilePos u) dest
-  --   - distance candidate dest
+      -- Candidates are adjacent tiles, so their distance change is at most
+      -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
+      progressScore =
+        clamp01
+          ( 0.5
+              + destinationProgress (tilePos u) candidate dest / (2 * sqrt 2)
+          )
+      candidateThreat =
+        maximum
+          ( 0 :
+              [ gridPixel enemiesHeatMap t
+              | t <- tilesInRadius 3 candidate
+              ]
+          )
+      safetyScore = 1 - saturatingScore candidateThreat 20
+      openPathScore = saturatingScore deadEndScore 10
 
-  pure $
-    ageScore
-      + 10 * progressScore
-      - 20 * candidateThreat
-      - 100 * visitedScore
-      + 50 * deadEndScore
+      visitedScore = visitedDecayScore visited candidate
+
+  pure . clamp01 $
+    0.40 * ageScore
+      + 0.25 * progressScore
+      + 0.20 * safetyScore
+      + 0.10 * openPathScore
+      + 0.05 * (1 - clamp01 visitedScore)
+ where
+  average :: [Float] -> Float
+  average [] = 0
+  average values = sum values / fromIntegral (length values)
+
+  saturatingScore :: Float -> Float -> Float
+  saturatingScore value scale =
+    let nonNegativeValue = max 0 value
+     in nonNegativeValue / (nonNegativeValue + scale)
+
+  clamp01 :: Float -> Float
+  clamp01 = max 0 . min 1
 
 commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
