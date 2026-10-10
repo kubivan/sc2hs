@@ -8,7 +8,6 @@ import Conduit (filterC, mapC)
 import Control.Monad.Extra (when)
 import Control.Monad.Trans.Maybe
 import Data.Conduit ((.|))
-import Data.Foldable (find)
 import Data.Function ((&))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
@@ -52,10 +51,11 @@ import StepMonad
 import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
-import Data.List (maximumBy)
+import Data.List (maximumBy, minimumBy)
 import Data.Ord (comparing)
 import EnemiesHeatMap
 import Lens.Micro.Extras (view)
+import Proto.S2clientprotocol.Debug qualified as DebugProto
 import SC2.Grid.Algo (adjacent8)
 import VisionDecay
 import VisitedDecay
@@ -71,13 +71,14 @@ data ScoutContext = ScoutContext
   { scoutUnit :: Maybe Unit
   , scoutTask :: ScoutTask
   , scVisitedDecay :: VisitedDecay
+  , scPath :: ScoutPath
   }
   deriving (Eq, Show)
 
 getJust :: (Applicative m) => Maybe a -> MaybeT m a
 getJust = MaybeT . pure
 
-stepScouting :: (HasIstar d, HasObs d) => MaybeStepMonad d ScoutContext
+stepScouting :: (HasIstar d, HasObs d, HasGrid d) => MaybeStepMonad d ScoutContext
 stepScouting = do
   istar <- lift getIstar
   si <- lift agentStatic
@@ -95,11 +96,13 @@ stepScouting = do
   case scoutTask scoutContext of
     ScoutTaskIdle -> do
       probe <- getJust $ listToMaybe $ runC $ units .| unitTypeC ProtossProbe .| filterC unitIsHarvesting
+      waypoints <- lift $ pathWaypoints (tilePos probe) enemyBaseRegionPos
       pure $
-        ScoutContext
+        scoutContext
           { scoutUnit = Just probe
           , scoutTask = ScoutTaskMove enemyBaseRegionPos
           , scVisitedDecay = scVisitedDecay scoutContext
+          , scPath = waypoints
           }
     ScoutTaskMove destPos -> do
       scout <- getJust $ scoutUnit scoutContext
@@ -107,7 +110,7 @@ stepScouting = do
       if unitAlive ^. #shield < unitAlive ^. #shieldMax
         then
           pure $
-            ScoutContext
+            scoutContext
               { scoutUnit = Just unitAlive
               , scoutTask = ScoutTaskRetreat (startLocation si)
               , scVisitedDecay = scVisitedDecay scoutContext
@@ -118,16 +121,15 @@ stepScouting = do
           if dist < 20
             then
               pure $
-                ScoutContext
+                scoutContext
                   { scoutUnit = Just unitAlive
                   , scoutTask = ScoutTaskRetreat (startLocation si)
                   , scVisitedDecay = scVisitedDecay scoutContext
                   }
             else
               pure $
-                ScoutContext
+                scoutContext
                   { scoutUnit = Just unitAlive
-                  , scoutTask = ScoutTaskMove destPos
                   , scVisitedDecay = scVisitedDecay scoutContext
                   }
     ScoutTaskRetreat destPos -> do
@@ -136,14 +138,14 @@ stepScouting = do
       if distManhattan unitAlive destPos < 20
         then
           pure $
-            ScoutContext
+            scoutContext
               { scoutUnit = Just unitAlive
               , scoutTask = ScoutTaskMove enemyBaseRegionPos
               , scVisitedDecay = scVisitedDecay scoutContext
               }
         else
           pure $
-            ScoutContext
+            scoutContext
               { scoutUnit = Just unitAlive
               , scoutTask = ScoutTaskRetreat destPos
               , scVisitedDecay = scVisitedDecay scoutContext
@@ -183,6 +185,89 @@ destinationProgress current candidate dest =
   sqrt (fromIntegral $ distSquaredI current dest)
     - sqrt (fromIntegral $ distSquaredI candidate dest)
 
+type Waypoint = (TilePos, Int)
+type PathWaypoints = [Waypoint]
+
+data ScoutPath = ScoutPath
+  { scoutRoute :: [TilePos]
+  , scoutWaypoints :: PathWaypoints
+  }
+  deriving (Eq, Show)
+
+pathWaypoints :: (HasGrid d) => TilePos -> TilePos -> StepMonad d ScoutPath
+pathWaypoints start end = do
+  grid <- agentGrid
+  let GridBfsRes isFound _ path = gridBfs grid start (getAllNotSharpNeighbors grid) (== end) (const False)
+
+  pure $
+    case isFound of
+      Nothing -> ScoutPath [] []
+      Just _ ->
+        ScoutPath
+          path
+          [(wp, i) | (wp, i) <- zip (drop 5 path) [0 ..], i `mod` 5 == 0 || wp == end]
+
+debugScoutPath :: ScoutPath -> StepMonad d ()
+debugScoutPath path = do
+  heights <- heightMap <$> agentStatic
+  let route = scoutRoute path
+      waypoints = scoutWaypoints path
+      pathColor = defMessage & #r .~ 0 & #g .~ 255 & #b .~ 255
+      waypointColor = defMessage & #r .~ 255 & #g .~ 180 & #b .~ 0
+      pathLines =
+        [ (pathColor, lineBetween (tilePoint heights from) (tilePoint heights to))
+        | (from, to) <- zip route (drop 1 route)
+        ]
+      waypointLines =
+        concat
+          [ let center = tileCenter pos
+                x = center ^. #x
+                y = center ^. #y
+                z = tileHeight heights pos + 2
+                left = addZ z (defMessage & #x .~ x - 0.2 & #y .~ y)
+                right = addZ z (defMessage & #x .~ x + 0.2 & #y .~ y)
+                bottom = addZ z (defMessage & #x .~ x & #y .~ y - 0.2)
+                top = addZ z (defMessage & #x .~ x & #y .~ y + 0.2)
+             in [ (waypointColor, lineBetween left right)
+                , (waypointColor, lineBetween bottom top)
+                ]
+          | (pos, _) <- waypoints
+          ]
+      waypointLabels =
+        [ (show index ++ ": " ++ show pos, addZ (tileHeight heights pos + 3) (tileCenter pos))
+        | (pos, index) <- waypoints
+        ]
+  when (not (null pathLines && null waypointLines)) $
+    StepMonad.debug [DebugLine (pathLines ++ waypointLines)]
+  debugTexts waypointLabels
+ where
+  tileHeight heights pos = fromIntegral (fromEnum (gridPixel heights pos))
+  tilePoint heights pos = addZ (tileHeight heights pos + 1) (tileCenter pos)
+  lineBetween :: Point -> Point -> DebugProto.Line
+  lineBetween p0 p1 = defMessage & #p0 .~ p0 & #p1 .~ p1
+
+findNextWaypoint :: TilePos -> PathWaypoints -> Maybe TilePos
+findNextWaypoint _ [] = Nothing
+findNextWaypoint tpos pathIndexed =
+  fst <$> listToMaybe (drop targetIndex pathIndexed)
+ where
+  (nearestIndex, (nearestPos, _)) =
+    minimumBy
+      (comparing (\(_, (pos, _)) -> distSquaredI tpos pos))
+      (zip [0 ..] pathIndexed)
+  targetIndex = if nearestPos == tpos then nearestIndex + 1 else nearestIndex
+
+towardsPathScore :: Grid -> TilePos -> TilePos -> Float
+towardsPathScore grid candidate waypoint =
+  case found of
+    Nothing -> 0
+    Just _ -> clamp01 (1 - fromIntegral (length path - 1) / distanceScale)
+ where
+  distanceScale = 10 :: Float
+  GridBfsRes found _ path =
+    gridBfs grid candidate (getAllNotSharpNeighbors grid) (== waypoint) (const False)
+  clamp01 = max 0 . min 1
+
 addZ :: Float -> Point2D -> Point
 addZ pz p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y) & #z .~ pz
 
@@ -206,9 +291,11 @@ scoutScorePos ::
   TilePos ->
   TilePos ->
   VisitedDecay ->
+  PathWaypoints ->
   StepMonad d Float
-scoutScorePos u candidate dest visited = do
+scoutScorePos u candidate dest visited wps = do
   traitsMap <- unitTraits <$> agentStatic
+  grid <- agentGrid
   vision <- istarVisionDecay . view scoutingL <$> agentGet
   enemiesHeatMap <- istarGroundHeatMap . view scoutingL <$> agentGet
 
@@ -237,23 +324,35 @@ scoutScorePos u candidate dest visited = do
           )
       candidateThreat =
         maximum
-          ( 0 :
-              [ gridPixel enemiesHeatMap t
-              | t <- tilesInRadius 3 candidate
-              ]
+          ( 0
+              : [ gridPixel enemiesHeatMap t
+                | t <- tilesInRadius 3 candidate
+                ]
           )
       safetyScore = 1 - saturatingScore candidateThreat 20
       openPathScore = saturatingScore deadEndScore 10
 
       visitedScore = visitedDecayScore visited candidate
 
+      waypoint = fromMaybe dest (findNextWaypoint (tilePos u) wps)
+      waypointScore = towardsPathScore grid candidate waypoint
   pure . clamp01 $
-    0.40 * ageScore
-      + 0.25 * progressScore
-      + 0.20 * safetyScore
-      + 0.10 * openPathScore
-      + 0.05 * (1 - clamp01 visitedScore)
+    0.8 * waypointScore
+      + 0.2 * openPathScore
  where
+  -- 0.35 * waypointScore
+  --   + 0.20 * progressScore
+  --   + 0.30 * openPathScore
+  --   + 0.10 * ageScore
+  --   + 0.05 * progressScore
+
+  -- pure . clamp01 $
+  --   0.10 * ageScore
+  --     + 0.20 * progressScore
+  --     + 0.35 * waypointScore
+  --     + 0.15 * safetyScore
+  --     + 0.15 * (1 - clamp01 visitedScore)
+
   average :: [Float] -> Float
   average [] = 0
   average values = sum values / fromIntegral (length values)
@@ -268,19 +367,20 @@ scoutScorePos u candidate dest visited = do
 
 commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited)) = do
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path)) = do
+  debugScoutPath path
   candidates <- tilesCandidates u
   scored <-
     mapM
       ( \candidate -> do
-          score <- scoutScorePos u candidate dest visited
+          score <- scoutScorePos u candidate dest visited (scoutWaypoints path)
           pure (candidate, score)
       )
       candidates
 
   let (dest, _) = maximumBy (comparing snd) scored
   command [PointCommand MOVE [u] (tileCenter dest)]
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest) _)) = command [PointCommand MOVE [u] (toPoint2D dest)]
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest) _ _)) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()
 
 modifyIstar ::
@@ -295,7 +395,7 @@ istarEmpty grid =
     Set.empty
     Set.empty
     (visionDecayEmpty grid)
-    (ScoutContext Nothing ScoutTaskIdle (visitedDecayEmpty grid))
+    (ScoutContext Nothing ScoutTaskIdle (visitedDecayEmpty grid) (ScoutPath [] []))
     (gridFromList (gridW grid) (gridH grid) (replicate (gridW grid * gridH grid) 0))
 
 stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasEnemiesHeatMap d) => StepMonad d ()
@@ -343,10 +443,3 @@ debugVisionDecay = do
     ]
  where
   point3D x y z = defMessage & #x .~ x & #y .~ y & #z .~ z :: Point
-
-tileAge :: FogTile -> Word64
-tileAge tile =
-  case fogTileState tile of
-    FogTileBlocked -> 0
-    FogTileUnknown -> maxBound
-    _ -> fromIntegral (fogTileAge tile)

@@ -63,4 +63,7 @@ visitedDecayScore :: VisitedDecay -> TilePos -> Float
 visitedDecayScore visits pos =
   case visitedDecayAge visits pos of
     Nothing -> 0
-    Just age -> 1 / (1 + fromIntegral age)
+    -- Keep a useful trail behind the scout for several seconds. With the
+    -- previous one-frame scale, this penalty nearly vanished before the
+    -- unit had time to finish moving to its next tile.
+    Just age -> 1 / (1 + fromIntegral age / 96)

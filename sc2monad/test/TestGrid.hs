@@ -38,6 +38,10 @@ gridUnitTests = do
 
       grid' `shouldBe` testGrid
 
+    it "not-sharp neighbors stay in bounds and avoid walls" $ do
+      let grid = gridFromLines ["###", "#  ", "###"]
+      getAllNotSharpNeighbors grid (1, 1) `shouldBe` [(2, 1)]
+
   describe "Grid palacement unit tests" $ do
     it "basic" $ do
       let buildingFootprint = getFootprint ProtossNexus
