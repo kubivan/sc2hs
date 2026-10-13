@@ -17,7 +17,8 @@ visitedDecayTests = describe "VisitedDecay" $ do
     visitedDecayAge visits (0, 0) `shouldBe` Just 0
     visitedDecayScore visits (0, 0) `shouldBe` 1
     visitedDecayAge oneStepLater (0, 0) `shouldBe` Just 1
-    visitedDecayScore oneStepLater (0, 0) `shouldBe` 0.5
+    abs (visitedDecayScore oneStepLater (0, 0) - 96 / 97) `shouldSatisfy` (< 0.000001)
+    visitedDecayScore (iterate visitedDecayStep visits !! 96) (0, 0) `shouldBe` 0.5
 
   it "resets the age when a tile is visited again" $ do
     let visits =

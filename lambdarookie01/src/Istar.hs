@@ -276,8 +276,7 @@ beamObstacleLen u end = do
   grid <- agentGrid
   let start = tilePos u
       z = u ^. (#pos . #z)
-      direction = end - start
-      ray = fromMaybe [] $ gridRaycastTile grid start direction
+      ray = obstacleRay grid start end
       rayEnd = fromMaybe start (listToMaybe ray)
       line = defMessage & #p0 .~ (addZ z (tileCenter start)) & #p1 .~ (addZ z (tileCenter rayEnd))
       colorGreen = defMessage & #r .~ 0 & #g .~ 1 & #b .~ 0
@@ -285,95 +284,113 @@ beamObstacleLen u end = do
 
   pure $ length ray
 
-scoutScorePos ::
-  (HasIstar d, HasGrid d) =>
-  Unit ->
-  TilePos ->
-  TilePos ->
-  VisitedDecay ->
-  PathWaypoints ->
-  StepMonad d Float
-scoutScorePos u candidate dest visited wps = do
+obstacleRay :: Grid -> TilePos -> TilePos -> [TilePos]
+obstacleRay grid start end =
+  fromMaybe [] $ gridRaycastTile grid start (end - start)
+
+openPathScore :: Grid -> TilePos -> TilePos -> Float
+openPathScore grid start end =
+  scoreOpenPathLength $ length $ obstacleRay grid start end
+
+scoreOpenPathLength :: Int -> Float
+scoreOpenPathLength rayLength =
+  saturatingScore (fromIntegral rayLength) 10
+
+calcAgeScore :: (HasIstar d) => Unit -> TilePos -> StepMonad d Float
+calcAgeScore u candidate = do
   traitsMap <- unitTraits <$> agentStatic
-  grid <- agentGrid
   vision <- istarVisionDecay . view scoutingL <$> agentGet
-  enemiesHeatMap <- istarGroundHeatMap . view scoutingL <$> agentGet
-
-  deadEndScore <- fromIntegral <$> beamObstacleLen u candidate
-
-  let traits = traitsMap HashMap.! Units.unitTypeId u
+  let tiles = tilesInRadius (floor visionRadius) candidate
+      traits = traitsMap HashMap.! Units.unitTypeId u
       visionRadius = traits ^. #sightRange :: Float
-      tiles = tilesInRadius (floor visionRadius) candidate
+  pure $ ageScore [visionDecayTile vision tpos | tpos <- tiles]
 
-      ageScore =
-        average
-          [ case fogTileState tile of
-              FogTileUnknown -> 1
-              FogTileBlocked -> 0
-              _ -> saturatingScore (fromIntegral $ fogTileAge tile) 500
-          | tpos <- tiles
-          , let tile = visionDecayTile vision tpos
-          ]
-
-      -- Candidates are adjacent tiles, so their distance change is at most
-      -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
-      progressScore =
-        clamp01
-          ( 0.5
-              + destinationProgress (tilePos u) candidate dest / (2 * sqrt 2)
-          )
-      candidateThreat =
-        maximum
-          ( 0
-              : [ gridPixel enemiesHeatMap t
-                | t <- tilesInRadius 3 candidate
-                ]
-          )
-      safetyScore = 1 - saturatingScore candidateThreat 20
-      openPathScore = saturatingScore deadEndScore 10
-
-      visitedScore = visitedDecayScore visited candidate
-
-      waypoint = fromMaybe dest (findNextWaypoint (tilePos u) wps)
-      waypointScore = towardsPathScore grid candidate waypoint
-  pure . clamp01 $
-    0.8 * waypointScore
-      + 0.2 * openPathScore
+ageScore :: [FogTile] -> Float
+ageScore tiles = average $ scoreTile <$> tiles
  where
-  -- 0.35 * waypointScore
-  --   + 0.20 * progressScore
-  --   + 0.30 * openPathScore
-  --   + 0.10 * ageScore
-  --   + 0.05 * progressScore
+  scoreTile tile =
+    case fogTileState tile of
+      FogTileUnknown -> 1
+      FogTileBlocked -> 0
+      _ -> saturatingScore (fromIntegral $ fogTileAge tile) 500
 
-  -- pure . clamp01 $
-  --   0.10 * ageScore
-  --     + 0.20 * progressScore
-  --     + 0.35 * waypointScore
-  --     + 0.15 * safetyScore
-  --     + 0.15 * (1 - clamp01 visitedScore)
-
-  average :: [Float] -> Float
   average [] = 0
   average values = sum values / fromIntegral (length values)
 
-  saturatingScore :: Float -> Float -> Float
-  saturatingScore value scale =
-    let nonNegativeValue = max 0 value
-     in nonNegativeValue / (nonNegativeValue + scale)
+saturatingScore :: Float -> Float -> Float
+saturatingScore value scale =
+  let nonNegativeValue = max 0 value
+   in nonNegativeValue / (nonNegativeValue + scale)
 
-  clamp01 :: Float -> Float
-  clamp01 = max 0 . min 1
+clamp01 :: Float -> Float
+clamp01 = max 0 . min 1
 
-commandScouting :: (HasObs d, HasIstar d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
+progressScore :: TilePos -> TilePos -> TilePos -> Float
+progressScore current candidate dest =
+  clamp01
+    ( 0.5
+        + destinationProgress current candidate dest / (2 * sqrt 2)
+    )
+
+safetyScore :: HeatMap -> TilePos -> Float
+safetyScore enemiesHeatMap candidate =
+  1 - saturatingScore candidateThreat 20
+ where
+  candidateThreat =
+    maximum
+      ( 0
+          : [ gridPixel enemiesHeatMap t
+            | t <- tilesInRadius 3 candidate
+            ]
+      )
+
+scoutScorePos ::
+  (HasGrid d) =>
+  Unit ->
+  TilePos ->
+  TilePos ->
+  PathWaypoints ->
+  StepMonad d Float
+scoutScorePos u candidate dest wps = do
+  grid <- agentGrid
+
+  rayLength <- beamObstacleLen u candidate
+
+  -- Candidates are adjacent tiles, so their distance change is at most
+  -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
+  let currentProgressScore = progressScore (tilePos u) candidate dest
+      candidateOpenPathScore = scoreOpenPathLength rayLength
+
+      waypoint = fromMaybe dest (findNextWaypoint (tilePos u) wps)
+      waypointScore = towardsPathScore grid candidate waypoint
+  -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
+  pure $ candidateOpenPathScore + currentProgressScore + waypointScore
+
+-- 0.8 * waypointScore
+--   + 0.2 * openPathScore
+
+-- 0.35 * waypointScore
+--   + 0.20 * progressScore
+--   + 0.30 * openPathScore
+--   + 0.10 * ageScore
+--   + 0.05 * progressScore
+
+-- pure . clamp01 $
+--   0.10 * ageScore
+--     + 0.20 * progressScore
+--     + 0.35 * waypointScore
+--     + 0.15 * safetyScore
+--     + 0.15 * (1 - clamp01 visitedScore)
+
+commandScouting :: (HasObs d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path)) = do
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) _ path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
   scored <-
     mapM
       ( \candidate -> do
-          score <- scoutScorePos u candidate dest visited (scoutWaypoints path)
+          score <- scoutScorePos u candidate dest (scoutWaypoints path)
           pure (candidate, score)
       )
       candidates

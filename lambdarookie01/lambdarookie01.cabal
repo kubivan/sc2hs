@@ -116,7 +116,9 @@ test-suite lambdarookie01-test
       TestFixtures
       TestIntegrationRealGame
       TestIntentDsl
+      TestIstarMetrics
       TestStepFlow
+      TestVisionDecay
       TestVisitedDecay
       Paths_lambdarookie01
   hs-source-dirs:
