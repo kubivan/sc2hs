@@ -15,11 +15,11 @@ module SC2.Grid.Utils
 where
 
 import Footprint
-import SC2.Spatial
 import SC2.Grid.Algo (GridBfsRes (..), getAllNeighbors, gridBfs)
 import SC2.Grid.Core
-import SC2.TilePos
 import SC2.Ids.UnitTypeId (UnitTypeId)
+import SC2.Spatial
+import SC2.TilePos
 
 import Data.Bits
 import Data.ByteString qualified as BS
@@ -72,13 +72,13 @@ canPlaceBuilding grid heightMap (cx, cy) (Footprint pixels) =
     pixelHeights = [gridPixel heightMap pos | (x, y, _) <- pixels, let pos = (cx + x, cy + y)]
 
 findPlacementPoint :: Grid -> Grid -> Footprint -> TilePos -> (TilePos -> Bool) -> Maybe TilePos
-findPlacementPoint grid heightMap footprint start acceptanceCriteria = bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptance (const False)
+findPlacementPoint grid heightMap footprint start acceptanceCriteria = bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptance (const (const False))
  where
-  acceptance p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
+  acceptance _ p = canPlaceBuilding grid heightMap p footprint && acceptanceCriteria p
 
 findPlacementPointInRadius :: Grid -> Grid -> Footprint -> TilePos -> Float -> Maybe TilePos
 findPlacementPointInRadius grid heightMap footprint start radius =
   bfsRes $ gridBfs grid start (getAllNeighbors grid) acceptWhen terminateWhen
  where
-  acceptWhen p = canPlaceBuilding grid heightMap p footprint
-  terminateWhen p = distSquaredF start p > radius * radius
+  acceptWhen _ p = canPlaceBuilding grid heightMap p footprint
+  terminateWhen _ p = distSquaredF start p > radius * radius

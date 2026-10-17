@@ -197,7 +197,7 @@ data ScoutPath = ScoutPath
 pathWaypoints :: (HasGrid d) => TilePos -> TilePos -> StepMonad d ScoutPath
 pathWaypoints start end = do
   grid <- agentGrid
-  let GridBfsRes isFound _ path = gridBfs grid start (getAllNotSharpNeighbors grid) (== end) (const False)
+  let GridBfsRes isFound _ path = gridBfs grid start (getAllNotSharpNeighbors grid) (const (== end)) (const (const False))
 
   pure $
     case isFound of
@@ -265,7 +265,8 @@ towardsPathScore grid candidate waypoint =
  where
   distanceScale = 10 :: Float
   GridBfsRes found _ path =
-    gridBfs grid candidate (getAllNotSharpNeighbors grid) (== waypoint) (const False)
+    gridBfs grid candidate (getAllNotSharpNeighbors grid) (const (== waypoint)) (const (const False))
+
   clamp01 = max 0 . min 1
 
 addZ :: Float -> Point2D -> Point

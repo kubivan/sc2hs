@@ -54,15 +54,20 @@ data GridBfsRes = GridBfsRes
   deriving (Show)
 
 gridBfs ::
-  Grid -> TilePos -> (TilePos -> [TilePos]) -> (TilePos -> Bool) -> (TilePos -> Bool) -> GridBfsRes
+  Grid ->
+  TilePos ->
+  (TilePos -> [TilePos]) ->
+  (Set.Set TilePos -> TilePos -> Bool) ->
+  (Set.Set TilePos -> TilePos -> Bool) ->
+  GridBfsRes
 gridBfs grid start transitionFunc acceptanceCriteria terminationCriteria =
   -- trace ("gridBfs start " ++ show start) $
   bfs (Seq.singleton (start, [start])) (Set.singleton start)
  where
   bfs Seq.Empty visited = GridBfsRes Nothing visited []
   bfs ((top, path) Seq.:<| queue) visited
-    | acceptanceCriteria top = GridBfsRes (Just top) visited (reverse path) -- `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
-    | terminationCriteria top = GridBfsRes Nothing visited []
+    | acceptanceCriteria visited top = GridBfsRes (Just top) visited (reverse path) -- `Utils.dbg` ("gridBfs ended. visited: " ++ show (length visited))
+    | terminationCriteria visited top = GridBfsRes Nothing visited []
     | otherwise = bfs queue' visited'
    where
     neighbors = filter (`Set.notMember` visited) (transitionFunc top)
@@ -297,7 +302,8 @@ gridSegment grid =
               _ -> (id, region) : go (id + 1) rest'
 
   fillRegion' pos =
-    bfsVisited $ gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const False) (const False)
+    bfsVisited $
+      gridBfs grid pos (smartTransition grid [(' ', ' ')]) (const (const False)) (const (const False))
 
 -- Get 4-connected neighbors (no diagonals)
 adjacent4 :: TilePos -> [TilePos]

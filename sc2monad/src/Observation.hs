@@ -29,15 +29,15 @@ where
 
 import Actions (UnitTag)
 import Footprint
-import SC2.Spatial
 import SC2.Grid
 import SC2.Grid.Algo
-import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D)
 import SC2.Proto.Data qualified as Proto
+import SC2.Spatial
 import SC2.Spatial qualified as Spatial
+import SC2.TilePos
 import Units
 import Utils
 
@@ -106,10 +106,10 @@ findExpandPosInCluster grid heightMap cluster =
       (tilePos . view #pos . head $ cluster)
       (getAllNeighbors grid)
       canPlaceDist69
-      (const False)
+      (const (const False))
  where
   -- clusterTiles = tilePos . view #pos <$> cluster
-  canPlaceDist69 p =
+  canPlaceDist69 _ p =
     all (\c -> distSquaredI p c >= 6 * 6 && distSquaredI p c < 9 * 9) cluster
       && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 

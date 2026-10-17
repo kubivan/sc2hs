@@ -16,9 +16,9 @@ import Army.Class
 import Footprint
 import SC2.Geometry
 import SC2.Grid.Algo
-import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Spatial
+import SC2.TilePos
 import SC2.Utils
 import Squad.Squad
 import StepMonad
@@ -79,7 +79,13 @@ squadExploreRegion s region =
         unitTags@(squadLeaderTag : _) = squadTags s
     leaderPos <- tilePos . view #pos . fromJust <$> armyByTag squadLeaderTag
 
-    let GridBfsRes isFound _ path = gridBfs grid leaderPos (getAllNotSharpNeighbors grid) (== targetPos) (const False)
+    let GridBfsRes isFound _ path =
+          gridBfs
+            grid
+            leaderPos
+            (getAllNotSharpNeighbors grid)
+            (const (== targetPos))
+            (const (const False))
         posToGo = fromJust $ backoffList path 3
 
     if isNothing isFound
