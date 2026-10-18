@@ -10,7 +10,7 @@ module WaypointScore
 import Data.Set qualified as Set
 import Debug.Trace (traceM)
 import SC2.Grid
-import SC2.Spatial (tilePos)
+import SC2.Spatial (distManhattan, tilePos)
 import SC2.TilePos (TilePos)
 import StepMonad
   ( HasGrid
@@ -47,17 +47,19 @@ pickWaypoint u wps = do
       waypointScore p1 p2 = fromIntegral $ snd p1
 
   let [a, b] = closest2Waypoints grid (tilePos u) wps
-  traceM $ "ab score: " ++ show a ++ " " ++ show (waypointScore a b)
-  traceM $ "ba score: " ++ show b ++ " " ++ show (waypointScore b a)
+  -- traceM $ "ab score: " ++ show a ++ " " ++ show (waypointScore a b)
+  -- traceM $ "ba score: " ++ show b ++ " " ++ show (waypointScore b a)
 
   if waypointScore a b > waypointScore b a then pure a else pure b
 
+-- looking for 2 points around tpos we're not standing at
 closest2Waypoints :: Grid -> TilePos -> [Waypoint] -> [Waypoint]
 closest2Waypoints grid tpos wps = firstTwoMatches visited
  where
   GridBfsRes _ visited _ = gridBfs grid tpos (getAllNotSharpNeighbors grid) acceptance (const (const False))
   firstTwoMatches :: Set.Set TilePos -> [Waypoint]
-  firstTwoMatches vs = take 2 (filter (\(p, _) -> Set.member p vs) wps)
+  -- looking for 2 ``unvisited`` - waypoints we're not standing at
+  firstTwoMatches vs = take 2 (filter (\(p, _) -> Set.member p vs && distManhattan tpos p > 0) wps)
   acceptance vs _ = 2 == (length . firstTwoMatches $ vs)
 
 pathWaypoints :: (HasGrid d) => TilePos -> TilePos -> StepMonad d ScoutPath
