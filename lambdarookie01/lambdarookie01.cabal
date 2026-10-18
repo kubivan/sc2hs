@@ -46,6 +46,7 @@ executable lambdarookie01
       Utils
       VisionDecay
       VisitedDecay
+      WaypointScore
       Paths_lambdarookie01
   hs-source-dirs:
       src
@@ -113,6 +114,7 @@ test-suite lambdarookie01-test
       Utils
       VisionDecay
       VisitedDecay
+      WaypointScore
       TestFixtures
       TestIntegrationRealGame
       TestIntentDsl

@@ -59,6 +59,15 @@ import Proto.S2clientprotocol.Debug qualified as DebugProto
 import SC2.Grid.Algo (adjacent8)
 import VisionDecay
 import VisitedDecay
+import WaypointScore
+  ( ScoutPath (..)
+  , Waypoint
+  , pathLen
+  , pathWaypoints
+  , pickWaypoint
+  , scoutRoute
+  , towardsWaypointScore
+  )
 
 data ScoutTask
   = ScoutTaskIdle
@@ -92,7 +101,6 @@ stepScouting = do
       findScout scout =
         runConduitPure $
           units .| filterC (\unit -> scout ^. #tag == unit ^. #tag) .| headC
-  traceM $ "IstarScouting: " ++ show scoutContext
   case scoutTask scoutContext of
     ScoutTaskIdle -> do
       probe <- getJust $ listToMaybe $ runC $ units .| unitTypeC ProtossProbe .| filterC unitIsHarvesting
@@ -177,35 +185,13 @@ tilesCandidates u = do
   let traits = traitsMap HashMap.! Units.unitTypeId u
       visionRadius = traits ^. #sightRange :: Float
       -- tiles = [t | t <- tilesInRadius (floor visionRadius) (tilePos u), gridPixel grid t /= '#']
-      tiles = [t | t <- adjacent8 (tilePos u), gridPixel grid t /= '#']
+      tiles = [t | t <- adjacent8 (tilePos u), gridPixel grid t == ' ' || gridPixel grid t == '/']
   pure tiles
 
 destinationProgress :: TilePos -> TilePos -> TilePos -> Float
 destinationProgress current candidate dest =
   sqrt (fromIntegral $ distSquaredI current dest)
     - sqrt (fromIntegral $ distSquaredI candidate dest)
-
-type Waypoint = (TilePos, Int)
-type PathWaypoints = [Waypoint]
-
-data ScoutPath = ScoutPath
-  { scoutRoute :: [TilePos]
-  , scoutWaypoints :: PathWaypoints
-  }
-  deriving (Eq, Show)
-
-pathWaypoints :: (HasGrid d) => TilePos -> TilePos -> StepMonad d ScoutPath
-pathWaypoints start end = do
-  grid <- agentGrid
-  let GridBfsRes isFound _ path = gridBfs grid start (getAllNotSharpNeighbors grid) (const (== end)) (const (const False))
-
-  pure $
-    case isFound of
-      Nothing -> ScoutPath [] []
-      Just _ ->
-        ScoutPath
-          path
-          [(wp, i) | (wp, i) <- zip (drop 5 path) [0 ..], i `mod` 5 == 0 || wp == end]
 
 debugScoutPath :: ScoutPath -> StepMonad d ()
 debugScoutPath path = do
@@ -246,29 +232,6 @@ debugScoutPath path = do
   lineBetween :: Point -> Point -> DebugProto.Line
   lineBetween p0 p1 = defMessage & #p0 .~ p0 & #p1 .~ p1
 
-findNextWaypoint :: TilePos -> PathWaypoints -> Maybe TilePos
-findNextWaypoint _ [] = Nothing
-findNextWaypoint tpos pathIndexed =
-  fst <$> listToMaybe (drop targetIndex pathIndexed)
- where
-  (nearestIndex, (nearestPos, _)) =
-    minimumBy
-      (comparing (\(_, (pos, _)) -> distSquaredI tpos pos))
-      (zip [0 ..] pathIndexed)
-  targetIndex = if nearestPos == tpos then nearestIndex + 1 else nearestIndex
-
-towardsPathScore :: Grid -> TilePos -> TilePos -> Float
-towardsPathScore grid candidate waypoint =
-  case found of
-    Nothing -> 0
-    Just _ -> clamp01 (1 - fromIntegral (length path - 1) / distanceScale)
- where
-  distanceScale = 10 :: Float
-  GridBfsRes found _ path =
-    gridBfs grid candidate (getAllNotSharpNeighbors grid) (const (== waypoint)) (const (const False))
-
-  clamp01 = max 0 . min 1
-
 addZ :: Float -> Point2D -> Point
 addZ pz p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y) & #z .~ pz
 
@@ -291,11 +254,15 @@ obstacleRay grid start end =
 
 openPathScore :: Grid -> TilePos -> TilePos -> Float
 openPathScore grid start end =
-  scoreOpenPathLength $ length $ obstacleRay grid start end
+  scoreOpenPathLength . length $ obstacleRay grid start end
+
+rampScore :: Float -> Float -> Float -> Float
+rampScore value low high =
+  clamp01 ((value - low) / (high - low))
 
 scoreOpenPathLength :: Int -> Float
 scoreOpenPathLength rayLength =
-  saturatingScore (fromIntegral rayLength) 10
+  clamp01 $ rampScore (fromIntegral rayLength) 3 10
 
 calcAgeScore :: (HasIstar d) => Unit -> TilePos -> StepMonad d Float
 calcAgeScore u candidate = do
@@ -350,22 +317,43 @@ scoutScorePos ::
   Unit ->
   TilePos ->
   TilePos ->
-  PathWaypoints ->
+  [Waypoint] ->
   StepMonad d Float
 scoutScorePos u candidate dest wps = do
   grid <- agentGrid
 
   rayLength <- beamObstacleLen u candidate
+  waypoint <- pickWaypoint (tilePos u) wps
+  -- debug
+  let currentDist = pathLen grid (tilePos u) (fst waypoint)
+
+  traceM $
+    "picked WP="
+      ++ show waypoint
+      ++ " currentDist="
+      ++ show currentDist
+
+  let d = pathLen grid candidate (fst waypoint)
+  traceM $
+    "candidate="
+      ++ show candidate
+      ++ " dist="
+      ++ show d
+      ++ " progress="
+      ++ show (currentDist - d)
+  -- debug
 
   -- Candidates are adjacent tiles, so their distance change is at most
   -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
   let currentProgressScore = progressScore (tilePos u) candidate dest
       candidateOpenPathScore = scoreOpenPathLength rayLength
 
-      waypoint = fromMaybe dest (findNextWaypoint (tilePos u) wps)
-      waypointScore = towardsPathScore grid candidate waypoint
+      waypointScore = towardsWaypointScore grid (tilePos u) candidate waypoint
   -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
-  pure $ candidateOpenPathScore + currentProgressScore + waypointScore
+  -- pure $ candidateOpenPathScore + (waypointScore)
+  traceM $ "waypoint " ++ show waypoint
+  -- pure $ candidateOpenPathScore * waypointScore
+  pure $ waypointScore
 
 -- 0.8 * waypointScore
 --   + 0.2 * openPathScore
@@ -388,6 +376,8 @@ commandScouting Nothing = pure ()
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) _ path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
+  grid <- agentGrid
+  traceM $ "candidates: " ++ show candidates
   scored <-
     mapM
       ( \candidate -> do
@@ -395,8 +385,10 @@ commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) _ path)) = do
           pure (candidate, score)
       )
       candidates
+  traceM $ "scored candidates: " ++ show scored
 
-  let (dest, _) = maximumBy (comparing snd) scored
+  let res@(dest, _) = maximumBy (comparing snd) scored
+  traceM $ "!! scoring winner: " ++ show res
   command [PointCommand MOVE [u] (tileCenter dest)]
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest) _ _)) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()
