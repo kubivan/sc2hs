@@ -62,11 +62,9 @@ import VisitedDecay
 import WaypointScore
   ( ScoutPath (..)
   , Waypoint
-  , pathLen
+  , calcAlongPathScore
   , pathWaypoints
-  , pickWaypoint
   , scoutRoute
-  , towardsWaypointScore
   )
 
 data ScoutTask
@@ -313,50 +311,31 @@ safetyScore enemiesHeatMap candidate =
       )
 
 scoutScorePos ::
-  (HasGrid d) =>
+  (HasGrid d, HasIstar d) =>
   Unit ->
   TilePos ->
   TilePos ->
   [Waypoint] ->
   StepMonad d Float
 scoutScorePos u candidate dest wps = do
-  grid <- agentGrid
-
   rayLength <- beamObstacleLen u candidate
-  waypoint <- pickWaypoint (tilePos u) wps
+  ageScore <- calcAgeScore u candidate
+  alongPathScore <- calcAlongPathScore wps u candidate
   -- debug
-  let currentDist = pathLen grid (tilePos u) (fst waypoint)
-
-  traceM $
-    "picked WP="
-      ++ show waypoint
-      ++ " currentDist="
-      ++ show currentDist
-
-  let d = pathLen grid candidate (fst waypoint)
-  traceM $
-    "candidate="
-      ++ show candidate
-      ++ " dist="
-      ++ show d
-      ++ " progress="
-      ++ show (currentDist - d)
-  -- debug
-
-  -- Candidates are adjacent tiles, so their distance change is at most
-  -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
-  let currentProgressScore = progressScore (tilePos u) candidate dest
+  let -- Candidates are adjacent tiles, so their distance change is at most
+      -- sqrt 2. Map that progress from [-sqrt 2, sqrt 2] into [0, 1].
+      currentProgressScore = progressScore (tilePos u) candidate dest
       candidateOpenPathScore = scoreOpenPathLength rayLength
 
-      waypointScore = towardsWaypointScore grid (tilePos u) candidate waypoint
+  -- debug
+
   -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
   -- pure $ candidateOpenPathScore + (waypointScore)
-  traceM $ "waypoint " ++ show waypoint
   -- pure $ candidateOpenPathScore * waypointScore
-  pure $ waypointScore
-
--- 0.8 * waypointScore
---   + 0.2 * openPathScore
+  pure $ -- candidateOpenPathScore + waypointScore
+    0.3 * alongPathScore
+      + 0.2 * candidateOpenPathScore
+      + 0.5 * ageScore
 
 -- 0.35 * waypointScore
 --   + 0.20 * progressScore
@@ -371,12 +350,11 @@ scoutScorePos u candidate dest wps = do
 --     + 0.15 * safetyScore
 --     + 0.15 * (1 - clamp01 visitedScore)
 
-commandScouting :: (HasObs d, HasGrid d) => Maybe ScoutContext -> StepMonad d ()
+commandScouting :: (HasObs d, HasGrid d, HasIstar d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) _ path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
-  grid <- agentGrid
   traceM $ "candidates: " ++ show candidates
   scored <-
     mapM

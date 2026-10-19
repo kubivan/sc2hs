@@ -1,10 +1,8 @@
 module WaypointScore
-  ( pickWaypoint
-  , towardsWaypointScore
+  ( ScoutPath (..)
   , Waypoint
-  , ScoutPath (..)
+  , calcAlongPathScore
   , pathWaypoints
-  , pathLen
   ) where
 
 import Data.Set qualified as Set
@@ -17,6 +15,7 @@ import StepMonad
   , StepMonad
   , agentGrid
   )
+import Units (Unit)
 
 type Waypoint = (TilePos, Int)
 type PathWaypoints = [Waypoint]
@@ -79,12 +78,41 @@ pathWaypoints start end = do
           , i `mod` distBetweenWaypoints == 0 || wp == end
           ]
 
--- towardsWaypointScore :: Grid -> TilePos -> Waypoint -> Float
--- towardsWaypointScore grid candidate (waypoint, index) =
---   1.0 / fromIntegral (pathLen grid candidate waypoint)
+normalizeDelta :: Int -> Float
+normalizeDelta delta =
+  (fromIntegral delta + 1) / 2
+
+calcAlongPathScore :: (HasGrid d) => [Waypoint] -> Unit -> TilePos -> StepMonad d Float
+calcAlongPathScore wps u candidate = do
+  grid <- agentGrid
+  waypoint <- pickWaypoint (tilePos u) wps
+  let currentDist = pathLen grid (tilePos u) (fst waypoint)
+  traceM $
+    "picked WP="
+      ++ show waypoint
+      ++ " currentDist="
+      ++ show currentDist
+
+  let d = pathLen grid candidate (fst waypoint)
+  -- traceM $
+  --   "candidate="
+  --     ++ show candidate
+  --     ++ " dist="
+  --     ++ show d
+  --     ++ " progress="
+  --     ++ show (currentDist - d)
+  --     ++ " openPathScore: "
+  --     ++ show candidateOpenPathScore
+  --     ++ " ageScore: "
+  --     ++ show ageScore
+  pure $ towardsWaypointScore grid (tilePos u) candidate waypoint
 
 towardsWaypointScore :: Grid -> TilePos -> TilePos -> Waypoint -> Float
 towardsWaypointScore grid current candidate (waypoint, _) =
   let currentDist = pathLen grid current waypoint
       candidateDist = pathLen grid candidate waypoint
-   in fromIntegral (currentDist - candidateDist)
+   in -- normalize delta to [0..1]
+      -- away -1 -> 0.0
+      -- no change   0 -> 0.5
+      -- toward     +1 -> 1.0
+      normalizeDelta (currentDist - candidateDist)
