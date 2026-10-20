@@ -11,7 +11,7 @@ import Data.Conduit ((.|))
 import Data.Function ((&))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromJust, fromMaybe, isJust, listToMaybe)
 import Data.ProtoLens (defMessage)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -51,6 +51,7 @@ import StepMonad
 import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
+import Data.Functor ((<&>))
 import Data.List (maximumBy, minimumBy)
 import Data.Ord (comparing)
 import EnemiesHeatMap
@@ -311,15 +312,18 @@ safetyScore enemiesHeatMap candidate =
       )
 
 scoutScorePos ::
-  (HasGrid d, HasIstar d) =>
+  (HasGrid d, HasIstar d, HasObs d) =>
   Unit ->
   TilePos ->
   TilePos ->
   [Waypoint] ->
+  VisitedDecay ->
   StepMonad d Float
-scoutScorePos u candidate dest wps = do
+scoutScorePos u candidate dest wps visited = do
   rayLength <- beamObstacleLen u candidate
   ageScore <- calcAgeScore u candidate
+  visitedScore <- calcVisitedDecayScore candidate visited
+
   alongPathScore <- calcAlongPathScore wps u candidate
   -- debug
   let -- Candidates are adjacent tiles, so their distance change is at most
@@ -328,14 +332,21 @@ scoutScorePos u candidate dest wps = do
       candidateOpenPathScore = scoreOpenPathLength rayLength
 
   -- debug
+  traceM $
+    "candidate="
+      ++ show candidate
+      ++ " openPathScore: "
+      ++ show candidateOpenPathScore
+      ++ " visitedScore: "
+      ++ show visitedScore
 
   -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
   -- pure $ candidateOpenPathScore + (waypointScore)
   -- pure $ candidateOpenPathScore * waypointScore
   pure $ -- candidateOpenPathScore + waypointScore
-    0.3 * alongPathScore
+    0.1 * alongPathScore
       + 0.2 * candidateOpenPathScore
-      + 0.5 * ageScore
+      + 0.7 * visitedScore
 
 -- 0.35 * waypointScore
 --   + 0.20 * progressScore
@@ -352,14 +363,14 @@ scoutScorePos u candidate dest wps = do
 
 commandScouting :: (HasObs d, HasGrid d, HasIstar d) => Maybe ScoutContext -> StepMonad d ()
 commandScouting Nothing = pure ()
-commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) _ path)) = do
+commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
   traceM $ "candidates: " ++ show candidates
   scored <-
     mapM
       ( \candidate -> do
-          score <- scoutScorePos u candidate dest (scoutWaypoints path)
+          score <- scoutScorePos u candidate dest (scoutWaypoints path) visited
           pure (candidate, score)
       )
       candidates
@@ -397,6 +408,7 @@ stepIstar = do
         Set.fromList $
           runC $
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC Units.unitTypeId
+  let frame = obs ^. #gameLoop
   updateHeatMap
   debugHeatMap
   debugVisionDecay
@@ -404,10 +416,11 @@ stepIstar = do
   commandScouting scoutState'
   modifyIstar $ \current ->
     let scoutContext = fromMaybe (istarScoutContext current) scoutState'
-        agedVisits = visitedDecayStep (scVisitedDecay scoutContext)
         visited =
-          maybe agedVisits (\unit -> visitedDecayVisit (tilePos unit) agedVisits) $
-            scoutState' >>= scoutUnit
+          maybe
+            (scVisitedDecay scoutContext)
+            (\unit -> visitedDecayVisit frame (tilePos unit) (scVisitedDecay scoutContext))
+            $ scoutState' >>= scoutUnit
      in current
           { istarSeenEnemies = istarSeenEnemies current `Set.union` enemies
           , istarSeenBuildings = istarSeenBuildings current `Set.union` enemyBuildings

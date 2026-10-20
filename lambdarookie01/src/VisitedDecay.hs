@@ -5,21 +5,24 @@ module VisitedDecay
   ( VisitedDecay
   , visitedDecayEmpty
   , visitedDecayAge
-  , visitedDecayStep
   , visitedDecayVisit
-  , visitedDecayScore
+  , calcVisitedDecayScore
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
-import Data.Word (Word64)
+import Data.Word (Word32)
+import Debug.Trace (trace)
+import Lens.Micro ((<&>), (^.))
 import SC2.Grid.Core (Grid, gridH, gridW)
 import SC2.TilePos (TilePos)
+import StepMonad (HasObs, StepMonad, agentObs)
 
 data VisitedDecay = VisitedDecay
   { vdVisitedWidth :: !Int
-  , vdVisitedAges :: !(Vector (Maybe Word64))
+  , vdVisitedAt :: !(Vector (Maybe Word32))
   }
   deriving (Eq, Show)
 
@@ -27,7 +30,7 @@ visitedDecayEmpty :: Grid -> VisitedDecay
 visitedDecayEmpty grid =
   VisitedDecay
     { vdVisitedWidth = width
-    , vdVisitedAges = Vector.replicate (width * height) Nothing
+    , vdVisitedAt = Vector.replicate (width * height) Nothing
     }
  where
   width = gridW grid
@@ -37,33 +40,37 @@ visitedDecayIndex :: VisitedDecay -> TilePos -> Int
 visitedDecayIndex VisitedDecay{vdVisitedWidth} (x, y) =
   y * vdVisitedWidth + x
 
-visitedDecayAge :: VisitedDecay -> TilePos -> Maybe Word64
-visitedDecayAge visits@VisitedDecay{vdVisitedAges} pos =
-  vdVisitedAges Vector.! visitedDecayIndex visits pos
+visitedDecayAge :: Word32 -> VisitedDecay -> TilePos -> Word32
+visitedDecayAge frame visits@VisitedDecay{vdVisitedAt} pos =
+  -- frame <- agentObs <&> (^. #gameLoop)
+  let visitedAt = fromMaybe frame (vdVisitedAt Vector.! visitedDecayIndex visits pos)
+   in frame - visitedAt
 
-visitedDecayStep :: VisitedDecay -> VisitedDecay
-visitedDecayStep visits@VisitedDecay{vdVisitedAges} =
-  visits
-    { vdVisitedAges =
-        Vector.map (fmap incrementAge) vdVisitedAges
-    }
- where
-  incrementAge age
-    | age == maxBound = maxBound
-    | otherwise = age + 1
+visitedDecayVisit :: Word32 -> TilePos -> VisitedDecay -> VisitedDecay
+visitedDecayVisit frame pos visits@VisitedDecay{vdVisitedAt} =
+  trace
+    ("visiting " ++ show pos ++ " at " ++ show frame)
+    visits
+      { vdVisitedAt =
+          vdVisitedAt Vector.// [(visitedDecayIndex visits pos, Just frame)]
+      }
 
-visitedDecayVisit :: TilePos -> VisitedDecay -> VisitedDecay
-visitedDecayVisit pos visits@VisitedDecay{vdVisitedAges} =
-  visits
-    { vdVisitedAges =
-        vdVisitedAges Vector.// [(visitedDecayIndex visits pos, Just 0)]
-    }
+calcVisitedDecayScore ::
+  (HasObs d) =>
+  TilePos ->
+  VisitedDecay ->
+  StepMonad d Float
+calcVisitedDecayScore candidate visited = do
+  frame <- agentObs <&> (^. #gameLoop)
+  pure $ visitedDecayScore frame visited candidate
 
-visitedDecayScore :: VisitedDecay -> TilePos -> Float
-visitedDecayScore visits pos =
-  case visitedDecayAge visits pos of
-    Nothing -> 0
-    -- Keep a useful trail behind the scout for several seconds. With the
-    -- previous one-frame scale, this penalty nearly vanished before the
-    -- unit had time to finish moving to its next tile.
-    Just age -> 1 / (1 + fromIntegral age / 96)
+visitedDecayScore :: Word32 -> VisitedDecay -> TilePos -> Float
+visitedDecayScore frame visits pos =
+  let age = visitedDecayAge frame visits pos
+   in frameDeltaScore age 1000 -- TODO: pick threshold
+
+frameDeltaScore :: Word32 -> Word32 -> Float
+frameDeltaScore d threshold
+  | d == 0 = 1
+  | otherwise =
+      max 0 ((fromIntegral d - fromIntegral threshold * 0.8) / (fromIntegral threshold * 0.2))
