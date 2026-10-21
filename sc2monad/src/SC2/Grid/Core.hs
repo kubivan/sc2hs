@@ -99,8 +99,7 @@ gridIndex g p@(x, y)
 
 gridFromImage :: P.ImageData -> GridBase Char
 gridFromImage image =
-  trace ("gridFromImage " ++ show (width, height, bpp, BS.length bs)) $
-    decodeImageData width height bpp bs
+  decodeImageData width height bpp bs
  where
   width = fromIntegral $ image ^. (P.size . P.x)
   height = fromIntegral $ image ^. (P.size . P.y)
