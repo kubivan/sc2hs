@@ -86,6 +86,7 @@ import Data.Maybe (fromJust, isJust, listToMaybe, mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
+import Fmt ((+||), (||+), build, fmt)
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Error qualified as E
@@ -141,11 +142,11 @@ stepTowardsTechGoal goal = do
 
       needToBuild = goal' `Set.difference` (currentTechs `Set.union` inProgress)
       pathTobuild = Set.toList $ availTechs `Set.intersection` needToBuild
-  traceM $ "goal'" ++ show goal'
-  traceM $ "needToBuild" ++ show needToBuild
-  traceM $ "currentTechs" ++ show currentTechs
-  traceM $ "availTech" ++ show availTechs
-  traceM $ "Path towards goal" ++ show pathTobuild
+  traceM . fmt $ "goal'" +|| goal' ||+ ""
+  traceM . fmt $ "needToBuild" +|| needToBuild ||+ ""
+  traceM . fmt $ "currentTechs" +|| currentTechs ||+ ""
+  traceM . fmt $ "availTech" +|| availTechs ||+ ""
+  traceM . fmt $ "Path towards goal" +|| pathTobuild ||+ ""
   unless (null pathTobuild) $ do
     obs <- agentObs
     let toBuild = head pathTobuild
@@ -248,17 +249,10 @@ tryExpand = do
 
       depleetingBasesCount = countIf (\(_, m) -> m < 8 * 300) nexusesResources
 
-  lift $ traceM $ "!!!!!!! MINERALFIELDS:  " ++ (show . length . runC $ mineralFields)
+  lift . traceM . fmt $ "!!!!!!! MINERALFIELDS:  " +|| length (runC mineralFields) ||+ ""
   when (length nexusesResources - depleetingBasesCount < 1) $ do
-    lift $
-      traceM $
-        "!!! EXPANDING:  "
-          ++ show nexusesResources
-          ++ " "
-          ++ " depleting: "
-          ++ show depleetingBasesCount
-          ++ " nexues: "
-          ++ show (length nexusesResources)
+    lift . traceM . fmt $
+      "!!! EXPANDING:  " +|| nexusesResources ||+ "  depleting: " +|| depleetingBasesCount ||+ " nexues: " +|| length nexusesResources ||+ ""
 
     spawnIntentUnique (IntentId "expanding") intentExpandFull
 
@@ -375,7 +369,7 @@ debugUnitPos = do
   heatMap <- (^. heatGroundEnemiesL) <$> agentGet
   obs <- agentObs
   debugTexts
-    [ ("heat:  " ++ show (gridPixel heatMap (tilePos . view #pos $ c)), c ^. #pos)
+    [ (fmt $ "heat:  " +|| gridPixel heatMap (tilePos . view #pos $ c) ||+ "", c ^. #pos)
     | c <- runC $ unitsSelf obs
     ]
 
@@ -396,12 +390,8 @@ debugSquads = do
   let squadAndLeaders = [(u, s) | (s, u : _) <- zip squads squadUnitsList]
 
   debugTexts
-    [ ( "s "
-          ++ show (u ^. #tag)
-          ++ " at "
-          ++ show (HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap)
-          ++ " "
-          ++ show (u ^. #facing)
+    [ ( fmt $
+          "s " +|| (u ^. #tag) ||+ " at " +|| HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap ||+ " " +|| (u ^. #facing) ||+ ""
       , u ^. #pos
       )
     | (u, _s) <- squadAndLeaders
@@ -492,9 +482,9 @@ squadAssignToExplore s = do
     let allRegions = HashSet.fromList regionPathToEnemy
         usedRegions = HashSet.fromList $ mapMaybe squadAssignedRegion (armySquads (dsArmy ds))
         availableRegionIds = HashSet.toList $ allRegions `HashSet.difference` usedRegions
-    lift $ traceM $ "assigning: all regions " ++ show allRegions
-    lift $ traceM $ "assigning: used regions " ++ show usedRegions
-    lift $ traceM $ "assigning: availableRegionIds " ++ show availableRegionIds
+    lift . traceM . fmt $ "assigning: all regions " +|| allRegions ||+ ""
+    lift . traceM . fmt $ "assigning: used regions " +|| usedRegions ||+ ""
+    lift . traceM . fmt $ "assigning: availableRegionIds " +|| availableRegionIds ||+ ""
 
     rid <- MaybeT . pure $ listToMaybe availableRegionIds
     let region = regionsById HashMap.! rid
@@ -609,17 +599,8 @@ actionErrorToPending err =
 
 formatActionError :: Proto.ActionError -> String
 formatActionError err =
-  "{unitTag="
-    <> show rawTag
-    <> ", abilityId="
-    <> show rawAbility
-    <> " ("
-    <> abilityName
-    <> "), result="
-    <> show (fromEnum rawResult)
-    <> " ("
-    <> resultName
-    <> ")}"
+  fmt $
+    "{unitTag=" +|| rawTag ||+ ", abilityId=" +|| rawAbility ||+ " (" +|| build abilityName ||+ "), result=" +|| fromEnum rawResult ||+ " (" +|| build resultName ||+ ")}"
  where
   rawTag = err ^. #unitTag
   rawAbility = err ^. #abilityId
@@ -654,13 +635,13 @@ trainMassUnit uid = unlessM isFullLimit $ do
           unitsSelf obs .| unitTypeC producerType .| filterC ((== 1) . view #buildProgress) .| unitIdleC
 
   producerCost <- agentUnitCost producerType
-  traceM $ "!!! TRAIN MAX: CAN BUILD " <> show maxToTrain <> " " <> show uid
+  traceM . fmt $ "!!! TRAIN MAX: CAN BUILD " +|| maxToTrain ||+ " " +|| uid ||+ ""
   if maxToTrain > producersLen
     then
       mapM_
         ( \i ->
             spawnIntentUnique
-              (IntentId ("build-" ++ show producerType ++ show i))
+              (IntentId (fmt $ "build-" +|| producerType ||+ i ||+ ""))
               (intentBuildStructure producerType)
         )
         [1 .. (maxToTrain - producersLen)]
@@ -672,14 +653,14 @@ trainMassUnit uid = unlessM isFullLimit $ do
           mapM_
             ( \i ->
                 spawnIntentUnique
-                  (IntentId ("build-additional-" ++ show producerType ++ show i))
+                  (IntentId (fmt $ "build-additional-" +|| producerType ||+ i ||+ ""))
                   (intentBuildStructure producerType)
             )
             [1 .. mineralsToSpend `div` mineralCost producerCost]
         else
           mapM_
             ( \sp ->
-                spawnIntentUnique (IntentId ("train-" ++ show uid ++ show (sp ^. #tag))) (intentTrainUnit uid)
+                spawnIntentUnique (IntentId (fmt $ "train-" +|| uid ||+ (sp ^. #tag) ||+ "")) (intentTrainUnit uid)
             )
             producersIdle
 
@@ -743,9 +724,7 @@ instance Agent BotAgent where
     --     <> (show $ botCommands plan)
     --     <> " income "
     --     <> (show $ obsResources obsRaw)
-    traceM $
-      "!!! RESOURCE COLLECTION RATE: "
-        <> (show . rate . dsResourceRateState $ ds')
+    traceM . fmt $ "!!! RESOURCE COLLECTION RATE: " +|| rate (dsResourceRateState ds') ||+ ""
     -- unless (null obs ^. #actionErrors) $
     --   traceM $
     --     "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)

@@ -46,6 +46,7 @@ library
     , conduit
     , containers
     , directory
+    , fmt
     , hashable
     , lens-aeson
     , microlens
@@ -88,6 +89,7 @@ test-suite sc2monad-test
     , conduit
     , containers
     , directory
+    , fmt
     , hashable
     , hspec
     , lens-aeson

@@ -33,6 +33,7 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 import Debug.Trace
+import Fmt ((+||), (||+), fmt)
 import GHC.Generics (Generic)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
@@ -134,7 +135,7 @@ generateTechPathes dataFile = do
 
       buildTechPath :: Tech -> State TechPathCache [Tech]
       buildTechPath start = do
-        traceM $ "building techpath for " ++ show start
+        traceM . fmt $ "building techpath for " +|| start ||+ ""
         path <- bfs [(start, [start])] HashSet.empty
         modify' (HashMap.insert start path)
         pure path
@@ -144,17 +145,12 @@ generateTechPathes dataFile = do
         bfs ((tech, path) : queue) visited = do
           let deps = directDeps tech
 
-          traceM $
-            "visiting "
-              ++ show tech
-              ++ " path: "
-              ++ show path
-              ++ " deps: "
-              ++ show deps
+          traceM . fmt $
+            "visiting " +|| tech ||+ " path: " +|| path ||+ " deps: " +|| deps ||+ ""
 
           if null deps
             then do
-              traceM $ "FOUND: " ++ show path
+              traceM . fmt $ "FOUND: " +|| path ||+ ""
               pure path
             else
               let visited' = HashSet.insert tech visited
@@ -173,16 +169,16 @@ generateTechPathes dataFile = do
       directDepsMaybe (TechUpgrade uid) = do
         abilityIds <-
           HashMap.lookup uid researchAbilitiesDict
-        traceM $ "research abilityIds: " ++ show abilityIds
+        traceM . fmt $ "research abilityIds: " +|| abilityIds ||+ ""
         producer <- listToMaybe (mapMaybe (`HashMap.lookup` abilityToProducerUnit) abilityIds)
 
-        traceM $ "producer: " ++ show producer
+        traceM . fmt $ "producer: " +|| producer ||+ ""
 
         producerAbilitiesWithDeps <- HashMap.lookup producer unitAbilitiesGrouped
-        traceM $ "producerAbilitiesWithDeps: " ++ show producerAbilitiesWithDeps
+        traceM . fmt $ "producerAbilitiesWithDeps: " +|| producerAbilitiesWithDeps ||+ ""
         producingAbilityDep <-
           listToMaybe (mapMaybe (`HashMap.lookup` producerAbilitiesWithDeps) abilityIds)
-        traceM $ "producingAbilityDep: " ++ show producingAbilityDep
+        traceM . fmt $ "producingAbilityDep: " +|| producingAbilityDep ||+ ""
         pure $
           if null producingAbilityDep
             then [TechUnit producer]
@@ -198,9 +194,9 @@ generateTechPathes dataFile = do
                 resolve abilityId =
                   fromMaybe [] $ do
                     builder <- HashMap.lookup abilityId abilityToProducerUnit
-                    traceM $ "Builder: " ++ show builder
+                    traceM . fmt $ "Builder: " +|| builder ||+ ""
                     deps <- HashMap.lookup builder unitAbilitiesGrouped
-                    traceM $ "deps: " ++ show deps
+                    traceM . fmt $ "deps: " +|| deps ||+ ""
                     HashMap.lookup abilityId deps
              in Just $
                   maybe [] (concatMap resolve) abilities
@@ -208,16 +204,16 @@ generateTechPathes dataFile = do
             abilityIds <-
               HashMap.lookup uid trainAbilitiesDict
                 <|> HashMap.lookup uid morphAbilitiesDict
-            traceM $ "abilityIds: " ++ show abilityIds
+            traceM . fmt $ "abilityIds: " +|| abilityIds ||+ ""
             producer <- listToMaybe (mapMaybe (`HashMap.lookup` abilityToProducerUnit) abilityIds)
 
-            traceM $ "producer: " ++ show producer
+            traceM . fmt $ "producer: " +|| producer ||+ ""
 
             producerAbilitiesWithDeps <- HashMap.lookup producer unitAbilitiesGrouped
-            traceM $ "producerAbilitiesWithDeps: " ++ show producerAbilitiesWithDeps
+            traceM . fmt $ "producerAbilitiesWithDeps: " +|| producerAbilitiesWithDeps ||+ ""
             producingAbilityDep <-
               listToMaybe (mapMaybe (`HashMap.lookup` producerAbilitiesWithDeps) abilityIds)
-            traceM $ "producingAbilityDep: " ++ show producingAbilityDep
+            traceM . fmt $ "producingAbilityDep: " +|| producingAbilityDep ||+ ""
             pure $
               if null producingAbilityDep
                 then [TechUnit producer]
@@ -233,9 +229,9 @@ generateTechPathes dataFile = do
       techPaths :: HashMap Tech [Tech]
       techPaths = precomputeTechPaths allTechs
 
-  traceM $ "!!! " ++ show abilityProducerPairs
+  traceM . fmt $ "!!! " +|| abilityProducerPairs ||+ ""
   traceM $ "====================================================================="
-  traceM $ "!!! " ++ show unitAbilitiesGrouped
+  traceM . fmt $ "!!! " +|| unitAbilitiesGrouped ||+ ""
   return (techPaths, abilityProducerPairs, researchPairs, trainPairs)
 
 generateDeps :: Q [Dec]

@@ -43,6 +43,7 @@ import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Debug.Trace (trace, traceM)
+import Fmt ((+||), (||+), fmt)
 
 type TilePath = [TilePos]
 
@@ -187,10 +188,10 @@ gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay -- `Utils.dbg` 
           (b : _) ->
             let (visitedB, minVolumeReachedB) = gridFloodPeek grid visitedA minVolume b
              in trace
-                  ( "A size: "
-                      ++ show (Set.size visitedA, minVolumeReachedA)
-                      ++ ", B size: "
-                      ++ show (Set.size visitedB, minVolumeReachedB)
+                  ( fmt $
+                      "A size: " +|| (Set.size visitedA, minVolumeReachedA)
+                        ||+ ", B size: " +|| (Set.size visitedB, minVolumeReachedB)
+                        ||+ ""
                   )
                   $ (regionA, if minVolumeReachedB then Nothing else Just visitedB)
           [] -> (regionA, Just Set.empty) -- trace "[checkFirst2] No disjoint B found" (visitedA, Set.empty)
@@ -251,7 +252,7 @@ checkIfChoke pos = do
   traceM "checking volumes"
   -- let volumesRes = checkVolumes grid' ray 100
   let volumesRes = checkVolumes grid' ray 250
-  guard (trace ("volume check " ++ show volumesRes) volumesRes)
+  guard (trace (fmt $ "volume check " +|| volumesRes ||+ "") volumesRes)
   traceM "volumes check passed!!!!"
 
   lift $ put (grid', Set.insert ray visited)
@@ -291,13 +292,14 @@ gridSegment grid =
       ]
 
   go id rest
-    | trace (show id ++ " openCells: " ++ show (Set.size rest)) False = undefined
+    | trace (fmt $ "" +|| id ||+ " openCells: " +|| Set.size rest ||+ "") False = undefined
     | Set.null rest = []
     | otherwise =
         let start = Set.findMin rest
             region = fillRegion' start
             rest' = rest `Set.difference` region
-         in trace ("found region " ++ show (Set.size region) ++ " rest to check: " ++ show (Set.size rest')) $ case Set.minView rest' of
+         in trace
+              (fmt $ "found region " +|| Set.size region ||+ " rest to check: " +|| Set.size rest' ||+ "") $ case Set.minView rest' of
               Nothing -> [(id, region)]
               _ -> (id, region) : go (id + 1) rest'
 
@@ -365,14 +367,12 @@ regionGraphBfs rg start end =
     | top == end = reverse path
     | otherwise =
         bfs queue' visited'
-          `Utils.dbg` ( "bfs to"
-                          ++ show end
-                          ++ " top: "
-                          ++ show (reverse path)
-                          ++ "neighbors "
-                          ++ show neighbors
-                          ++ " vis"
-                          ++ show visited
+          `Utils.dbg` ( fmt $
+                          "bfs to" +|| end
+                            ||+ " top: " +|| reverse path
+                            ||+ "neighbors " +|| neighbors
+                            ||+ " vis" +|| visited
+                            ||+ ""
                       )
    where
     neighbors = HashMap.lookupDefault Set.empty top rg

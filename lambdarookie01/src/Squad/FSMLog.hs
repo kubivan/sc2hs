@@ -1,6 +1,7 @@
 module Squad.FSMLog (traceFSM, traceFSMWithState) where
 
 import Debug.Trace (traceM)
+import Fmt ((+||), (||+), build, fmt)
 import Squad.Squad
 import Squad.State
 import StepMonad
@@ -9,10 +10,9 @@ traceFSM :: FSMSquad SquadState -> String -> StepMonad d ()
 traceFSM squad = traceFSMWithState squad (squadState squad)
 
 traceFSMWithState :: FSMSquad SquadState -> SquadState -> String -> StepMonad d ()
-traceFSMWithState squad state msg = traceM (prefix ++ " " ++ msg)
- where
-  prefix =
-    "[fsm][" ++ renderState state ++ "][" ++ renderSubstate state ++ "][" ++ show (squadId squad) ++ "]"
+traceFSMWithState squad state msg =
+  traceM . fmt $
+    "[fsm][" +|| build (renderState state) ||+ "][" +|| build (renderSubstate state) ||+ "][" +|| squadId squad ||+ "] " +|| build msg
 
 renderState :: SquadState -> String
 renderState SSIdle = "idle"

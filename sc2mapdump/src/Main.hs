@@ -10,6 +10,7 @@ import Control.Exception (SomeException, bracket, catch)
 import Data.List (isInfixOf)
 import Data.ProtoLens.Labels ()
 import Data.Text qualified as Text
+import Fmt ((+||), (||+), build, fmt)
 import Lens.Micro ((^.))
 import Network.WebSockets qualified as WS
 import Options.Applicative
@@ -122,10 +123,12 @@ startContainer cli mapsDir = do
         ExitFailure code
             | "port is already allocated" `elem` words err
                 || "port is already allocated" `isInfixOf` err -> do
-                putStrLn $ "Port " <> show (cliPort cli) <> " is already allocated; reusing existing SC2 endpoint at " <> cliHost cli <> ":" <> show (cliPort cli)
+                putStrLn . fmt $
+                    "Port " +|| cliPort cli ||+ " is already allocated; reusing existing SC2 endpoint at " +|| build (cliHost cli) ||+ ":" +|| cliPort cli ||+ ""
                 pure DockerReuseExisting
             | otherwise ->
-                error $ "docker run -d --rm --name " <> cliContainerName cli <> " -p " <> portMap <> " -v " <> mapsMount <> " " <> cliDockerImage cli <> " failed (" <> show code <> ")\nstdout:\n" <> out <> "\nstderr:\n" <> err
+                error . fmt $
+                    "docker run -d --rm --name " +|| build (cliContainerName cli) +|| " -p " +|| build portMap +|| " -v " +|| build mapsMount +|| " " +|| build (cliDockerImage cli) +|| " failed (" ||+ code ||+ ")\nstdout:\n" +|| build out +|| "\nstderr:\n" +|| build err
 
 stopContainer :: String -> IO ()
 stopContainer containerName = do
@@ -138,7 +141,8 @@ runDockerChecked args = do
     case exitCode of
         ExitSuccess -> pure ()
         ExitFailure code ->
-            error $ "docker " <> unwords args <> " failed (" <> show code <> ")\nstdout:\n" <> out <> "\nstderr:\n" <> err
+            error . fmt $
+                "docker " +|| build (unwords args) +|| " failed (" ||+ code ||+ ")\nstdout:\n" +|| build out +|| "\nstderr:\n" +|| build err
 
 waitForSc2 :: String -> Int -> IO ()
 waitForSc2 host port = loop (120 :: Int)

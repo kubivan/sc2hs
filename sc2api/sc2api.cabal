@@ -94,6 +94,7 @@ library
     , containers
     , directory
     , filepath
+    , fmt
     , hashable
     , lens-aeson
     , microlens

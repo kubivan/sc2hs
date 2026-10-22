@@ -31,6 +31,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
 import Data.Set qualified as Set
 import Debug.Trace
+import Fmt ((+||), (||+), fmt)
 import Lens.Micro
 import Lens.Micro.Extras (view)
 import System.Random (Random, StdGen, randomR)
@@ -89,7 +90,7 @@ squadExploreRegion s region =
         posToGo = fromJust $ backoffList path 3
 
     if isNothing isFound
-      then void $ traceM ("[warn] squadExploreRegion: unreacheble: " ++ show targetPos)
+      then void . traceM . fmt $ "[warn] squadExploreRegion: unreacheble: " +|| targetPos ||+ ""
       else do
         units <- catMaybes <$> mapM armyByTag unitTags
         command [PointCommand ATTACKATTACK units (toPoint2D posToGo)]

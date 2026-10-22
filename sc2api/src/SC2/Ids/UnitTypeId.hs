@@ -9,6 +9,7 @@ import Language.Haskell.TH.Syntax (Lift)
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Text (unpack)
+import Fmt ((+||), build, fmt)
 import Text.Read (readMaybe)
 
 instance Hashable UnitTypeId where
@@ -22,7 +23,7 @@ instance FromJSON UnitTypeId where
   parseJSON = withText "UnitTypeId" $ \txt ->
     case readMaybe (unpack txt) of
       Just utid -> pure utid
-      Nothing -> fail $ "Invalid UnitTypeId: " ++ unpack txt
+      Nothing -> fail $ fmt $ "Invalid UnitTypeId: " +|| build txt
 
 -- data UnitTypeId =
 --    Invalid  -- 0

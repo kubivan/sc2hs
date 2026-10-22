@@ -12,6 +12,7 @@ import Data.ProtoLens (defMessage)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Debug.Trace (trace)
+import Fmt ((+||), (||+), fmt)
 import GHC.Word (Word64, Word8)
 import Lens.Micro
 import Observation (Observation, obsUnitsC)
@@ -67,7 +68,7 @@ visionDecayEmpty grid =
             ' ' -> FogTileUnknown
             '/' -> FogTileUnknown
             '#' -> FogTileBlocked
-            c -> error ("!!! assert: invalid grid pixel: " ++ show c)
+            c -> error $ fmt $ "!!! assert: invalid grid pixel: " +|| c ||+ ""
       }
 
 indexToPos :: Int -> Int -> TilePos
@@ -124,7 +125,7 @@ visibilityAt image pos =
           bit = 7 - x `mod` 8
        in fromIntegral . fromEnum $ testBit byte bit
     bpp ->
-      error $ "Unsupported visibility bits per pixel: " ++ show bpp
+      error $ fmt $ "Unsupported visibility bits per pixel: " +|| bpp ||+ ""
  where
   (x, y) = pos
 
@@ -153,7 +154,7 @@ visionDecayClearVisible visibility vision =
 visionDecayAddEnemy :: VisionDecay -> Unit -> VisionDecay
 visionDecayAddEnemy vision unit =
   trace
-    ("!!! add enemy to visiom " ++ show unit)
+    (fmt $ "!!! add enemy to visiom " +|| unit ||+ "")
     vision
       { vdTiles =
           vdTiles vision

@@ -26,6 +26,7 @@ dependencies:
   - async
   - websockets
   - directory
+  - fmt
   - lens-aeson
   - process
   - aeson-pretty

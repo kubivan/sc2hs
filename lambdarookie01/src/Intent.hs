@@ -13,6 +13,7 @@ import Data.Maybe (catMaybes, fromJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
+import Fmt ((+||), (||+), build, fmt)
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (.~), (^.))
 import Lens.Micro.Extras
@@ -323,16 +324,10 @@ traceBuilderOrders iid phase =
   logOrders builder = do
     obs <- agentObs
     case getUnit obs builder of
-      Nothing -> traceM ("[builder-orders][" ++ show iid ++ "] builder missing: " ++ show builder)
+      Nothing -> traceM . fmt $ "[builder-orders][" +|| iid ||+ "] builder missing: " +|| builder ||+ ""
       Just unit ->
-        traceM
-          ( "[builder-orders]["
-              ++ show iid
-              ++ "] builder="
-              ++ show builder
-              ++ " orders="
-              ++ formatUnitOrders unit
-          )
+        traceM . fmt $
+          "[builder-orders][" +|| iid ||+ "] builder=" +|| builder ||+ " orders=" +|| build (formatUnitOrders unit)
 
 targetInProgress :: (HasObs d) => Target -> UnitTypeId -> StepMonad d Bool
 targetInProgress target uid = do
@@ -346,12 +341,8 @@ targetInProgress target uid = do
             ( \x ->
                 let dist = distSquaredI (x ^. #pos) target
                  in trace
-                      ( "[targetInProgress] unit pos: "
-                          ++ show (x ^. #pos)
-                          ++ ", target: "
-                          ++ show target
-                          ++ ", dist: "
-                          ++ show dist
+                      ( fmt $
+                          "[targetInProgress] unit pos: " +|| (x ^. #pos) ||+ ", target: " +|| target ||+ ", dist: " +|| dist ||+ ""
                       )
                       (dist <= 1)
             )
@@ -445,17 +436,8 @@ tickBuildPhase iid uid currentPhase =
                 | started = startMonitoring reserved builder target
                 | isNothing mbBuilder = stepDoneResult IntentFailed
                 | maybe False builderAccepted mbBuilder = do
-                    traceM
-                      ( "[intent]["
-                          ++ show iid
-                          ++ "][build] command accepted; waiting for start"
-                          ++ " uid="
-                          ++ show uid
-                          ++ " builder="
-                          ++ show builder
-                          ++ " frame="
-                          ++ show frame
-                      )
+                    traceM . fmt $
+                      "[intent][" +|| iid ||+ "][build] command accepted; waiting for start uid=" +|| uid ||+ " builder=" +|| builder ||+ " frame=" +|| frame ||+ ""
                     let distToTarget = distManhattan (fromJust mbBuilder) target
                     agentModifyReservedCost (+ reserved)
                     goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
@@ -549,7 +531,7 @@ runIntent ::
 runIntent = stepLoop maxIntentTransitionsPerFrame
  where
   stepLoop 0 rt = do
-    traceM ("[intent][" ++ show (intentId rt) ++ "] transition budget exhausted for this frame")
+    traceM . fmt $ "[intent][" +|| intentId rt ||+ "] transition budget exhausted for this frame"
     pure (rt, IntentRunning)
   stepLoop budget rt = do
     result <- intentTick rt
@@ -564,7 +546,7 @@ intentTick ::
   IntentRuntime d ->
   StepMonad d (IntentTickResult d)
 intentTick rt = do
-  traceM ("[intent][" ++ show (intentId rt) ++ "] " ++ show (intentProgram rt))
+  traceM . fmt $ "[intent][" +|| intentId rt ||+ "] " +|| intentProgram rt ||+ ""
   case intentProgram rt of
     PBuildStructure _ phase -> traceBuilderOrders (intentId rt) phase
     PTrainUnit _ _ -> pure ()
@@ -575,7 +557,7 @@ intentTick rt = do
 spawnIntentUnique :: (HasBuildIntents d, HasObs d) => IntentId -> IntentProgram d -> StepMonad d ()
 spawnIntentUnique iid intent = do
   active <- intentExists iid
-  traceM $ "[spawnIntentUnique] is_active:" <> show active
+  traceM . fmt $ "[spawnIntentUnique] is_active:" +|| active ||+ ""
   if active then pure () else spawnIntent iid intent
 
 intentEngine ::
@@ -587,24 +569,14 @@ intentEngine = do
   let resources = obsResources obs
   reserved <- agentGetReservedCost
   intents <- agentGet <&> (^. buildIntentsL) <&> Map.toList
-  traceM $
-    "==================== "
-      <> show frame
-      <> " ===================="
-      <> " minerals: "
-      <> show (mineralCost resources)
-      <> " vespene: "
-      <> show (gasCost resources)
-      <> " reserved penalty: "
-      <> show reserved
-      <> " intents num: "
-      <> show (length intents)
-  traceM $ "[" <> show frame <> "][intentEngine] running intents: " <> show (length intents)
+  traceM . fmt $
+    "==================== " +|| frame ||+ " ==================== minerals: " +|| mineralCost resources ||+ " vespene: " +|| gasCost resources ||+ " reserved penalty: " +|| reserved ||+ " intents num: " +|| length intents ||+ ""
+  traceM . fmt $ "[" +|| frame ||+ "][intentEngine] running intents: " +|| length intents ||+ ""
   outcomes <-
     mapM
       ( \(iid, i) -> do
           (i', status) <- runIntent i
-          traceM $ "[" <> show frame <> "][intentEngine][" <> show iid <> "status: " <> show status
+          traceM . fmt $ "[" +|| frame ||+ "][intentEngine][" +|| iid ||+ "status: " +|| status ||+ ""
           case status of
             IntentCompleted -> do
               cleanupIntent (intentProgram i')
@@ -616,7 +588,7 @@ intentEngine = do
               pure $ Just (iid, IntentFailed)
             IntentNeedsPrerequisite uid ->
               updateIntent i'
-                >> spawnIntentUnique (IntentId ("prereq-" ++ show uid)) (intentBuildStructure uid)
+                >> spawnIntentUnique (IntentId (fmt $ "prereq-" +|| uid ||+ "")) (intentBuildStructure uid)
                 >> pure Nothing
             _ -> updateIntent i' >> pure Nothing
       )
@@ -629,7 +601,7 @@ spawnIntent ::
   IntentProgram d ->
   StepMonad d ()
 spawnIntent iid program = do
-  traceM $ "spawnIntent " ++ show iid
+  traceM . fmt $ "spawnIntent " +|| iid ||+ ""
   frame <- (^. #gameLoop) <$> agentObs
   agentModify (buildIntentsL %~ Map.insert iid (IntentRuntime iid program frame))
 
@@ -641,12 +613,12 @@ lookupIntent iid = Map.lookup iid . (^. buildIntentsL) <$> agentGet
 
 updateIntent :: (HasBuildIntents d) => IntentRuntime d -> StepMonad d ()
 updateIntent runtime = do
-  traceM $ "updateIntent " ++ show (intentId runtime)
+  traceM . fmt $ "updateIntent " +|| intentId runtime ||+ ""
   agentModify (buildIntentsL %~ Map.insert (intentId runtime) runtime)
 
 removeIntent :: (HasBuildIntents d) => IntentId -> StepMonad d ()
 removeIntent iid = do
-  traceM $ "removeIntent " ++ show iid
+  traceM . fmt $ "removeIntent " +|| iid ||+ ""
   agentModify (buildIntentsL %~ Map.delete iid)
 
 stepIntent ::
@@ -659,7 +631,7 @@ stepIntent iid = do
     Nothing -> pure IntentFailed
     Just runtime -> do
       (runtime', status) <- runIntent runtime
-      traceM ("[intent][" ++ show iid ++ "] " ++ show status)
+      traceM . fmt $ "[intent][" +|| iid ||+ "] " +|| status ||+ ""
       case status of
         IntentRunning -> updateIntent runtime' >> pure IntentRunning
         IntentCompleted -> do

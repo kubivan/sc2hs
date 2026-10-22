@@ -45,6 +45,7 @@ import Data.Int (Int32)
 import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (traceM)
+import Fmt ((+||), (||+), fmt)
 import GHC.Word (Word32)
 import Lens.Micro ((^.))
 import Network.WebSockets as WS
@@ -97,7 +98,7 @@ playMatch (HostRuntime hostPart opponentPart net sc2Cfg mapSpec) =
     let joinRequest = requestJoinGameVsAi
     signals <- newGameSignals 1
     results <- runHostSession sc2Cfg mapSpec net hostPart participants signals joinRequest
-    putStrLn $ "Game Ended: " ++ show results
+    putStrLn . fmt $ "Game Ended: " +|| results ||+ ""
 
   hostVsPlayer = do
     let joinRequest = requestJoinGame1vs1 (serverPortSet net) (clientPortSet net)
@@ -106,7 +107,7 @@ playMatch (HostRuntime hostPart opponentPart net sc2Cfg mapSpec) =
     asyncClientTask <- async $ runClientSession net opponentPart signals joinRequest
     hostResults <- wait asyncHostTask
     _ <- wait asyncClientTask
-    putStrLn $ "Game Ended: " ++ show hostResults
+    putStrLn . fmt $ "Game Ended: " +|| hostResults ||+ ""
 
 joinMatch :: JoinRuntime -> IO ()
 joinMatch (JoinRuntime participant net) =
@@ -131,9 +132,9 @@ clientAppJoinGame ::
   (Agent a) => Connection -> a -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
 clientAppJoinGame conn agent signals joinFunc = do
   responseJoinGame <- Proto.sendRequestSync conn $ joinFunc (Agent.agentRace agent)
-  print $ "responseJoinGame: " ++ (show responseJoinGame)
+  putStrLn . fmt $ "responseJoinGame: " +|| responseJoinGame ||+ ""
   let joinedPlayerId = responseJoinGame ^. #joinGame . #playerId
-  traceM $ "playerId " ++ show joinedPlayerId
+  traceM . fmt $ "playerId " +|| joinedPlayerId ||+ ""
   signalClientJoined signals
 
   runGameLoop conn signals agent joinedPlayerId
@@ -152,7 +153,7 @@ runHostSession sc2Cfg mapSpec net (Player agent) participants signals joinFunc =
   when (start sc2Cfg) $
     startStarCraft sc2Cfg (networkHostName net) (fromIntegral $ networkHostPort net)
   threadId <- myThreadId
-  putStrLn $ "Host thread ID: " ++ show threadId
+  putStrLn . fmt $ "Host thread ID: " +|| threadId ||+ ""
   WS.runClient (networkHostName net) (networkHostPort net) "/sc2api" clientApp
  where
   clientApp conn = do
@@ -166,7 +167,7 @@ runClientSession ::
 runClientSession _ (Computer _ _ _) _ _ = Prelude.error "computer cannot be the client"
 runClientSession net (Player agent) signals joinFunc = do
   threadId <- myThreadId
-  putStrLn $ "Client thread ID: " ++ show threadId
+  putStrLn . fmt $ "Client thread ID: " +|| threadId ||+ ""
   waitForGameCreation signals
   WS.runClient (networkHostName net) (networkClientPort net) "/sc2api" clientApp
  where
@@ -176,7 +177,7 @@ runClientSession net (Player agent) signals joinFunc = do
 
 runGameLoop :: (Agent a) => Connection -> GameSignals -> a -> Word32 -> IO [PlayerResult]
 runGameLoop conn signals agent localPlayerId = do
-  putStrLn $ "Player" ++ show localPlayerId ++ "waiting for host to create the game..."
+  putStrLn . fmt $ "Player" +|| localPlayerId ||+ "waiting for host to create the game..."
   waitAllClientsJoined signals
 
   putStrLn "getting game info..."

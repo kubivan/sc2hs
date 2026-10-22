@@ -32,8 +32,8 @@ import Data.Hashable
 import Data.List
 import Data.Maybe
 import Data.Set qualified as Set
-import Data.Text (Text, pack, unpack)
 import Debug.Trace
+import Fmt ((+||), (||+), fmt)
 import GHC.Generics (Generic)
 import Lens.Micro
 import Lens.Micro.Extras
@@ -47,7 +47,7 @@ type UnitTraits = HashMap.HashMap UnitTypeId UnitTypeData
 abilityToUnit :: UnitTraits -> AbilityId -> UnitTypeId
 abilityToUnit traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
   Just t -> toEnum . fromIntegral $ t ^. #unitId
-  Nothing -> error $ "abilityToUnit: invalid ability: " ++ show a
+  Nothing -> error $ fmt $ "abilityToUnit: invalid ability: " +|| (a ||+ "")
 
 abilityToUnitSafe :: UnitTraits -> AbilityId -> Maybe UnitTypeId
 abilityToUnitSafe traits a = case find (\x -> fromIntegral (x ^. #abilityId) == fromEnum a) (HashMap.elems traits) of
@@ -57,7 +57,7 @@ abilityToUnitSafe traits a = case find (\x -> fromIntegral (x ^. #abilityId) == 
 unitToAbility :: UnitTraits -> UnitTypeId -> AbilityId
 unitToAbility traits uid = case traits HashMap.!? uid of
   Just t -> toEnum . fromIntegral $ t ^. #abilityId
-  Nothing -> error $ "unitToAbility: invalid id: " ++ show uid
+  Nothing -> error $ fmt $ "unitToAbility: invalid id: " +|| (uid ||+ "")
 
 saveDeps :: FilePath -> TechPath -> IO ()
 saveDeps path deps = B.writeFile path (Pretty.encodePretty deps)
