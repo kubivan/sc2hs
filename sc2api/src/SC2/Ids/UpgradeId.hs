@@ -6,6 +6,7 @@ import Data.Hashable
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Text (unpack)
+import Fmt ((+||), build, fmt)
 import Language.Haskell.TH.Syntax (Lift)
 import Text.Read (readMaybe)
 
@@ -299,4 +300,4 @@ instance FromJSON UpgradeId where
   parseJSON = withText "UpgradeId" $ \txt ->
     case readMaybe (unpack txt) of
       Just uid -> pure uid
-      Nothing -> fail $ "Invalid UpgradeId: " ++ unpack txt
+      Nothing -> fail $ fmt $ "Invalid UpgradeId: " +|| build txt

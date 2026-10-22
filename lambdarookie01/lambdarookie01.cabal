@@ -61,6 +61,7 @@ executable lambdarookie01
     , conduit
     , containers
     , extra
+    , fmt
     , free
     , hashable
     , microlens
@@ -139,6 +140,7 @@ test-suite lambdarookie01-test
     , directory
     , extra
     , filepath
+    , fmt
     , free
     , hashable
     , hspec

@@ -11,6 +11,7 @@ module Utils
 
 import Actions (UnitTag)
 import Data.Maybe (listToMaybe, mapMaybe)
+import Fmt ((+||), (||+), fmt)
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw qualified as R
@@ -48,7 +49,7 @@ unitIsAssignedTo building unit
   | isAssimilator building || isMineral building = building ^. #tag `elem` targets
   | toEnum' (building ^. #unitType) == ProtossNexus =
       unitIsHarvesting unit && closeEnough && withoutVespene
-  | otherwise = error ("not implemented unitIsAssignedTo: " ++ show building)
+  | otherwise = error $ fmt $ "not implemented unitIsAssignedTo: " +|| building ||+ ""
  where
   targets = mapMaybe getTargetUnitTag (unit ^. #orders)
   closeEnough = Spatial.distManhattan building unit <= 12

@@ -54,6 +54,7 @@ import Utils (unitIsHarvesting)
 import Data.Functor ((<&>))
 import Data.List (maximumBy, minimumBy)
 import Data.Ord (comparing)
+import Fmt ((+||), (||+), fmt)
 import EnemiesHeatMap
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Debug qualified as DebugProto
@@ -124,7 +125,7 @@ stepScouting = do
               }
         else do
           let dist = distManhattan unitAlive destPos
-          traceM $ "!! dist to " ++ show dist
+          traceM . fmt $ "!! dist to " +|| dist ||+ ""
           if dist < 20
             then
               pure $
@@ -219,7 +220,7 @@ debugScoutPath path = do
           | (pos, _) <- waypoints
           ]
       waypointLabels =
-        [ (show index ++ ": " ++ show pos, addZ (tileHeight heights pos + 3) (tileCenter pos))
+        [ (fmt $ "" +|| index ||+ ": " +|| pos ||+ "", addZ (tileHeight heights pos + 3) (tileCenter pos))
         | (pos, index) <- waypoints
         ]
   when (not (null pathLines && null waypointLines)) $
@@ -332,13 +333,8 @@ scoutScorePos u candidate dest wps visited = do
       candidateOpenPathScore = scoreOpenPathLength rayLength
 
   -- debug
-  traceM $
-    "candidate="
-      ++ show candidate
-      ++ " openPathScore: "
-      ++ show candidateOpenPathScore
-      ++ " visitedScore: "
-      ++ show visitedScore
+  traceM . fmt $
+    "candidate=" +|| candidate ||+ " openPathScore: " +|| candidateOpenPathScore ||+ " visitedScore: " +|| visitedScore ||+ ""
 
   -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
   -- pure $ candidateOpenPathScore + (waypointScore)
@@ -366,7 +362,7 @@ commandScouting Nothing = pure ()
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
-  traceM $ "candidates: " ++ show candidates
+  traceM . fmt $ "candidates: " +|| candidates ||+ ""
   scored <-
     mapM
       ( \candidate -> do
@@ -374,10 +370,10 @@ commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path))
           pure (candidate, score)
       )
       candidates
-  traceM $ "scored candidates: " ++ show scored
+  traceM . fmt $ "scored candidates: " +|| scored ||+ ""
 
   let res@(dest, _) = maximumBy (comparing snd) scored
-  traceM $ "!! scoring winner: " ++ show res
+  traceM . fmt $ "!! scoring winner: " +|| res ||+ ""
   command [PointCommand MOVE [u] (tileCenter dest)]
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskRetreat dest) _ _)) = command [PointCommand MOVE [u] (toPoint2D dest)]
 commandScouting _ = pure ()

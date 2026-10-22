@@ -23,6 +23,7 @@ import Lens.Micro
 import Lens.Micro.Extras (view)
 
 import Debug.Trace (trace)
+import Fmt ((+||), (||+), build, fmt)
 
 import Army.Class (HasArmy (..))
 import Proto.S2clientprotocol.Common (Point2D)
@@ -96,11 +97,8 @@ unitEngageBehaviorTree u e = do
 
 enemyStr :: Unit -> String
 enemyStr u =
-  show (u ^. #tag)
-    ++ ", "
-    ++ show ((toEnum' (u ^. #unitType)) :: UnitTypeId)
-    ++ " "
-    ++ show (tilePos (u ^. #pos))
+  fmt $
+    "" +|| (u ^. #tag) ||+ ", " +|| (toEnum' (u ^. #unitType) :: UnitTypeId) ||+ " " +|| tilePos (u ^. #pos) ||+ ""
 
 unitSeek :: Unit -> Unit -> Point2D
 unitSeek unit enemy =
@@ -109,11 +107,8 @@ unitSeek unit enemy =
       desiredVelocity = vecScale speed $ vecNormalize $ enemyPos2D - toPoint2D (unit ^. #pos)
       unitVelocity = unitVelocityVec unit
    in trace
-        ( show (unit ^. #tag)
-            ++ " egaging: "
-            ++ enemyStr enemy
-            ++ ": "
-            ++ show (desiredVelocity - unitVelocity)
+        ( fmt $
+            "" +|| (unit ^. #tag) ||+ " egaging: " +|| build (enemyStr enemy) ||+ ": " +|| (desiredVelocity - unitVelocity) ||+ ""
         )
         desiredVelocity
         - unitVelocity
@@ -160,12 +155,12 @@ engageCloseUpdate squad st@(FSEngageClose enemyTag) = do
       damaged = leader ^. #shield <= leader ^. #shieldMax / 2
   if damaged
     then do
-      traceFSM squad ("leader damaged " ++ show enemyTag)
+      traceFSM squad . fmt $ "leader damaged " +|| enemyTag ||+ ""
       return (SSRetreat Nothing)
     else do
       case getUnit obs enemyTag of
         Nothing -> do
-          traceFSM squad ("no more unit with tag " ++ show enemyTag)
+          traceFSM squad . fmt $ "no more unit with tag " +|| enemyTag ||+ ""
           full <- isSquadFull squad
           pure $
             if full
@@ -187,7 +182,7 @@ engageFarUpdate squad st@(FSEngageFar enemyTag) = do
     Nothing -> return False
   case enemy of
     Nothing -> do
-      traceFSM squad ("no more unit with tag " ++ show enemyTag)
+      traceFSM squad . fmt $ "no more unit with tag " +|| enemyTag ||+ ""
       full <- isSquadFull squad
       pure $
         if full

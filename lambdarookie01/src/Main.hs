@@ -2,6 +2,7 @@ module Main where
 
 import Bot
 import Data.Text qualified as T
+import Fmt ((+||), (||+), build, fmt)
 import SC2.Launcher.BotConfig
 import SC2.Launcher.Game
 import SC2.Launcher.LoadConfig
@@ -31,9 +32,9 @@ runJoin player cli = do
   cfg <- loadOrFail $ joinConfigPath cli
   let adjusted = applyJoinOverrides cfg cli
   print "Joining match with the following configuration:"
-  print $ "Host: " <> networkHostName (buildNetwork (general adjusted))
-  print $ "Host Port: " <> show (networkHostPort (buildNetwork (general adjusted)))
-  print $ "Client Port: " <> show (networkClientPort (buildNetwork (general adjusted)))
+  putStrLn . fmt $ "Host: " +|| build (networkHostName (buildNetwork (general adjusted)))
+  putStrLn . fmt $ "Host Port: " +|| networkHostPort (buildNetwork (general adjusted)) ||+ ""
+  putStrLn . fmt $ "Client Port: " +|| networkClientPort (buildNetwork (general adjusted)) ||+ ""
   joinMatch (buildJoinRuntime player adjusted)
 
 buildHostRuntime :: Participant -> BotConfig -> HostRuntime
@@ -71,7 +72,7 @@ buildHostMap cfg = LocalMap (T.pack (mapPath (host cfg))) Nothing
 
 failWith :: String -> IO a
 failWith err = do
-  putStrLn $ "Configuration error: " <> err
+  putStrLn . fmt $ "Configuration error: " +|| build err
   exitFailure
 
 loadOrFail :: FilePath -> IO BotConfig

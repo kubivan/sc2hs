@@ -45,10 +45,10 @@ import Agent
 import Observation
 import SC2.Grid.Algo (Region, RegionGraph, RegionId)
 import SC2.Grid.Core (Grid)
-import SC2.TilePos (TilePos)
-import SC2.Spatial
 import SC2.Proto.Data (PlayerInfo, Point, ResponseGameInfo)
+import SC2.Spatial
 import SC2.TechTree
+import SC2.TilePos (TilePos)
 import UnitAbilities
 
 import Control.Monad (unless)
@@ -61,6 +61,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text (pack)
 import Debug.Trace (traceM)
+import Fmt ((+||), (||+), fmt)
 import Lens.Micro (Lens', (%~), (^.))
 
 obsApplyAction :: Action -> Observation -> Observation
@@ -72,7 +73,7 @@ obsApplyAction a obs = foldl (\obsAcc u -> addOrder (u ^. #tag) ability obsAcc) 
 command :: (HasObs d) => [Action] -> StepMonad d ()
 command acts = unless (null acts) $ do
   -- \$ trace ("command: " ++ (show $ getCmd <$> acts)) (return ())
-  traceM $ "command: " ++ show acts
+  traceM . fmt $ "command: " +|| acts ||+ ""
   agentModifyObs $ \obs -> foldl' (flip obsApplyAction) obs acts
 
   tell (StepPlan acts [] [])

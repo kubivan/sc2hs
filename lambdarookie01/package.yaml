@@ -13,6 +13,7 @@ dependencies:
   - containers
   - extra
   - free
+  - fmt
   - hashable
   - microlens
   - mtl

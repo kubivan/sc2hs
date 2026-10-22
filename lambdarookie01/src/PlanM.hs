@@ -4,8 +4,8 @@ import Control.Monad (void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import Data.Map qualified as Map
-import Data.Text (pack)
 import Debug.Trace (traceM)
+import Fmt ((+||), (||+), fmt)
 import Intent
 import Lens.Micro
 import SC2.Ids.UnitTypeId (UnitTypeId)
@@ -38,18 +38,11 @@ runBO ::
 runBO _ [] = pure []
 runBO outcomes order@(step : rest) = do
   frame <- agentObs <&> (^. #gameLoop)
-  let boIntentId = IntentId ("bo-" ++ (show $ length order) ++ "-" ++ show step)
+  let boIntentId = IntentId (fmt $ "bo-" +|| length order ||+ "-" +|| step ||+ "")
   active <- intentExists boIntentId
   let status = Map.lookup boIntentId outcomes
-  traceM $
-    "["
-      <> show frame
-      <> "][runBo]["
-      <> (show boIntentId)
-      <> "] is_active: "
-      <> (show active)
-      <> " status: "
-      <> show status
+  traceM . fmt $
+    "[" +|| frame ||+ "][runBo][" +|| boIntentId ||+ "] is_active: " +|| active ||+ " status: " +|| status ||+ ""
   if status == Just IntentCompleted
     then pure rest
     else

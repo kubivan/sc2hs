@@ -37,6 +37,7 @@ dependencies:
   - lens-aeson
   - process
   - directory
+  - fmt
   - yaml
   - optparse-applicative
   - mtl

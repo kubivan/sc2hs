@@ -15,6 +15,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Data.Word (Word32)
 import Debug.Trace (trace)
+import Fmt ((+||), (||+), fmt)
 import Lens.Micro ((<&>), (^.))
 import SC2.Grid.Core (Grid, gridH, gridW)
 import SC2.TilePos (TilePos)
@@ -49,7 +50,7 @@ visitedDecayAge frame visits@VisitedDecay{vdVisitedAt} pos =
 visitedDecayVisit :: Word32 -> TilePos -> VisitedDecay -> VisitedDecay
 visitedDecayVisit frame pos visits@VisitedDecay{vdVisitedAt} =
   trace
-    ("visiting " ++ show pos ++ " at " ++ show frame)
+    (fmt $ "visiting " +|| pos ||+ " at " +|| frame ||+ "")
     visits
       { vdVisitedAt =
           vdVisitedAt Vector.// [(visitedDecayIndex visits pos, Just frame)]

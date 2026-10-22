@@ -40,6 +40,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (trace, traceM)
+import Fmt ((+||), (||+), fmt)
 import GHC.Int qualified
 import Lens.Micro ((^.))
 import Network.WebSockets as WS
@@ -116,9 +117,9 @@ startStarCraft cfg host port = do
         IO (Either SomeException Response)
     case result of
       Left err -> do
-        putStrLn $ "Connection failed: " ++ show err
+        putStrLn . fmt $ "Connection failed: " +|| err ||+ ""
         return False
-      Right r -> trace (show r) return True
+      Right r -> trace (fmt $ "" +|| r ||+ "") return True
 
   -- return $ either (const False) (const True) result
 
@@ -163,7 +164,7 @@ waitAllClientsJoined signals = do
   joinedCountNotMeet = do
     count <- readMVar $ allClientsJoined signals
     let expectedCount = expectedClients signals
-    traceM $ "waitForAllClients: count " ++ show count ++ " expected " ++ show expectedCount
+    traceM . fmt $ "waitForAllClients: count " +|| count ||+ " expected " +|| expectedCount ||+ ""
     -- traceM ("waitForAllClients: current count: " ++ show count ++ "expected: " ++ show expectedCount)
     when (count < expectedCount) (threadDelay 500 >> joinedCountNotMeet)
 
