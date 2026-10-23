@@ -54,8 +54,8 @@ import Utils (unitIsHarvesting)
 import Data.Functor ((<&>))
 import Data.List (maximumBy, minimumBy)
 import Data.Ord (comparing)
-import Fmt ((+||), (||+), fmt)
 import EnemiesHeatMap
+import Fmt (fmt, (+||), (||+))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Debug qualified as DebugProto
 import SC2.Grid.Algo (adjacent8)
@@ -334,7 +334,13 @@ scoutScorePos u candidate dest wps visited = do
 
   -- debug
   traceM . fmt $
-    "candidate=" +|| candidate ||+ " openPathScore: " +|| candidateOpenPathScore ||+ " visitedScore: " +|| visitedScore ||+ ""
+    "candidate="
+      +|| candidate
+      ||+ " openPathScore: "
+      +|| candidateOpenPathScore
+      ||+ " visitedScore: "
+      +|| visitedScore
+      ||+ ""
 
   -- pure . clamp01 $ candidateOpenPathScore + currentProgressScore + waypointScore
   -- pure $ candidateOpenPathScore + (waypointScore)
@@ -342,7 +348,8 @@ scoutScorePos u candidate dest wps visited = do
   pure $ -- candidateOpenPathScore + waypointScore
     0.1 * alongPathScore
       + 0.2 * candidateOpenPathScore
-      + 0.7 * visitedScore
+      + 0.3 * visitedScore
+      + 0.4 * ageScore
 
 -- 0.35 * waypointScore
 --   + 0.20 * progressScore
