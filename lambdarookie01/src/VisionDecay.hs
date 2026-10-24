@@ -1,32 +1,43 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module VisionDecay where
+module VisionDecay
+  ( stepVisionDecay
+  , FogTile (..)
+  , FogTileState (..)
+  , visionDecayEmpty
+  , VisionDecay (..)
+  , visionDecayTile
+  , visionDecayStep
+  , calcAgeScore
+  ) where
 
 import Actions (UnitTag)
-import Conduit (filterC, (.|))
+import Conduit ((.|))
 import Data.Bits
 import Data.ByteString qualified as BS
-import Data.Conduit.Combinators (sinkList)
-import Data.ProtoLens (defMessage)
+import Data.HashMap.Strict (HashMap)
+import Data.HashMap.Strict qualified as HashMap
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Debug.Trace (trace)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import GHC.Word (Word64, Word8)
 import Lens.Micro
+
 import Observation (Observation, obsUnitsC)
 import Proto.S2clientprotocol.Common qualified as P
 import Proto.S2clientprotocol.Common_Fields qualified as P
 import Proto.S2clientprotocol.Raw (Alliance (Enemy))
+
 import SC2.Grid qualified as Grid
 import SC2.Grid.Core
-import SC2.Proto.Data (ImageData)
 import SC2.Spatial (tilePos)
 import SC2.TilePos (TilePos)
-import SC2.Utils (isArmyUnit)
-import StepMonad (HasObs, StepMonad, agentObs)
-import Units (Unit, allianceC, runC)
+import SC2.Utils (tilesInRadius)
+import ScoringUtils (saturatingScore)
+import StepMonad (StaticInfo (..), StepMonad, agentStatic)
+import Units (Unit, allianceC, runC, unitTypeId)
 
 data FogTileState
   = FogTileUnknown
@@ -201,3 +212,24 @@ stepVisionDecay obs vision =
   addEnemies :: [Unit] -> VisionDecay -> VisionDecay
   addEnemies enemies v =
     foldl' visionDecayAddEnemy v enemies
+
+calcAgeScore :: VisionDecay -> Unit -> TilePos -> StepMonad d Float
+calcAgeScore vision u candidate = do
+  traitsMap <- unitTraits <$> agentStatic
+  -- vision <- istarVisionDecay . view scoutingL <$> agentGet
+  let tiles = tilesInRadius (floor visionRadius) candidate
+      traits = traitsMap HashMap.! Units.unitTypeId u
+      visionRadius = traits ^. #sightRange :: Float
+  pure $ ageScore [visionDecayTile vision tpos | tpos <- tiles]
+
+ageScore :: [FogTile] -> Float
+ageScore tiles = average $ scoreTile <$> tiles
+ where
+  scoreTile tile =
+    case fogTileState tile of
+      FogTileUnknown -> 1
+      FogTileBlocked -> 0
+      _ -> saturatingScore (fromIntegral $ fogTileAge tile) 500
+
+  average [] = 0
+  average values = sum values / fromIntegral (length values)

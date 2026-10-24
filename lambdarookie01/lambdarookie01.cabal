@@ -27,6 +27,7 @@ executable lambdarookie01
       PlanM
       ResourceFlow
       ResourceFlowSM
+      ScoringUtils
       ScoutPolicy
       Squad
       Squad.Behavior
@@ -96,6 +97,7 @@ test-suite lambdarookie01-test
       PlanM
       ResourceFlow
       ResourceFlowSM
+      ScoringUtils
       ScoutPolicy
       Squad
       Squad.Behavior

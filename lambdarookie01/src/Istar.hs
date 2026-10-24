@@ -4,31 +4,21 @@ module Istar where
 
 import Actions
 import Conduit
-import Conduit (filterC, mapC)
 import Control.Monad.Extra (when)
 import Control.Monad.Trans.Maybe
-import Data.Conduit ((.|))
 import Data.Function ((&))
-import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Maybe (fromJust, fromMaybe, isJust, listToMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.ProtoLens (defMessage)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Vector.Unboxed qualified as VU
 import Debug.Trace (traceM)
 import Lens.Micro ((%~), (.~), (^.))
 import Lens.Micro.Type (Lens')
 import Observation (obsUnitsC, unitsSelf)
 import SC2.Grid
-import SC2.Grid (gridFromList)
-import SC2.Grid.Algo (RegionId)
-import SC2.Grid.Core (Grid)
-import SC2.Grid.Core qualified as Grid
 import SC2.Ids.Ids
-import SC2.Ids.UnitTypeId (UnitTypeId)
 import SC2.Proto.Data
-import SC2.Proto.Data qualified as Proto
 import SC2.Spatial (Spatial (..), distManhattan, distSquaredI, tilePos)
 import SC2.TilePos (TilePos)
 import SC2.Utils (isArmyUnit, tilesInRadius)
@@ -48,17 +38,16 @@ import StepMonad
   , debug
   , debugTexts
   )
-import Units (Unit, allianceC, isBuilding, runC, unitIdleC, unitTypeC, unitTypeId)
+import Units (allianceC, isBuilding, runC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
-import Data.Functor ((<&>))
-import Data.List (maximumBy, minimumBy)
+import Data.List (maximumBy)
 import Data.Ord (comparing)
 import EnemiesHeatMap
 import Fmt (fmt, (+||), (||+))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Debug qualified as DebugProto
-import SC2.Grid.Algo (adjacent8)
+import ScoringUtils (clamp01, saturatingScore)
 import VisionDecay
 import VisitedDecay
 import WaypointScore
@@ -264,35 +253,6 @@ scoreOpenPathLength :: Int -> Float
 scoreOpenPathLength rayLength =
   clamp01 $ rampScore (fromIntegral rayLength) 3 10
 
-calcAgeScore :: (HasIstar d) => Unit -> TilePos -> StepMonad d Float
-calcAgeScore u candidate = do
-  traitsMap <- unitTraits <$> agentStatic
-  vision <- istarVisionDecay . view scoutingL <$> agentGet
-  let tiles = tilesInRadius (floor visionRadius) candidate
-      traits = traitsMap HashMap.! Units.unitTypeId u
-      visionRadius = traits ^. #sightRange :: Float
-  pure $ ageScore [visionDecayTile vision tpos | tpos <- tiles]
-
-ageScore :: [FogTile] -> Float
-ageScore tiles = average $ scoreTile <$> tiles
- where
-  scoreTile tile =
-    case fogTileState tile of
-      FogTileUnknown -> 1
-      FogTileBlocked -> 0
-      _ -> saturatingScore (fromIntegral $ fogTileAge tile) 500
-
-  average [] = 0
-  average values = sum values / fromIntegral (length values)
-
-saturatingScore :: Float -> Float -> Float
-saturatingScore value scale =
-  let nonNegativeValue = max 0 value
-   in nonNegativeValue / (nonNegativeValue + scale)
-
-clamp01 :: Float -> Float
-clamp01 = max 0 . min 1
-
 progressScore :: TilePos -> TilePos -> TilePos -> Float
 progressScore current candidate dest =
   clamp01
@@ -319,10 +279,11 @@ scoutScorePos ::
   TilePos ->
   [Waypoint] ->
   VisitedDecay ->
+  VisionDecay ->
   StepMonad d Float
-scoutScorePos u candidate dest wps visited = do
+scoutScorePos u candidate dest wps visited vision = do
   rayLength <- beamObstacleLen u candidate
-  ageScore <- calcAgeScore u candidate
+  ageScore <- calcAgeScore vision u candidate
   visitedScore <- calcVisitedDecayScore candidate visited
 
   alongPathScore <- calcAlongPathScore wps u candidate
@@ -369,11 +330,12 @@ commandScouting Nothing = pure ()
 commandScouting (Just (ScoutContext (Just u) (ScoutTaskMove dest) visited path)) = do
   debugScoutPath path
   candidates <- tilesCandidates u
+  vision <- istarVisionDecay . view scoutingL <$> agentGet
   traceM . fmt $ "candidates: " +|| candidates ||+ ""
   scored <-
     mapM
       ( \candidate -> do
-          score <- scoutScorePos u candidate dest (scoutWaypoints path) visited
+          score <- scoutScorePos u candidate dest (scoutWaypoints path) visited vision
           pure (candidate, score)
       )
       candidates
