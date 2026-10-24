@@ -37,11 +37,11 @@ where
 
 import Data.Maybe (isJust)
 import SC2.Geometry
-import SC2.TilePos
-import SC2.Spatial
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
 import SC2.Proto.Data (Alliance (..), Point2D, Unit, UnitOrder)
+import SC2.Spatial
+import SC2.TilePos
 import UnitsTh
 
 import Conduit

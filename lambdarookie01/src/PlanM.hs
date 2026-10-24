@@ -5,7 +5,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..), runMaybeT)
 import Data.Map qualified as Map
 import Debug.Trace (traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import Intent
 import Lens.Micro
 import SC2.Ids.UnitTypeId (UnitTypeId)
@@ -42,7 +42,15 @@ runBO outcomes order@(step : rest) = do
   active <- intentExists boIntentId
   let status = Map.lookup boIntentId outcomes
   traceM . fmt $
-    "[" +|| frame ||+ "][runBo][" +|| boIntentId ||+ "] is_active: " +|| active ||+ " status: " +|| status ||+ ""
+    "["
+      +|| frame
+      ||+ "][runBo]["
+      +|| boIntentId
+      ||+ "] is_active: "
+      +|| active
+      ||+ " status: "
+      +|| status
+      ||+ ""
   if status == Just IntentCompleted
     then pure rest
     else

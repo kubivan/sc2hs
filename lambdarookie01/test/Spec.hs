@@ -5,8 +5,8 @@ import TestIntegrationRealGame (integrationRealGameTests)
 import TestIntentDsl (intentDslTests)
 import TestIstarMetrics (istarMetricTests)
 import TestStepFlow (stepFlowTests)
-import TestVisitedDecay (visitedDecayTests)
 import TestVisionDecay (visionDecayTests)
+import TestVisitedDecay (visitedDecayTests)
 
 main :: IO ()
 main = hspec $ do

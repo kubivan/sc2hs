@@ -61,7 +61,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.Text (pack)
 import Debug.Trace (traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import Lens.Micro (Lens', (%~), (^.))
 
 obsApplyAction :: Action -> Observation -> Observation

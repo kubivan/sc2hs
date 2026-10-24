@@ -23,7 +23,7 @@ import Lens.Micro
 import Lens.Micro.Extras (view)
 
 import Debug.Trace (trace)
-import Fmt ((+||), (||+), build, fmt)
+import Fmt (build, fmt, (+||), (||+))
 
 import Army.Class (HasArmy (..))
 import Proto.S2clientprotocol.Common (Point2D)
@@ -98,7 +98,13 @@ unitEngageBehaviorTree u e = do
 enemyStr :: Unit -> String
 enemyStr u =
   fmt $
-    "" +|| (u ^. #tag) ||+ ", " +|| (toEnum' (u ^. #unitType) :: UnitTypeId) ||+ " " +|| tilePos (u ^. #pos) ||+ ""
+    ""
+      +|| (u ^. #tag)
+      ||+ ", "
+      +|| (toEnum' (u ^. #unitType) :: UnitTypeId)
+      ||+ " "
+      +|| tilePos (u ^. #pos)
+      ||+ ""
 
 unitSeek :: Unit -> Unit -> Point2D
 unitSeek unit enemy =
@@ -108,7 +114,13 @@ unitSeek unit enemy =
       unitVelocity = unitVelocityVec unit
    in trace
         ( fmt $
-            "" +|| (unit ^. #tag) ||+ " egaging: " +|| build (enemyStr enemy) ||+ ": " +|| (desiredVelocity - unitVelocity) ||+ ""
+            ""
+              +|| (unit ^. #tag)
+              ||+ " egaging: "
+              +|| build (enemyStr enemy)
+              ||+ ": "
+              +|| (desiredVelocity - unitVelocity)
+              ||+ ""
         )
         desiredVelocity
         - unitVelocity

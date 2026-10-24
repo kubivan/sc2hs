@@ -1,4 +1,4 @@
-module SC2.Geometry(vecNormalize, vecScale) where
+module SC2.Geometry (vecNormalize, vecScale) where
 
 import Proto.S2clientprotocol.Common (Point, Point2D)
 import Proto.S2clientprotocol.Common_Fields (x, y, z)

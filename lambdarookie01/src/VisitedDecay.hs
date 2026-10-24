@@ -15,7 +15,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Data.Word (Word32)
 import Debug.Trace (trace)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import Lens.Micro ((<&>), (^.))
 import SC2.Grid.Core (Grid, gridH, gridW)
 import SC2.TilePos (TilePos)

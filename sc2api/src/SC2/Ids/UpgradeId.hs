@@ -6,7 +6,7 @@ import Data.Hashable
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Text (unpack)
-import Fmt ((+||), build, fmt)
+import Fmt (build, fmt, (+||))
 import Language.Haskell.TH.Syntax (Lift)
 import Text.Read (readMaybe)
 

@@ -45,7 +45,7 @@ import Data.Int (Int32)
 import Data.ProtoLens.Encoding (encodeMessage)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import GHC.Word (Word32)
 import Lens.Micro ((^.))
 import Network.WebSockets as WS

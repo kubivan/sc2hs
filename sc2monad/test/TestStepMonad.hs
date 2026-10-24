@@ -78,19 +78,19 @@ probeUnit :: Unit
 probeUnit =
   defMessage
     & R.tag
-    .~ 1
+      .~ 1
     & R.unitType
-    .~ Units.fromEnum' ProtossProbe
+      .~ Units.fromEnum' ProtossProbe
     & R.alliance
-    .~ Self
+      .~ Self
     & R.pos
-    .~ (defMessage & C.x .~ 10 & C.y .~ 20 & C.z .~ 0)
+      .~ (defMessage & C.x .~ 10 & C.y .~ 20 & C.z .~ 0)
 
 initialObservation :: Observation
 initialObservation =
   defMessage
     & S.rawData
-    .~ (defMessage & R.units .~ [probeUnit])
+      .~ (defMessage & R.units .~ [probeUnit])
 
 initialGrid :: Grid
 initialGrid = gridFromLines ["     ", "     ", "     "]

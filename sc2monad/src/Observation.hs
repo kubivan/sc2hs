@@ -57,11 +57,11 @@ addOrder :: UnitTag -> AbilityId -> Observation -> Observation
 addOrder unitTag ability obs =
   obs
     & #rawData
-    . Proto.units
-    . traverse
-    . filtered (\unit -> unit ^. #tag == unitTag)
-    . #orders
-    %~ (order :) -- TODO: append order to the end?
+      . Proto.units
+      . traverse
+      . filtered (\unit -> unit ^. #tag == unitTag)
+      . #orders
+      %~ (order :) -- TODO: append order to the end?
  where
   order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
 

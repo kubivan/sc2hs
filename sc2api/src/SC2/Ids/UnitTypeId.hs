@@ -9,7 +9,7 @@ import Language.Haskell.TH.Syntax (Lift)
 
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.Text (unpack)
-import Fmt ((+||), build, fmt)
+import Fmt (build, fmt, (+||))
 import Text.Read (readMaybe)
 
 instance Hashable UnitTypeId where

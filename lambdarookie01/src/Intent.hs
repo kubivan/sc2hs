@@ -13,7 +13,7 @@ import Data.Maybe (catMaybes, fromJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
-import Fmt ((+||), (||+), build, fmt)
+import Fmt (build, fmt, (+||), (||+))
 import Footprint (getFootprint)
 import Lens.Micro (Lens', (%~), (.~), (^.))
 import Lens.Micro.Extras
@@ -36,13 +36,13 @@ import SC2.Grid
   , findPlacementPointInRadius
   , removeMark
   )
-import SC2.TilePos
 import SC2.Ids.AbilityId
 import SC2.Ids.UnitTypeId
   ( UnitTypeId (ProtossAssimilator, ProtossNexus, ProtossProbe, ProtossPylon)
   )
 import SC2.Spatial
 import SC2.TechTree (abilityExecutor, unitToAbility)
+import SC2.TilePos
 import StepMonad
 import StepMonadUtils (abilityAvailableForUnit, agentCanAfford, agentCanAffordWith, agentUnitCost)
 import Target (Target (..))
@@ -327,7 +327,12 @@ traceBuilderOrders iid phase =
       Nothing -> traceM . fmt $ "[builder-orders][" +|| iid ||+ "] builder missing: " +|| builder ||+ ""
       Just unit ->
         traceM . fmt $
-          "[builder-orders][" +|| iid ||+ "] builder=" +|| builder ||+ " orders=" +|| build (formatUnitOrders unit)
+          "[builder-orders]["
+            +|| iid
+            ||+ "] builder="
+            +|| builder
+            ||+ " orders="
+            +|| build (formatUnitOrders unit)
 
 targetInProgress :: (HasObs d) => Target -> UnitTypeId -> StepMonad d Bool
 targetInProgress target uid = do
@@ -342,7 +347,13 @@ targetInProgress target uid = do
                 let dist = distSquaredI (x ^. #pos) target
                  in trace
                       ( fmt $
-                          "[targetInProgress] unit pos: " +|| (x ^. #pos) ||+ ", target: " +|| target ||+ ", dist: " +|| dist ||+ ""
+                          "[targetInProgress] unit pos: "
+                            +|| (x ^. #pos)
+                            ||+ ", target: "
+                            +|| target
+                            ||+ ", dist: "
+                            +|| dist
+                            ||+ ""
                       )
                       (dist <= 1)
             )
@@ -437,7 +448,15 @@ tickBuildPhase iid uid currentPhase =
                 | isNothing mbBuilder = stepDoneResult IntentFailed
                 | maybe False builderAccepted mbBuilder = do
                     traceM . fmt $
-                      "[intent][" +|| iid ||+ "][build] command accepted; waiting for start uid=" +|| uid ||+ " builder=" +|| builder ||+ " frame=" +|| frame ||+ ""
+                      "[intent]["
+                        +|| iid
+                        ||+ "][build] command accepted; waiting for start uid="
+                        +|| uid
+                        ||+ " builder="
+                        +|| builder
+                        ||+ " frame="
+                        +|| frame
+                        ||+ ""
                     let distToTarget = distManhattan (fromJust mbBuilder) target
                     agentModifyReservedCost (+ reserved)
                     goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
@@ -570,7 +589,17 @@ intentEngine = do
   reserved <- agentGetReservedCost
   intents <- agentGet <&> (^. buildIntentsL) <&> Map.toList
   traceM . fmt $
-    "==================== " +|| frame ||+ " ==================== minerals: " +|| mineralCost resources ||+ " vespene: " +|| gasCost resources ||+ " reserved penalty: " +|| reserved ||+ " intents num: " +|| length intents ||+ ""
+    "==================== "
+      +|| frame
+      ||+ " ==================== minerals: "
+      +|| mineralCost resources
+      ||+ " vespene: "
+      +|| gasCost resources
+      ||+ " reserved penalty: "
+      +|| reserved
+      ||+ " intents num: "
+      +|| length intents
+      ||+ ""
   traceM . fmt $ "[" +|| frame ||+ "][intentEngine] running intents: " +|| length intents ||+ ""
   outcomes <-
     mapM

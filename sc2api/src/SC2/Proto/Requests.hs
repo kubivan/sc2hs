@@ -126,9 +126,9 @@ requestPing :: A.Request
 requestPing =
   defMessage
     & #ping
-    .~ defMessage
+      .~ defMessage
     & #id
-    .~ 123
+      .~ 123
 
 requestCreateGame :: Map -> [Participant] -> A.Request
 requestCreateGame lm@(LocalMap m d) participants = defMessage & #createGame .~ mods defMessage
@@ -237,7 +237,7 @@ requestAction :: [Actions.Action] -> [Actions.ChatMsg] -> A.Request
 requestAction acts chats =
   defMessage
     & #action
-    .~ ((defMessage & #actions .~ ((toAction <$> acts) ++ (toChatAction <$> chats))) :: A.RequestAction)
+      .~ ((defMessage & #actions .~ ((toAction <$> acts) ++ (toChatAction <$> chats))) :: A.RequestAction)
 
 requestDebug :: [Actions.DebugCommand] -> A.Request
 requestDebug acts = defMessage & #debug .~ ((defMessage & #debug .~ (toDebug <$> acts)) :: A.RequestDebug)
@@ -249,18 +249,18 @@ requestData :: A.Request
 requestData =
   defMessage
     & #data'
-    .~ ( defMessage
-           & #abilityId
-           .~ True
-           & #unitTypeId
-           .~ True
-           & #upgradeId
-           .~ True
-           & #buffId
-           .~ False
-           & #effectId
-           .~ True
-       )
+      .~ ( defMessage
+             & #abilityId
+               .~ True
+             & #unitTypeId
+               .~ True
+             & #upgradeId
+               .~ True
+             & #buffId
+               .~ False
+             & #effectId
+               .~ True
+         )
 
 -- TODO: add ignoreResourceRequirements param
 requestUnitAbilities :: A.Observation -> A.Request

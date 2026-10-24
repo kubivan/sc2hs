@@ -33,7 +33,7 @@ import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Set qualified as Set
 import Data.Vector qualified as V
 import Debug.Trace
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import GHC.Generics (Generic)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax

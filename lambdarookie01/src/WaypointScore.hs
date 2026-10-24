@@ -7,7 +7,7 @@ module WaypointScore
 
 import Data.Set qualified as Set
 import Debug.Trace (traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import SC2.Grid
 import SC2.Spatial (distManhattan, tilePos)
 import SC2.TilePos (TilePos)

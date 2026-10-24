@@ -9,7 +9,7 @@ import SC2.Ids.Ids
 import Data.Aeson (FromJSON (..), ToJSON (..), withText)
 import Data.List (isInfixOf, isPrefixOf)
 import Data.Text (unpack)
-import Fmt ((+||), build, fmt)
+import Fmt (build, fmt, (+||))
 import Text.Read (readMaybe)
 
 import Data.Hashable

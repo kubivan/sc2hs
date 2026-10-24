@@ -1,7 +1,7 @@
 module Target (Target (..)) where
 
-import SC2.TilePos (TilePos)
 import SC2.Spatial (Spatial (..))
+import SC2.TilePos (TilePos)
 import Units (Unit)
 
 data Target

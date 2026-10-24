@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module SC2.TilePos(TilePos(..)) where
+module SC2.TilePos (TilePos (..)) where
 
 type TilePos = (Int, Int)
 

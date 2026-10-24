@@ -46,8 +46,9 @@ stepState squad (SSEngage s@(FSEngageFar _)) = engageFarStep squad s
 stepState squad (SSEngage s@(FSEngageClose _)) = engageCloseStep squad s
 stepState squad (SSRetreat s) = retreatStep squad s
 
--- | The only state-exit resource is a placed formation's grid mark.  Keep its
--- cleanup next to the state replacement so callers cannot bypass it.
+{- | The only state-exit resource is a placed formation's grid mark.  Keep its
+cleanup next to the state replacement so callers cannot bypass it.
+-}
 setSquadState ::
   (HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d (FSMSquad SquadState)
 setSquadState squad state' = do

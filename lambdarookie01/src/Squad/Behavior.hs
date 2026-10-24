@@ -31,7 +31,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Maybe
 import Data.Set qualified as Set
 import Debug.Trace
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import Lens.Micro
 import Lens.Micro.Extras (view)
 import System.Random (Random, StdGen, randomR)

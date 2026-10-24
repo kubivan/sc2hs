@@ -43,7 +43,7 @@ import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
 import Debug.Trace (trace, traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 
 type TilePath = [TilePos]
 
@@ -189,8 +189,10 @@ gridSplitByRay grid minVolume' ray = checkFirst2 pointsAroundRay -- `Utils.dbg` 
             let (visitedB, minVolumeReachedB) = gridFloodPeek grid visitedA minVolume b
              in trace
                   ( fmt $
-                      "A size: " +|| (Set.size visitedA, minVolumeReachedA)
-                        ||+ ", B size: " +|| (Set.size visitedB, minVolumeReachedB)
+                      "A size: "
+                        +|| (Set.size visitedA, minVolumeReachedA)
+                        ||+ ", B size: "
+                        +|| (Set.size visitedB, minVolumeReachedB)
                         ||+ ""
                   )
                   $ (regionA, if minVolumeReachedB then Nothing else Just visitedB)
@@ -299,9 +301,10 @@ gridSegment grid =
             region = fillRegion' start
             rest' = rest `Set.difference` region
          in trace
-              (fmt $ "found region " +|| Set.size region ||+ " rest to check: " +|| Set.size rest' ||+ "") $ case Set.minView rest' of
-              Nothing -> [(id, region)]
-              _ -> (id, region) : go (id + 1) rest'
+              (fmt $ "found region " +|| Set.size region ||+ " rest to check: " +|| Set.size rest' ||+ "")
+              $ case Set.minView rest' of
+                Nothing -> [(id, region)]
+                _ -> (id, region) : go (id + 1) rest'
 
   fillRegion' pos =
     bfsVisited $
@@ -368,10 +371,14 @@ regionGraphBfs rg start end =
     | otherwise =
         bfs queue' visited'
           `Utils.dbg` ( fmt $
-                          "bfs to" +|| end
-                            ||+ " top: " +|| reverse path
-                            ||+ "neighbors " +|| neighbors
-                            ||+ " vis" +|| visited
+                          "bfs to"
+                            +|| end
+                            ||+ " top: "
+                            +|| reverse path
+                            ||+ "neighbors "
+                            +|| neighbors
+                            ||+ " vis"
+                            +|| visited
                             ||+ ""
                       )
    where

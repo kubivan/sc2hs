@@ -12,12 +12,12 @@ module SC2.Spatial
   , toPoint3D
   ) where
 
-import Lens.Micro ((^.), (.~), (&))
-import SC2.TilePos(TilePos)
+import Data.ProtoLens (defMessage)
+import Lens.Micro ((&), (.~), (^.))
+import Lens.Micro.Extras (view)
 import SC2.Geometry
 import SC2.Proto.Data (Point, Point2D, Unit)
-import Data.ProtoLens (defMessage)
-import Lens.Micro.Extras (view)
+import SC2.TilePos (TilePos)
 
 tilePos :: (Spatial a) => a -> TilePos
 tilePos = toTilePos
@@ -37,7 +37,6 @@ instance Spatial Point2D where
 instance Spatial Point where
   toTilePos p = (tileX3D p, tileY3D p)
   toPoint2D p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y)
-
 
 instance Spatial Unit where
   toTilePos unit = toTilePos (unit ^. #pos)
@@ -80,5 +79,5 @@ dot a b = (a ^. #x) * (b ^. #x) + (a ^. #y) * (b ^. #y)
 
 distSquaredP2D :: Point2D -> Point2D -> Float
 distSquaredP2D a b = dot diff diff
-  where
-   diff = a - b
+ where
+  diff = a - b

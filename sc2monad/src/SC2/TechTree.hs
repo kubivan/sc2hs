@@ -33,7 +33,7 @@ import Data.List
 import Data.Maybe
 import Data.Set qualified as Set
 import Debug.Trace
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import GHC.Generics (Generic)
 import Lens.Micro
 import Lens.Micro.Extras

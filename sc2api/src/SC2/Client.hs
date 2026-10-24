@@ -40,7 +40,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.Int (Int32)
 import Data.ProtoLens.Labels ()
 import Debug.Trace (trace, traceM)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import GHC.Int qualified
 import Lens.Micro ((^.))
 import Network.WebSockets as WS

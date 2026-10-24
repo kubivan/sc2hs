@@ -98,55 +98,55 @@ toChatAction msg = defMessage & #actionChat .~ chat
   chat =
     defMessage
       & #message -- cut the message because there is a limit
-      .~ Data.Text.take 128 msg -- TODO: investigate exact limit
+        .~ Data.Text.take 128 msg -- TODO: investigate exact limit
 
 toAction :: Action -> Proto.Action
 toAction (PointCommand ability us target) =
   defMessage
     & #actionRaw
-    .~ attackRaw
+      .~ attackRaw
  where
   attackRaw =
     defMessage
       & #unitCommand
-      .~ attactCommand
+        .~ attactCommand
   attactCommand =
     defMessage
       & #abilityId
-      .~ fromIntegral (fromEnum ability)
+        .~ fromIntegral (fromEnum ability)
       & #targetWorldSpacePos
-      .~ target
+        .~ target
       & #unitTags
-      .~ [u ^. #tag | u <- us]
+        .~ [u ^. #tag | u <- us]
 toAction (UnitCommand ability us target) =
   defMessage
     & #actionRaw
-    .~ attackRaw
+      .~ attackRaw
  where
   attackRaw =
     defMessage
       & #unitCommand
-      .~ attactCommand
+        .~ attactCommand
   attactCommand =
     defMessage
       & #abilityId
-      .~ fromIntegral (fromEnum ability)
+        .~ fromIntegral (fromEnum ability)
       & #targetUnitTag
-      .~ (target ^. #tag)
+        .~ (target ^. #tag)
       & #unitTags
-      .~ [u ^. #tag | u <- us]
+        .~ [u ^. #tag | u <- us]
 toAction (SelfCommand ability us) =
   defMessage
     & #actionRaw
-    .~ attackRaw
+      .~ attackRaw
  where
   attackRaw =
     defMessage
       & #unitCommand
-      .~ attactCommand
+        .~ attactCommand
   attactCommand =
     defMessage
       & #abilityId
-      .~ fromIntegral (fromEnum ability)
+        .~ fromIntegral (fromEnum ability)
       & #unitTags
-      .~ [u ^. #tag | u <- us]
+        .~ [u ^. #tag | u <- us]

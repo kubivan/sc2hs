@@ -86,7 +86,7 @@ import Data.Maybe (fromJust, isJust, listToMaybe, mapMaybe, maybeToList)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
-import Fmt ((+||), (||+), build, fmt)
+import Fmt (build, fmt, (+||), (||+))
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Error qualified as E
@@ -252,7 +252,13 @@ tryExpand = do
   lift . traceM . fmt $ "!!!!!!! MINERALFIELDS:  " +|| length (runC mineralFields) ||+ ""
   when (length nexusesResources - depleetingBasesCount < 1) $ do
     lift . traceM . fmt $
-      "!!! EXPANDING:  " +|| nexusesResources ||+ "  depleting: " +|| depleetingBasesCount ||+ " nexues: " +|| length nexusesResources ||+ ""
+      "!!! EXPANDING:  "
+        +|| nexusesResources
+        ||+ "  depleting: "
+        +|| depleetingBasesCount
+        ||+ " nexues: "
+        +|| length nexusesResources
+        ||+ ""
 
     spawnIntentUnique (IntentId "expanding") intentExpandFull
 
@@ -373,7 +379,6 @@ debugUnitPos = do
     | c <- runC $ unitsSelf obs
     ]
 
-
 debugSquads :: StepMonad BotDynamicState ()
 debugSquads = do
   ds <- agentGet
@@ -391,7 +396,13 @@ debugSquads = do
 
   debugTexts
     [ ( fmt $
-          "s " +|| (u ^. #tag) ||+ " at " +|| HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap ||+ " " +|| (u ^. #facing) ||+ ""
+          "s "
+            +|| (u ^. #tag)
+            ||+ " at "
+            +|| HashMap.lookup (tilePos (u ^. #pos)) regionLookupMap
+            ||+ " "
+            +|| (u ^. #facing)
+            ||+ ""
       , u ^. #pos
       )
     | (u, _s) <- squadAndLeaders
@@ -600,7 +611,17 @@ actionErrorToPending err =
 formatActionError :: Proto.ActionError -> String
 formatActionError err =
   fmt $
-    "{unitTag=" +|| rawTag ||+ ", abilityId=" +|| rawAbility ||+ " (" +|| build abilityName ||+ "), result=" +|| fromEnum rawResult ||+ " (" +|| build resultName ||+ ")}"
+    "{unitTag="
+      +|| rawTag
+      ||+ ", abilityId="
+      +|| rawAbility
+      ||+ " ("
+      +|| build abilityName
+      ||+ "), result="
+      +|| fromEnum rawResult
+      ||+ " ("
+      +|| build resultName
+      ||+ ")}"
  where
   rawTag = err ^. #unitTag
   rawAbility = err ^. #abilityId

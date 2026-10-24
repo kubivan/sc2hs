@@ -5,10 +5,10 @@ import Army.Class
 import Observation
 import SC2.Geometry
 import SC2.Grid
-import SC2.TilePos
-import SC2.Spatial
 import SC2.Ids.AbilityId (AbilityId (ATTACKATTACK))
+import SC2.Spatial
 import SC2.Spatial qualified as Spatial
+import SC2.TilePos
 import Squad.Squad
 import Squad.State
 import StepMonad

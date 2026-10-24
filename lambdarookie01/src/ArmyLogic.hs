@@ -13,11 +13,11 @@ import Squad.State
 
 import Observation
 import SC2.Geometry
-import SC2.Spatial
-import SC2.TilePos
 import SC2.Grid
 import SC2.Ids.AbilityId
+import SC2.Spatial
 import SC2.Spatial qualified as Spatial
+import SC2.TilePos
 import SC2.Utils
 import Squad
 import StepMonad
@@ -169,8 +169,7 @@ randCmd2 grid udata u = do
  where
   upos = tilePos (u ^. #pos)
   nearest :: TilePos -> [TilePos] -> TilePos
-  nearest p = minimumBy (compare `on` distSquaredI p) --TODO: extract to utils
-
+  nearest p = minimumBy (compare `on` distSquaredI p) -- TODO: extract to utils
   calcMovePos [] = return $ nearest upos (Set.toList (auUnvisitedEdge udata))
   calcMovePos candidates = do
     let scored = scoreMoveCandidates upos udata candidates

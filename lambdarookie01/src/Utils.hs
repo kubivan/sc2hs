@@ -11,7 +11,7 @@ module Utils
 
 import Actions (UnitTag)
 import Data.Maybe (listToMaybe, mapMaybe)
-import Fmt ((+||), (||+), fmt)
+import Fmt (fmt, (+||), (||+))
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Raw qualified as R

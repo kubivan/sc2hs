@@ -2,7 +2,7 @@ module Main where
 
 import Bot
 import Data.Text qualified as T
-import Fmt ((+||), (||+), build, fmt)
+import Fmt (build, fmt, (+||), (||+))
 import SC2.Launcher.BotConfig
 import SC2.Launcher.Game
 import SC2.Launcher.LoadConfig
