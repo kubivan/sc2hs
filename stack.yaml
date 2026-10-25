@@ -22,7 +22,7 @@
 
 
 # resolver: lts-23.10
-resolver: nightly-2026-07-19
+resolver: nightly-2026-10-23
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
