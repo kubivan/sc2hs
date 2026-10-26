@@ -1,6 +1,14 @@
 {-# LANGUAGE RankNTypes #-}
 
-module EnemiesHeatMap (HeatMap, updateHeatMap, HasEnemiesHeatMap (..), debugHeatMap) where
+module ArmyHeatMap
+  ( HeatMap
+  , updateHeatMap
+  , HasArmyHeatMap (..)
+  , debugHeatMap
+  , debugHeatMaps
+  , buildHeatMap
+  , influenceCheck
+  ) where
 
 import Actions (UnitTag)
 import Conduit
@@ -26,8 +34,9 @@ import SC2.TilePos (TilePos)
 
 type HeatMap = GridBase Float
 
-class HasEnemiesHeatMap d where
+class HasArmyHeatMap d where
   heatGroundEnemiesL :: Lens' d HeatMap
+  heatGroundSelfL :: Lens' d HeatMap
 
 buildGrid ::
   (VU.Unbox a) =>
@@ -90,8 +99,8 @@ unitAttackRange traits u =
         Nothing -> 0
     Nothing -> 0
 
-enemyHeatMap :: UnitTraits -> Int -> Int -> [Unit] -> GridBase Float
-enemyHeatMap utraits w h enemies =
+armyHeatMap :: UnitTraits -> Int -> Int -> [Unit] -> GridBase Float
+armyHeatMap utraits w h enemies =
   buildGrid w h 0 $ \grid -> do
     forM_ enemies $ \enemy -> do
       let (ux, uy) = tilePos enemy
@@ -107,11 +116,8 @@ enemyHeatMap utraits w h enemies =
         when (dx * dx + dy * dy <= range * range) $
           addToGrid w x y damage grid
 
-debugHeatMap :: (HasEnemiesHeatMap d) => StepMonad d ()
-debugHeatMap = do
+debugHeatMap heatMap = do
   heights <- heightMap <$> agentStatic
-  heatMap <- (^. heatGroundEnemiesL) <$> agentGet
-
   debugTexts
     [ (show danger, point3D (fromIntegral x) (fromIntegral y) (fromIntegral z + 10))
     | x <- [0 .. gridW heatMap - 1]
@@ -123,18 +129,41 @@ debugHeatMap = do
  where
   point3D x y z = defMessage & #x .~ x & #y .~ y & #z .~ z :: Point
 
-updateHeatMap :: (HasObs d, HasGrid d, HasEnemiesHeatMap d) => StepMonad d ()
-updateHeatMap = do
+influenceCheck :: (HasArmyHeatMap d) => Unit -> StepMonad d Bool
+influenceCheck u = do
+  heatMapEnemy <- (^. heatGroundEnemiesL) <$> agentGet
+  heatMapSelf <- (^. heatGroundSelfL) <$> agentGet
+
+  let influence = heatMapSelf ! tilePos u
+      enemyInfluence = heatMapEnemy ! tilePos u
+
+  pure $ influence > enemyInfluence
+
+debugHeatMaps :: (HasArmyHeatMap d) => StepMonad d ()
+debugHeatMaps = do
+  heatMapEnemy <- (^. heatGroundEnemiesL) <$> agentGet
+  heatMapSelf <- (^. heatGroundSelfL) <$> agentGet
+
+  debugHeatMap heatMapEnemy
+  debugHeatMap heatMapSelf
+
+buildHeatMap :: (HasObs d, HasGrid d) => Alliance -> StepMonad d HeatMap
+buildHeatMap alliance = do
   obs <- agentObs
   g <- agentGrid
   si <- agentStatic
-  let enemies =
+  let us =
         runC $
           obsUnitsC obs
-            .| allianceC Enemy
+            .| allianceC alliance
             .| filterC isArmyUnit
       w = gridW g
       h = gridH g
-      heatMap = enemyHeatMap (unitTraits si) w h enemies
-  agentModify (heatGroundEnemiesL .~ heatMap)
-  pure ()
+  pure $ armyHeatMap (unitTraits si) w h us
+
+updateHeatMap :: (HasObs d, HasGrid d, HasArmyHeatMap d) => StepMonad d ()
+updateHeatMap = do
+  enemies <- buildHeatMap Enemy
+  self <- buildHeatMap Self
+  agentModify (heatGroundEnemiesL .~ enemies)
+  agentModify (heatGroundSelfL .~ self)

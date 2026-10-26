@@ -26,6 +26,7 @@ import Debug.Trace (trace)
 import Fmt (build, fmt, (+||), (||+))
 
 import Army.Class (HasArmy (..))
+import ArmyHeatMap (HasArmyHeatMap, influenceCheck)
 import Proto.S2clientprotocol.Common (Point2D)
 import Proto.S2clientprotocol.Sc2api_Fields (abilityId)
 
@@ -86,14 +87,21 @@ stepToward u e = do
       unitPos2D = toPoint2D $ u ^. #pos
   return $ seekVelocity unitPos2D enemyPos2D uspeed
 
-unitEngageBehaviorTree :: (HasObs d) => Unit -> Unit -> StepMonad d ()
+unitEngageBehaviorTree :: (HasObs d, HasArmyHeatMap d) => Unit -> Unit -> StepMonad d ()
 unitEngageBehaviorTree u e = do
   canAtk <- canAttack u e
-  if canAtk
-    then
-      command [UnitCommand ATTACKATTACK [u] e]
-    else
-      stepForwardOrBack u e
+  influence <- influenceCheck u
+  if not influence
+    then do
+      let upos = toPoint2D $ u ^. #pos
+      stepBack <- stepBackward u e
+      command [PointCommand MOVE [u] (upos + stepBack)]
+    else do
+      if canAtk && influence
+        then
+          command [UnitCommand ATTACKATTACK [u] e]
+        else
+          stepForwardOrBack u e
 
 enemyStr :: Unit -> String
 enemyStr u =
@@ -141,7 +149,8 @@ engageFarStep squad (FSEngageFar enemyTag) = do
 engageFarStep _ _ = pure ()
 
 engageCloseStep ::
-  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> FSEngage -> StepMonad d ()
+  (HasArmy d, HasObs d, HasGrid d, HasArmyHeatMap d) =>
+  FSMSquad SquadState -> FSEngage -> StepMonad d ()
 engageCloseStep squad (FSEngageClose enemyTag) = do
   ds <- agentGet
   obs <- agentObs

@@ -41,9 +41,9 @@ import StepMonad
 import Units (allianceC, isBuilding, runC, unitTypeC, unitTypeId)
 import Utils (unitIsHarvesting)
 
+import ArmyHeatMap
 import Data.List (maximumBy)
 import Data.Ord (comparing)
-import EnemiesHeatMap
 import Fmt (fmt, (+||), (||+))
 import Lens.Micro.Extras (view)
 import Proto.S2clientprotocol.Debug qualified as DebugProto
@@ -155,6 +155,7 @@ data IstarState = IstarState
   , istarVisionDecay :: VisionDecay
   , istarScoutContext :: ScoutContext
   , istarGroundHeatMap :: HeatMap
+  , istarGroundSelfHeatMap :: HeatMap
   }
 
 class HasIstar d where
@@ -361,8 +362,9 @@ istarEmpty grid =
     (visionDecayEmpty grid)
     (ScoutContext Nothing ScoutTaskIdle (visitedDecayEmpty grid) (ScoutPath [] []))
     (gridFromList (gridW grid) (gridH grid) (replicate (gridW grid * gridH grid) 0))
+    (gridFromList (gridW grid) (gridH grid) (replicate (gridW grid * gridH grid) 0))
 
-stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasEnemiesHeatMap d) => StepMonad d ()
+stepIstar :: (StepMonad.HasObs d, HasGrid d, HasIstar d, HasArmyHeatMap d) => StepMonad d ()
 stepIstar = do
   obs <- agentObs
   let enemies =
@@ -375,7 +377,7 @@ stepIstar = do
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC Units.unitTypeId
   let frame = obs ^. #gameLoop
   updateHeatMap
-  debugHeatMap
+  debugHeatMaps
   debugVisionDecay
   scoutState' <- runMaybeT stepScouting
   commandScouting scoutState'

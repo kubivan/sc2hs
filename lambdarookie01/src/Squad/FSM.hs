@@ -7,6 +7,7 @@ import Squad.FSSquadIdle
 import SquadRetreat
 
 import Army.Class (HasArmy)
+import ArmyHeatMap (HasArmyHeatMap)
 import Control.Monad (void)
 import SC2.Grid (RegionId)
 import Squad.Squad
@@ -38,7 +39,8 @@ updateState squad (SSEngage s@(FSEngageClose _)) = engageCloseUpdate squad s
 updateState squad (SSRetreat s) = retreatUpdate squad s
 
 stepState ::
-  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> SquadState -> StepMonad d ()
+  (HasArmy d, HasObs d, HasGrid d, HasArmyHeatMap d) =>
+  FSMSquad SquadState -> SquadState -> StepMonad d ()
 stepState squad SSIdle = idleStep squad
 stepState squad (SSForming f) = formingStep squad f
 stepState squad (SSExploreRegion s) = exploreRegionStep squad s
@@ -59,7 +61,8 @@ setSquadState squad state' = do
   pure squad{squadState = state'}
 
 processSquad ::
-  (HasArmy d, HasObs d, HasGrid d) => FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
+  (HasArmy d, HasObs d, HasGrid d, HasArmyHeatMap d) =>
+  FSMSquad SquadState -> StepMonad d (FSMSquad SquadState)
 processSquad squad = do
   state' <- updateState squad (squadState squad)
   squad' <- setSquadState squad state'

@@ -18,10 +18,10 @@ executable lambdarookie01
       AgentBulidUtils
       Army.Army
       Army.Class
+      ArmyHeatMap
       ArmyLogic
       Bot
       BotDynamicState
-      EnemiesHeatMap
       Intent
       Istar
       PlanM
@@ -87,10 +87,10 @@ test-suite lambdarookie01-test
       AgentBulidUtils
       Army.Army
       Army.Class
+      ArmyHeatMap
       ArmyLogic
       Bot
       BotDynamicState
-      EnemiesHeatMap
       Intent
       Istar
       Main

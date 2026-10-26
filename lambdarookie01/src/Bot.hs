@@ -93,8 +93,8 @@ import Proto.S2clientprotocol.Error qualified as E
 import StepMonadUtils (agentUnitCost, siUnitRange, withObs)
 import System.Random (newStdGen)
 
+import ArmyHeatMap
 import Control.Concurrent.STM
-import EnemiesHeatMap
 import Istar
 import ResourceFlow
   ( CostRate (..)
