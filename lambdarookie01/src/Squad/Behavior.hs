@@ -48,9 +48,6 @@ isSquadFull squad = do
       && all (`HashMap.member` unitMap) tags
       && all (\t -> let Just u = HashMap.lookup t unitMap in (1.0 :: Float) == u ^. #buildProgress) tags
 
--- wanderAround :: FS s => s Int -> StepMonad d s
-wanderAround s radius = pure ()
-
 -- command to move units to formation. returns true when complete
 squadMoveToFormation ::
   (HasArmy d, HasObs d) => FSMSquad a -> TilePos -> Footprint -> StepMonad d Bool
