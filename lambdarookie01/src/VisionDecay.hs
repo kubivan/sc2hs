@@ -164,13 +164,11 @@ visionDecayClearVisible visibility vision =
 
 visionDecayAddEnemy :: VisionDecay -> Unit -> VisionDecay
 visionDecayAddEnemy vision unit =
-  trace
-    (fmt $ "!!! add enemy to visiom " +|| unit ||+ "")
-    vision
-      { vdTiles =
-          vdTiles vision
-            Vector.// updates
-      }
+  vision
+    { vdTiles =
+        vdTiles vision
+          Vector.// updates
+    }
  where
   newPos = tilePos unit
 

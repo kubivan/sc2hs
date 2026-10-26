@@ -150,12 +150,12 @@ stepScouting = do
     _ -> pure scoutContext
 
 data IstarState = IstarState
-  { istarSeenEnemies :: Set UnitTypeId
-  , istarSeenBuildings :: Set UnitTypeId
-  , istarVisionDecay :: VisionDecay
-  , istarScoutContext :: ScoutContext
-  , istarGroundHeatMap :: HeatMap
-  , istarGroundSelfHeatMap :: HeatMap
+  { istarSeenEnemies :: !(Set UnitTypeId)
+  , istarSeenBuildings :: !(Set UnitTypeId)
+  , istarVisionDecay :: !(VisionDecay)
+  , istarScoutContext :: !(ScoutContext)
+  , istarGroundHeatMap :: !HeatMap
+  , istarGroundSelfHeatMap :: !HeatMap
   }
 
 class HasIstar d where

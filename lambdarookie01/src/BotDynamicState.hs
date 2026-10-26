@@ -23,14 +23,14 @@ data ResourceSample = ResourceSample
   }
 
 data BotDynamicState = BotDynamicState
-  { dsObs :: Observation
-  , dsGrid :: Grid
-  , dsReservedCost :: Cost
+  { dsObs :: !Observation
+  , dsGrid :: !Grid
+  , dsReservedCost :: !Cost
   , dsRandGen :: StdGen
-  , dsArmy :: Army
+  , dsArmy :: !Army
   , dsIntents :: IntentStore BotDynamicState
-  , dsResourceRateState :: ResourceRateState
-  , dsIstar :: IstarState
+  , dsResourceRateState :: !ResourceRateState
+  , dsIstar :: !IstarState
   }
 
 instance HasObs BotDynamicState where
