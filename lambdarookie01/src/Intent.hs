@@ -476,6 +476,7 @@ tickBuildPhase iid uid currentPhase =
                 | otherwise = retryNextFrame
           advanceAcceptedPhase
         BSMonitoring _ target -> do
+          -- check if building spawned
           inProgress <- targetInProgress target uid
           if inProgress
             then stepDoneResult IntentCompleted
@@ -584,8 +585,8 @@ intentEngine ::
   StepMonad d IntentOutcomeStore
 intentEngine = do
   obs <- agentObs
-  frame <- pure (obs ^. #gameLoop)
-  let resources = obsResources obs
+  let frame = obs ^. #gameLoop
+      resources = obsResources obs
   reserved <- agentGetReservedCost
   intents <- agentGet <&> (^. buildIntentsL) <&> Map.toList
   traceM . fmt $
@@ -608,7 +609,6 @@ intentEngine = do
           traceM . fmt $ "[" +|| frame ||+ "][intentEngine][" +|| iid ||+ "status: " +|| status ||+ ""
           case status of
             IntentCompleted -> do
-              cleanupIntent (intentProgram i')
               removeIntent iid
               pure $ Just (iid, IntentCompleted)
             IntentFailed -> do

@@ -42,6 +42,7 @@ import Units
   ( Unit
   , closestC
   , isAssimilator
+  , isBuilding
   , isMineral
   , runC
   , toEnum'
@@ -65,6 +66,7 @@ import Conduit
   )
 import Data.Conduit
 import Data.Conduit.Combinators qualified as CC
+import Data.Function
 import Data.Sequence qualified as Seq
 
 import Control.Applicative (Alternative (..))
@@ -102,6 +104,7 @@ import ResourceFlow
   , ResourceRateState (..)
   )
 import ResourceFlowSM (unitCostRate, updateResourceRateSM)
+import SC2.Grid.Core (gridRemove)
 import SquadUtils (debugSquad, squadUnits)
 
 deathBall :: [Tech]
@@ -421,11 +424,6 @@ agentResetGrid =
 
     agentModifyGrid (const grid')
 
-agentUpdateGrid :: (HasGrid d) => (Grid -> Grid) -> StepMonad d ()
-agentUpdateGrid f =
-  {-# SCC "agentUpdateGrid" #-}
-  agentModifyGrid f
-
 squadAssign :: Squad -> StepMonad BotDynamicState Bool
 squadAssign s = do
   canSeek <- squadSeek s
@@ -685,6 +683,19 @@ trainMassUnit uid = unlessM isFullLimit $ do
             )
             producersIdle
 
+agentUpdateGridIfNeeded :: (HasGrid d, HasObs d) => Observation -> StepMonad d ()
+agentUpdateGridIfNeeded oldObs = do
+  newObs <- agentObs
+  let buildingsHashMap obs = HashMap.fromList $ runC $ obsUnitsC obs .| filterC isBuilding .| mapC (\u -> (view #tag u, u))
+      newBuildings = buildingsHashMap newObs
+      oldBuildings = buildingsHashMap oldObs
+      destroyed = HashMap.difference oldBuildings newBuildings
+      emerged = HashMap.difference newBuildings oldBuildings
+      addBuildings bs g = foldl' (\acc u -> gridPlace acc (toEnum' $ u ^. #unitType) (tilePos u)) g bs
+      removeBuildings bs g = foldl' (\acc u -> gridRemove acc (toEnum' $ u ^. #unitType) (tilePos u)) g bs
+
+  agentModifyGrid (\g -> g & addBuildings emerged & removeBuildings destroyed)
+
 instance Agent BotAgent where
   makeAgent ::
     BotAgent ->
@@ -758,7 +769,6 @@ agentStepPhase Opening =
   do
     obs <- agentObs
 
-    agentModifyGrid (gridUpdate obs)
     let nexus = maybeToList $ findNexus obs
         -- fourGateBuild =
         --   [ ProtossPylon
@@ -793,18 +803,18 @@ agentStepPhase Opening =
     --   , ProtossAssimilator
     --   ]
 
+    agentModifyGrid (gridUpdate obs)
     issueSelfCommandReserveAware NEXUSTRAINPROBE nexus
     return $ BuildOrderExecutor (boFromUnits opening) obs (HashMap.fromList [])
 agentStepPhase (BuildOrderExecutor buildOrder obsPrev abilitiesPrev) =
   {-# SCC "agentStep:BuildOrderExecutor" #-}
   do
     debugUnitPos
+    agentUpdateGridIfNeeded obsPrev
     reassignIdleProbes
     stepIstar
     obs <- agentObs
     abilities <- agentAbilities
-    when (buildingsSelfChanged obs obsPrev) $ do
-      agentResetGrid
     buildPylons
     outcomes <- intentEngine
     buildOrder' <- runBO outcomes buildOrder
@@ -820,11 +830,12 @@ agentStepPhase (BuildArmyAndWin obsPrev deathBall) =
   {-# SCC "agentStep:BuildArmyAndWin" #-}
   do
     obs <- agentObs
+    -- if new buildings spawned / destroyed / encountered - reset it
+    agentUpdateGridIfNeeded obsPrev
     agentUpdateArmy obsPrev
     -- debugSquads
     stepIstar
     debugUnitPos
-    when (selfBuildingsCount obs /= selfBuildingsCount obsPrev) agentResetGrid
     reassignIdleProbes
     tryExpand
     agentArmyControl
