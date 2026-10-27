@@ -98,6 +98,7 @@ import System.Random (newStdGen)
 import ArmyHeatMap
 import Control.Concurrent.STM
 import Istar
+import Proto.S2clientprotocol.Raw (DisplayType (..))
 import ResourceFlow
   ( CostRate (..)
   , ResourceRate (..)
@@ -456,7 +457,13 @@ squadSeek squad = case squadState squad of
       units <- squadUnits squad
       let leader = head units
       range <- floor <$> siUnitRange leader leader -- TODO: fix second param
-      let closestEnemy = runConduitPure $ obsUnitsC obs .| CC.filter isEnemy .| findTargetC leader range
+      let closestEnemy =
+            runConduitPure $
+              obsUnitsC obs
+                .| CC.filter isEnemy
+                -- filter out "fogged" buildings
+                .| CC.filter (\x -> (x ^. #displayType) /= Snapshot)
+                .| findTargetC leader range
       case closestEnemy of
         Nothing -> return False
         (Just enemy) -> do
