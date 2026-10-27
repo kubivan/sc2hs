@@ -148,7 +148,7 @@ runHostSession ::
   GameSignals ->
   (Race -> Proto.Request) ->
   IO [PlayerResult]
-runHostSession _ _ _ (Computer _ _ _) _ _ _ = Prelude.error "computer cannot be the host"
+runHostSession _ _ _ (Computer{}) _ _ _ = Prelude.error "computer cannot be the host"
 runHostSession sc2Cfg mapSpec net (Player agent) participants signals joinFunc = do
   when (start sc2Cfg) $
     startStarCraft sc2Cfg (networkHostName net) (fromIntegral $ networkHostPort net)
@@ -164,7 +164,7 @@ runHostSession sc2Cfg mapSpec net (Player agent) participants signals joinFunc =
 
 runClientSession ::
   NetworkSettings -> Participant -> GameSignals -> (Race -> Proto.Request) -> IO [PlayerResult]
-runClientSession _ (Computer _ _ _) _ _ = Prelude.error "computer cannot be the client"
+runClientSession _ (Computer{}) _ _ = Prelude.error "computer cannot be the client"
 runClientSession net (Player agent) signals joinFunc = do
   threadId <- myThreadId
   putStrLn . fmt $ "Client thread ID: " +|| threadId ||+ ""
