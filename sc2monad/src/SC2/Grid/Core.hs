@@ -19,6 +19,7 @@ module SC2.Grid.Core
   , gridFromList
   , inBounds
   , gridIndex
+  , gridRemove
   )
 where
 
@@ -54,7 +55,7 @@ gridW :: GridBase t -> Int
 gridW (w, _, _) = w
 
 gridPixel :: (VU.Unbox t) => GridBase t -> TilePos -> t
-gridPixel (w, h, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
+gridPixel (w, _, g) (x, y) = g VU.! index -- `Utils.dbg` ("gridpixel index: " ++ show index  ++ " for " ++ show (w, h, VU.length g))
  where
   index = x + y * w
 
@@ -134,3 +135,6 @@ gridPlace g u (cx, cy) =
   foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) g ptrn
  where
   ptrn = pixels (getFootprint u)
+
+gridRemove :: GridBase Char -> UnitTypeId -> TilePos -> GridBase Char
+gridRemove g uid = removeMark g (getFootprint uid)
