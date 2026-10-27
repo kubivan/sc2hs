@@ -57,11 +57,11 @@ addOrder :: UnitTag -> AbilityId -> Observation -> Observation
 addOrder unitTag ability obs =
   obs
     & #rawData
-      . Proto.units
-      . traverse
-      . filtered (\unit -> unit ^. #tag == unitTag)
-      . #orders
-      %~ (order :) -- TODO: append order to the end?
+    . Proto.units
+    . traverse
+    . filtered (\unit -> unit ^. #tag == unitTag)
+    . #orders
+    %~ (order :) -- TODO: append order to the end?
  where
   order = defMessage & #abilityId .~ fromEnum' ability & #progress .~ -1 -- TODO: add target & progress
 
@@ -75,7 +75,7 @@ addUnit unitType obs =
 gridUpdate :: Observation -> Grid -> Grid
 gridUpdate obs grid = foldl' (\acc u -> gridPlace acc (toEnum' $ u ^. #unitType) (tilePos $ u ^. #pos)) grid units
  where
-  units = runConduitPure $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u) .| sinkList
+  units = runC $ obsUnitsC obs .| filterC (\u -> isBuilding u || isMineral u)
 
 buildingsSelfChanged :: Observation -> Observation -> Bool
 buildingsSelfChanged obs obsPrev = blen obs /= blen obsPrev || blen obs == 1 -- `Utils.dbg` (show (obs ^. #gameLoop) ++ " " ++ (show (obsPrev ^. #gameLoop))) where
