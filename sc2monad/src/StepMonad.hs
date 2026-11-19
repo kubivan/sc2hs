@@ -104,7 +104,7 @@ data StaticInfo = StaticInfo
   , playerInfo :: PlayerInfo
   , unitTraits :: UnitTraits
   , heightMap :: Grid
-  , expandsPos :: [TilePos]
+  , expandsPos :: ![TilePos]
   , startLocation :: TilePos
   , enemyStartLocation :: TilePos
   , siAsyncStaticInfo :: !(Maybe AsyncStaticInfo)

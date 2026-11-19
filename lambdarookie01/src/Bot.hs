@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -721,7 +722,8 @@ instance Agent BotAgent where
         grid = gridMerge pixelIsRamp gridPlacement gridPathing
         nexusPos = view #pos $ head $ runC $ unitsSelf obsRaw .| unitTypeC ProtossNexus
         -- TODO: sort expands based on region connectivity: closest is not always the next one
-        expands = sortOn (distSquaredI nexusPos) $ findExpands obsRaw grid heightMap
+        expansionDistances = gridDistances grid (tilePos nexusPos)
+        expands = sortOn (\pos -> Map.findWithDefault 0 pos expansionDistances) $ findExpands obsRaw grid heightMap
         enemyStart = toTilePos $ enemyBaseLocation gi obsRaw
 
         playerInfos = gi ^. #playerInfo

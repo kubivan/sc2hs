@@ -1,9 +1,11 @@
 {-# OPTIONS -Wall #-}
+{-# LANGUAGE BangPatterns #-}
 -- {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 
 module SC2.Grid.Algo
   ( gridBfs
+  , gridDistances
   , GridBfsRes (..)
   , smartTransition
   , getAllNeighbors
@@ -38,7 +40,7 @@ import Control.Monad.Trans.Maybe
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sort)
-import Data.Map qualified as Map
+import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Set qualified as Set
@@ -46,6 +48,18 @@ import Debug.Trace (trace, traceM)
 import Fmt (fmt, (+||), (||+))
 
 type TilePath = [TilePos]
+
+-- Distances count tiles, matching length . bfsPath; absent tiles are unreachable.
+-- Keep only the frontier and distances, rather than a path for every queued tile.
+gridDistances :: Grid -> TilePos -> Map.Map TilePos Int
+gridDistances grid start = go (Seq.singleton start) (Map.singleton start 1)
+ where
+  go Seq.Empty !distances = distances
+  go (top Seq.:<| queue) !distances =
+    let !distance = distances Map.! top
+        neighbors = filter (`Map.notMember` distances) (getAllNotSharpNeighbors grid top)
+        !distances' = foldl' (\acc pos -> Map.insert pos (distance + 1) acc) distances neighbors
+     in go (queue Seq.>< Seq.fromList neighbors) distances'
 
 data GridBfsRes = GridBfsRes
   { bfsRes :: Maybe TilePos

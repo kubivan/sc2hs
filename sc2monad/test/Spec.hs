@@ -151,7 +151,7 @@ spec =
 
           length resourceFields `shouldBe` 148
           length marked `shouldBe` length resourceFields
-          length expands `shouldBe` 15 -- 16 - already buit start nexus
+          length expands `shouldBe` 15 -- 16 - already built start nexus
         it "grid_segmentation" $ \(obs, gi) -> do
           let nexusPos = tilePos $ view #pos $ head $ runC $ unitsSelf obs .| unitTypeC ProtossNexus
               grid = gridFromImage (gi ^. (#startRaw . #pathingGrid))

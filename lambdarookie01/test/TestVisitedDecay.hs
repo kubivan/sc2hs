@@ -1,29 +1,29 @@
 module TestVisitedDecay (visitedDecayTests) where
 
+import Data.List (foldl')
 import SC2.Grid (gridFromLines)
 import Test.Hspec
 import VisitedDecay
 
 visitedDecayTests :: Spec
 visitedDecayTests = describe "VisitedDecay" $ do
-  it "distinguishes unvisited tiles from recently visited tiles" $ do
+  it "uses the current frame for unvisited tiles" $ do
     let visits = visitedDecayEmpty $ gridFromLines ["  "]
-    visitedDecayAge visits (0, 0) `shouldBe` Nothing
-    visitedDecayScore visits (0, 0) `shouldBe` 0
+    visitedDecayAge 100 visits (0, 0) `shouldBe` 0
 
-  it "reduces the visit penalty as time passes" $ do
-    let visits = visitedDecayVisit (0, 0) $ visitedDecayEmpty $ gridFromLines ["  "]
-        oneStepLater = visitedDecayStep visits
-    visitedDecayAge visits (0, 0) `shouldBe` Just 0
-    visitedDecayScore visits (0, 0) `shouldBe` 1
-    visitedDecayAge oneStepLater (0, 0) `shouldBe` Just 1
-    abs (visitedDecayScore oneStepLater (0, 0) - 96 / 97) `shouldSatisfy` (< 0.000001)
-    visitedDecayScore (iterate visitedDecayStep visits !! 96) (0, 0) `shouldBe` 0.5
+  it "computes age from the recorded visit frame" $ do
+    let visits = visitedDecayVisit 100 (0, 0) $ visitedDecayEmpty $ gridFromLines ["  "]
+    visitedDecayAge 100 visits (0, 0) `shouldBe` 0
+    visitedDecayAge 150 visits (0, 0) `shouldBe` 50
 
-  it "resets the age when a tile is visited again" $ do
-    let visits =
-          visitedDecayVisit (0, 0) $
-            visitedDecayStep $
-              visitedDecayVisit (0, 0) $
-                visitedDecayEmpty (gridFromLines ["  "])
-    visitedDecayAge visits (0, 0) `shouldBe` Just 0
+  it "resets the visited tile while preserving other visit times" $ do
+    let visits = visitedDecayVisit 200 (1, 0) $
+          visitedDecayVisit 100 (0, 0) $ visitedDecayEmpty $ gridFromLines ["  "]
+        revisited = visitedDecayVisit 300 (0, 0) visits
+    visitedDecayAge 350 revisited (0, 0) `shouldBe` 50
+    visitedDecayAge 350 revisited (1, 0) `shouldBe` 150
+
+  it "supports repeated updates without reading the history between visits" $ do
+    let initial = visitedDecayEmpty $ gridFromLines ["  "]
+        visits = foldl' (\history frame -> visitedDecayVisit frame (0, 0) history) initial [1 .. 10000]
+    visitedDecayAge 10001 visits (0, 0) `shouldBe` 1

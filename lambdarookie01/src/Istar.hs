@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GADTs #-}
 
 module Istar where
@@ -68,7 +69,7 @@ data ScoutTask
 data ScoutContext = ScoutContext
   { scoutUnit :: Maybe Unit
   , scoutTask :: ScoutTask
-  , scVisitedDecay :: VisitedDecay
+  , scVisitedDecay :: !VisitedDecay
   , scPath :: ScoutPath
   }
   deriving (Eq, Show)
@@ -375,7 +376,7 @@ stepIstar = do
         Set.fromList $
           runC $
             obsUnitsC obs .| allianceC Enemy .| filterC isBuilding .| mapC Units.unitTypeId
-  let frame = obs ^. #gameLoop
+  let !frame = obs ^. #gameLoop
   updateHeatMap
   debugHeatMaps
   debugVisionDecay

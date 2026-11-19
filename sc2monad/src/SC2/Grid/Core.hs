@@ -127,7 +127,9 @@ addMark grid (Footprint pixels) (cx, cy) =
 
 removeMark :: GridBase Char -> Footprint -> TilePos -> GridBase Char
 removeMark grid (Footprint pixels) (cx, cy) =
-  foldl' (\accGrid (x, y, _) -> gridSetPixelForce accGrid (cx + x, cy + y) ' ') grid pixels
+  let (w, h, g) = grid
+      updated = g VU.// [(x + cx + (y + cy) * w, ' ') | (x, y, _) <- pixels]
+   in updated `seq` (w, h, updated)
 
 gridPlace :: GridBase Char -> UnitTypeId -> TilePos -> GridBase Char
 gridPlace g u (cx, cy) =

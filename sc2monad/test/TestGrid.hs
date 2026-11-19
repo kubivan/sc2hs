@@ -1,6 +1,7 @@
 module TestGrid (gridUnitTests) where
 
 import Data.List (sort)
+import qualified Data.Map.Strict as Map
 import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Footprint
@@ -41,6 +42,21 @@ gridUnitTests = do
     it "not-sharp neighbors stay in bounds and avoid walls" $ do
       let grid = gridFromLines ["###", "#  ", "###"]
       getAllNotSharpNeighbors grid (1, 1) `shouldBe` [(2, 1)]
+
+    it "shared distances match individual BFS paths, including unreachable tiles" $ do
+      let grid = gridFromLines ["#####", "# # #", "# # #", "#####"]
+          start = (1, 1)
+          distances = gridDistances grid start
+          pathLength dest = length $ bfsPath $
+            gridBfs grid start (getAllNotSharpNeighbors grid) (const (== dest)) (const (const False))
+      map (\pos -> Map.findWithDefault 0 pos distances) [(x, y) | x <- [0 .. 4], y <- [0 .. 3]]
+        `shouldBe` map pathLength [(x, y) | x <- [0 .. 4], y <- [0 .. 3]]
+
+    it "batched footprint removal matches clearing each footprint pixel" $ do
+      let grid = gridFromLines $ replicate 10 (replicate 10 'x')
+          footprint = getFootprint ProtossNexus
+          expected = foldl (\g (x, y, _) -> gridSetPixelForce g (x + 5, y + 5) ' ') grid (pixels footprint)
+      removeMark grid footprint (5, 5) `shouldBe` expected
 
   describe "Grid palacement unit tests" $ do
     it "basic" $ do

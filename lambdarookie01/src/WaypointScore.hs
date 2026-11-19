@@ -3,6 +3,7 @@ module WaypointScore
   , Waypoint
   , calcAlongPathScore
   , pathWaypoints
+  , pathLen
   ) where
 
 import Data.Set qualified as Set
