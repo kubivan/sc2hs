@@ -135,12 +135,18 @@ gridFromImage image =
 
 -- Place a building footprint on the grid if possible at the given placement point
 addMark :: GridBase Char -> Footprint -> TilePos -> GridBase Char
-addMark grid (Footprint pixels) (cx, cy) = gridApply grid updates
- where
-  updates = [((cx + x, cy + y), mark) | (x, y, mark) <- pixels]
+addMark grid (Footprint pixels) (cx, cy) =
+  gridApply
+    grid
+    [ (pos, mark)
+    | (x, y, mark) <- pixels
+    , let pos = (cx + x, cy + y)
+    , inBounds grid pos
+    , grid ! pos /= '#'
+    ]
 
 removeMark :: GridBase Char -> Footprint -> TilePos -> GridBase Char
-removeMark grid@(w, h, g) (Footprint pixels) (cx, cy) = gridApply grid updates
+removeMark grid (Footprint pixels) (cx, cy) = gridApply grid updates
  where
   updates = [((x + cx, y + cy), ' ') | (x, y, _) <- pixels]
 
