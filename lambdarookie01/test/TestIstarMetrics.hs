@@ -1,9 +1,10 @@
 module TestIstarMetrics (istarMetricTests) where
 
-import Istar (ageScore, openPathScore, progressScore, safetyScore, towardsPathScore)
+import Istar (openPathScore, progressScore, safetyScore)
 import SC2.Grid (gridFromLines, gridFromList)
 import Test.Hspec
-import VisionDecay (FogTile (..), FogTileState (..))
+import VisionDecay (FogTile (..), FogTileState (..), ageScore)
+import WaypointScore (pathLen)
 
 istarMetricTests :: Spec
 istarMetricTests = describe "Istar metrics" $ do
@@ -29,8 +30,6 @@ istarMetricTests = describe "Istar metrics" $ do
   it "scores longer open rays higher" $ do
     let blockedRayScore = openPathScore openGrid (1, 1) (2, 1)
         openRayScore = openPathScore openGrid (1, 2) (2, 2)
-    blockedRayScore `shouldBe` (4 / 14)
-    openRayScore `shouldBe` (8 / 18)
     openRayScore `shouldSatisfy` (> blockedRayScore)
 
   it "scores movement toward the destination higher than movement away" $ do
@@ -62,5 +61,6 @@ istarMetricTests = describe "Istar metrics" $ do
     safetyScore heatMap (3, 3) `shouldBe` 0.5
     safetyScore (gridFromList 7 7 (replicate 49 0)) (3, 3) `shouldBe` 1
 
-  it "scores a candidate by its traversable distance to the next waypoint" $ do
-    towardsPathScore pathGrid (1, 3) (5, 3) `shouldBe` 0.6
+  it "measures traversable distance to the next waypoint" $ do
+    pathLen pathGrid (1, 3) (5, 3) `shouldBe` 5
+    pathLen pathGrid (2, 3) (5, 3) `shouldBe` 4

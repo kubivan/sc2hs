@@ -9,7 +9,9 @@ module VisionDecay
   , VisionDecay (..)
   , visionDecayTile
   , visionDecayStep
+  , visionDecayAddEnemy
   , calcAgeScore
+  , ageScore
   ) where
 
 import Actions (UnitTag)

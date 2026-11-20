@@ -17,6 +17,9 @@ import Data.ProtoLens (defMessage)
 import Data.Word (Word32, Word64)
 import Lens.Micro ((&), (.~))
 import Observation (Cost (..), Observation)
+import Istar (istarEmpty)
+import ResourceFlow (CostRate (..), ResourceRate (..), ResourceRateState (..))
+import Data.Sequence qualified as Seq
 import SC2.Grid (Grid, gridFromLines)
 import SC2.Ids.UnitTypeId (UnitTypeId)
 import SC2.Proto.Data (Alliance, Point)
@@ -64,6 +67,8 @@ mkDynamicState obs grid =
     , dsRandGen = mkStdGen 7
     , dsArmy = emptyArmy
     , dsIntents = Map.empty
+    , dsResourceRateState = ResourceRateState Seq.empty (ResourceRate (CostRate 0 0) (CostRate 0 0))
+    , dsIstar = istarEmpty grid
     }
 
 gridFromFile :: FilePath -> IO Grid
