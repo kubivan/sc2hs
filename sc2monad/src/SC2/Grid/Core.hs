@@ -1,9 +1,12 @@
 {-# OPTIONS -Wall #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+-- (, 42) :: a -> (a, Int)
+{-# LANGUAGE TupleSections #-}
 
 module SC2.Grid.Core
   ( Grid
   , GridBase
+  , GridUpdate
   , gridFromImage
   , gridW
   , gridH
@@ -20,6 +23,7 @@ module SC2.Grid.Core
   , inBounds
   , gridIndex
   , gridRemove
+  , gridApply
   )
 where
 
@@ -29,6 +33,7 @@ import SC2.TilePos
 
 import Data.Bits
 import Data.ByteString qualified as BS
+import Data.Maybe (catMaybes)
 import Data.Vector.Unboxed qualified as VU
 import Data.Word (Word8)
 import Lens.Micro ((^.))
@@ -41,6 +46,8 @@ import Debug.Trace (trace)
 type GridBase t = (Int, Int, VU.Vector t)
 
 type Grid = GridBase Char
+
+type GridUpdate t = (TilePos, t)
 
 (!?) :: (VU.Unbox t) => GridBase t -> TilePos -> Maybe t
 (!?) = gridPixelSafe
@@ -86,6 +93,12 @@ gridSetPixelForce grid@(w, h, g) (x, y) value =
 gridFromList :: (VU.Unbox t) => Int -> Int -> [t] -> GridBase t
 gridFromList w h ps = (w, h, VU.fromList ps)
 
+gridApply :: (VU.Unbox t) => GridBase t -> [GridUpdate t] -> GridBase t
+gridApply g@(w, h, ps) updates =
+  let indexedUpdates = catMaybes [fmap (,v) (gridIndex g pos) | (pos, v) <- updates]
+      pixels' = ps VU.// indexedUpdates
+   in pixels' `seq` (w, h, pixels')
+
 inBounds :: GridBase a -> TilePos -> Bool
 inBounds g (x, y) =
   x >= 0
@@ -122,14 +135,14 @@ gridFromImage image =
 
 -- Place a building footprint on the grid if possible at the given placement point
 addMark :: GridBase Char -> Footprint -> TilePos -> GridBase Char
-addMark grid (Footprint pixels) (cx, cy) =
-  foldl' (\accGrid (x, y, mark) -> gridSetPixel accGrid (cx + x, cy + y) mark) grid pixels
+addMark grid (Footprint pixels) (cx, cy) = gridApply grid updates
+ where
+  updates = [((cx + x, cy + y), mark) | (x, y, mark) <- pixels]
 
 removeMark :: GridBase Char -> Footprint -> TilePos -> GridBase Char
-removeMark grid (Footprint pixels) (cx, cy) =
-  let (w, h, g) = grid
-      updated = g VU.// [(x + cx + (y + cy) * w, ' ') | (x, y, _) <- pixels]
-   in updated `seq` (w, h, updated)
+removeMark grid@(w, h, g) (Footprint pixels) (cx, cy) = gridApply grid updates
+ where
+  updates = [((x + cx, y + cy), ' ') | (x, y, _) <- pixels]
 
 gridPlace :: GridBase Char -> UnitTypeId -> TilePos -> GridBase Char
 gridPlace g u (cx, cy) =
