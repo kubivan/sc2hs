@@ -89,11 +89,9 @@ distantFromAll p dist = all (\e -> distSquaredI p e >= dist ^ (2 :: Integer))
 findPlacementPos ::
   StaticInfo -> Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
 findPlacementPos _ _ expands grid gridHeight ProtossNexus =
-  find
-    ( \pos ->
-        canPlaceBuilding grid gridHeight pos (getFootprint ProtossNexus)
-    )
-    expands
+  asum
+    [ findPlacementPointInRadius grid gridHeight (getFootprint ProtossNexus) p pylonRadius | p <- expands
+    ]
 findPlacementPos si obs expands grid gridHeight ProtossPylon =
   asum
     [ findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos distantEnough
