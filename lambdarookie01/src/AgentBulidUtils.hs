@@ -52,6 +52,7 @@ import Data.Maybe (listToMaybe)
 import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Footprint (getFootprint)
+import SC2.Spatial (distantFromAll)
 import Target (Target (..))
 
 findAssignee :: Observation -> Action -> Maybe Unit
@@ -83,15 +84,16 @@ findBuilder obs =
 pylonRadius :: Float
 pylonRadius = 6.5
 
-distantFromAll :: (Foldable t, Spatial a, Spatial b) => a -> Int -> t b -> Bool
-distantFromAll p dist = all (\e -> distSquaredI p e >= dist ^ (2 :: Integer))
-
 findPlacementPos ::
   StaticInfo -> Observation -> [TilePos] -> Grid -> Grid -> UnitTypeId -> Maybe TilePos
-findPlacementPos _ _ expands grid gridHeight ProtossNexus =
+findPlacementPos _ obs expands grid gridHeight ProtossNexus =
   asum
-    [ findPlacementPointInRadius grid gridHeight (getFootprint ProtossNexus) p pylonRadius | p <- expands
+    [ findPlacementPointInRadius grid gridHeight (getFootprint ProtossNexus) p pylonRadius
+    | p <- expands
+    , distantFromAll p 5 nexuses
     ]
+ where
+  nexuses = runC (unitsSelf obs .| unitTypeC ProtossNexus .| mapTilePosC)
 findPlacementPos si obs expands grid gridHeight ProtossPylon =
   asum
     [ findPlacementPoint grid gridHeight (getFootprint ProtossPylon) nexusPos distantEnough

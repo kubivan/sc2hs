@@ -110,7 +110,7 @@ findExpandPosInCluster grid heightMap cluster =
  where
   -- clusterTiles = tilePos . view #pos <$> cluster
   canPlaceDist69 _ p =
-    all (\c -> distSquaredI p c >= 6 * 6 && distSquaredI p c < 9 * 9) cluster
+    all (\c -> distSquaredI p c >= 7 * 7 && distSquaredI p c < 9 * 9) cluster
       && canPlaceBuilding grid heightMap p (getFootprint ProtossNexus)
 
 findExpands :: Observation -> Grid -> Grid -> [TilePos]

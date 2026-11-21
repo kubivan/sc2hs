@@ -10,6 +10,7 @@ module SC2.Spatial
   , tileX3D
   , tileY3D
   , toPoint3D
+  , distantFromAll
   ) where
 
 import Data.ProtoLens (defMessage)
@@ -58,6 +59,9 @@ distManhattan a b = abs (ax - bx) + abs (ay - by)
 
 distSquaredF :: (Spatial a, Spatial b) => a -> b -> Float
 distSquaredF a b = distSquaredP2D (toPoint2D a) (toPoint2D b)
+
+distantFromAll :: (Foldable t, Spatial a, Spatial b) => a -> Int -> t b -> Bool
+distantFromAll p dist = all (\e -> distSquaredI p e >= dist ^ (2 :: Integer))
 
 toPoint3D :: Point2D -> Point
 toPoint3D p = defMessage & #x .~ (p ^. #x) & #y .~ (p ^. #y) & #z .~ 0
