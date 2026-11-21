@@ -766,9 +766,9 @@ instance Agent BotAgent where
     --     <> " income "
     --     <> (show $ obsResources obsRaw)
     traceM . fmt $ "!!! RESOURCE COLLECTION RATE: " +|| rate (dsResourceRateState ds') ||+ ""
-    -- unless (null obs ^. #actionErrors) $
-    --   traceM $
-    --     "!!!errors: " <> formatActionErrors (obs ^. #actionErrors)
+    unless (null errors) $
+      traceM $
+        "!!! action errors: " <> formatActionErrors errors
     -- unless (null obs ^. #actions) $ traceM $ "!!!actions: " <> show (obs ^. #actions)
     pure tracedResult
 
