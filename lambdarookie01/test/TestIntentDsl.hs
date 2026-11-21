@@ -32,6 +32,25 @@ intentDslTests = describe "Intent DSL combinators" $ do
 
     snd (runIntentInTest ds rt) `shouldBe` IntentCompleted
 
+  it "andThen keeps the active branch when it fails in the same frame" $ do
+    let rt =
+          IntentRuntime
+            { intentId = IntentId "andThen-active-failure"
+            , intentProgram =
+                andThen
+                  (PBuildStructure ProtossPylon (BSMonitoring 1 (TargetPos (3, 3))))
+                  (PBuildStructure ProtossPylon (BSAccepted 777 (TargetPos (4, 4)) 0 0))
+            , intentStartedFrame = 0
+            }
+        pylon = mockUnit 101 ProtossPylon Self (3, 3, 0)
+        ds = mkDynamicState (mkObservation [pylon] 200) (gridFromLines ["          "])
+        (runtime', status) = runIntentInTest ds rt
+
+    status `shouldBe` IntentFailed
+    case intentProgram runtime' of
+      PBuildStructure ProtossPylon (BSAccepted 777 _ _ _) -> pure ()
+      _ -> expectationFailure "failure should retain the active second branch for cleanup"
+
   it "andThen fails fast when first branch fails" $ do
     let rt =
           IntentRuntime

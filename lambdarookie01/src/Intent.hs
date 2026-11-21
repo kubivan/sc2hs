@@ -104,7 +104,7 @@ data IntentTickResult d
 data StepResult next
   = StepBlock next
   | StepContinue next
-  | StepDone IntentStatus
+  | StepDone IntentStatus next
   | StepNeed UnitTypeId
 
 instance Functor StepResult where
@@ -112,7 +112,7 @@ instance Functor StepResult where
     case result of
       StepBlock next -> StepBlock (f next)
       StepContinue next -> StepContinue (f next)
-      StepDone status -> StepDone status
+      StepDone status next -> StepDone status (f next)
       StepNeed uid -> StepNeed uid
 
 type IntentStepResult d = StepResult (IntentProgram d)
@@ -147,7 +147,7 @@ liftIntentStepResult runtime stepResult =
   case stepResult of
     StepBlock nextProgram -> Block (advanceRuntime nextProgram runtime)
     StepContinue nextProgram -> Continue (advanceRuntime nextProgram runtime)
-    StepDone status -> Done runtime status
+    StepDone status nextProgram -> Done (advanceRuntime nextProgram runtime) status
     StepNeed uid -> NeedPrerequisite runtime uid
 
 type IntentStore d = Map IntentId (IntentRuntime d)
@@ -220,8 +220,8 @@ stepBlockResult = pure . StepBlock
 stepContinueResult :: next -> StepMonad d (StepResult next)
 stepContinueResult = pure . StepContinue
 
-stepDoneResult :: IntentStatus -> StepMonad d (StepResult next)
-stepDoneResult = pure . StepDone
+stepDoneResult :: next -> IntentStatus -> StepMonad d (StepResult next)
+stepDoneResult next = pure . (`StepDone` next)
 
 stepNeedResult :: UnitTypeId -> StepMonad d (StepResult next)
 stepNeedResult = pure . StepNeed
@@ -232,25 +232,22 @@ stepBlock = stepBlockResult
 stepContinue :: IntentProgram d -> StepMonad d (IntentStepResult d)
 stepContinue = stepContinueResult
 
-stepDone :: IntentStatus -> StepMonad d (IntentStepResult d)
-stepDone = stepDoneResult
-
 stepNeed :: UnitTypeId -> StepMonad d (IntentStepResult d)
 stepNeed = stepNeedResult
 
 andThenStep :: IntentProgram d -> IntentStepResult d -> IntentStepResult d
 andThenStep right leftStep =
   case leftStep of
-    StepDone IntentCompleted -> StepContinue right
-    StepDone status -> StepDone status
+    StepDone IntentCompleted _ -> StepContinue right
+    StepDone status activeLeft -> StepDone status (PAndThen activeLeft right)
     StepNeed uid -> StepNeed uid
     _ -> fmap (`PAndThen` right) leftStep
 
 orElseStep :: IntentProgram d -> IntentStepResult d -> IntentStepResult d
 orElseStep fallback primaryStep =
   case primaryStep of
-    StepDone IntentFailed -> StepContinue fallback
-    StepDone status -> StepDone status
+    StepDone IntentFailed _ -> StepContinue fallback
+    StepDone status activePrimary -> StepDone status (POrElse activePrimary fallback)
     StepNeed uid -> StepNeed uid
     _ -> fmap (`POrElse` fallback) primaryStep
 
@@ -381,9 +378,6 @@ buildPhaseTimedOut now startedAt distance =
     -- TODO: naive penalty add some time to reach the target
     && now - startedAt > buildStartTimeoutFrames + distance * 5
 
-finishFailure :: StepMonad d (IntentStepResult d)
-finishFailure = stepDoneResult IntentFailed
-
 liftBuildStepResult :: UnitTypeId -> BuildPhaseStepResult -> IntentStepResult d
 liftBuildStepResult = liftLeafStepResult PBuildStructure
 
@@ -445,7 +439,7 @@ tickBuildPhase iid uid currentPhase =
           let builderAccepted = unitHasOrder ability
               advanceIssuedPhase
                 | started = startMonitoring reserved builder target
-                | isNothing mbBuilder = stepDoneResult IntentFailed
+                | isNothing mbBuilder = stepDoneResult currentPhase IntentFailed
                 | maybe False builderAccepted mbBuilder = do
                     traceM . fmt $
                       "[intent]["
@@ -460,7 +454,7 @@ tickBuildPhase iid uid currentPhase =
                     let distToTarget = distManhattan (fromJust mbBuilder) target
                     agentModifyReservedCost (+ reserved)
                     goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
-                | timedOut = stepDoneResult IntentFailed
+                | timedOut = stepDoneResult currentPhase IntentFailed
                 | otherwise = retryNextFrame
           advanceIssuedPhase
         BSAccepted builder target acceptedFrame distanceToTarget -> do
@@ -471,15 +465,15 @@ tickBuildPhase iid uid currentPhase =
           started <- targetInProgress target uid
           let advanceAcceptedPhase
                 | started = goNextTick (BSMonitoring builder target)
-                | builderMissing = stepDoneResult IntentFailed
-                | timedOut = stepDoneResult IntentFailed
+                | builderMissing = stepDoneResult currentPhase IntentFailed
+                | timedOut = stepDoneResult currentPhase IntentFailed
                 | otherwise = retryNextFrame
           advanceAcceptedPhase
         BSMonitoring _ target -> do
           -- check if building spawned
           inProgress <- targetInProgress target uid
           if inProgress
-            then stepDoneResult IntentCompleted
+            then stepDoneResult currentPhase IntentCompleted
             else retryNextFrame
 
 tickBuildStructure ::
@@ -528,11 +522,11 @@ tickTrainPhase _ uid currentPhase =
             Nothing -> retryNextFrame
             Just tag ->
               case getUnit obs tag of
-                Nothing -> stepDoneResult IntentFailed
+                Nothing -> stepDoneResult currentPhase IntentFailed
                 Just executor -> do
                   command [SelfCommand ability [executor]]
                   agentModifyReservedCost (+ reserved)
-                  stepDoneResult IntentCompleted
+                  stepDoneResult currentPhase IntentCompleted
 
 tickProgram ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
