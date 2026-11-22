@@ -6,27 +6,36 @@ module TestIntegrationRealGame (integrationRealGameTests) where
 import Agent (Agent (..), StepPlan (..))
 import Bot (BotAgent (..), BotPhase (..))
 import BotDynamicState (BotDynamicState (..))
+import Conduit (filterC, (.|))
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, bracket, catch)
+import Data.Function (on)
 import Data.HashMap.Strict qualified as HashMap
-import Data.List (foldl', isInfixOf)
+import Data.List (find, groupBy, isInfixOf, sortOn)
 import Data.Map qualified as Map
+import Data.Maybe (catMaybes)
+import Data.ProtoLens (defMessage)
 import Data.ProtoLens.Labels ()
+import Data.Sequence qualified as Seq
+import Data.Set qualified as Set
 import Data.Text qualified as Text
+import DummyBot (DummyBot (..))
 import Lens.Micro ((&), (.~), (^.))
 import Network.WebSockets qualified as WS
-import Observation (Observation)
-import PlanM (BuildOrder, boFromUnits)
+import Observation (Observation, findExpands, gridUpdate, obsUnitsC)
+import PlanM (boFromUnits)
 import Proto.S2clientprotocol.Common qualified as C
+import Proto.S2clientprotocol.Error qualified as Error
 import Proto.S2clientprotocol.Sc2api qualified as A
 import SC2.Client (unitAbilities, unitAbilitiesRaw)
+import SC2.Grid
+import SC2.Ids.AbilityId (AbilityId (PROTOSSBUILDNEXUS))
 import SC2.Ids.UnitTypeId
   ( UnitTypeId
       ( ProtossAssimilator
       , ProtossCyberneticsCore
       , ProtossGateway
       , ProtossNexus
-      , ProtossProbe
       , ProtossPylon
       , ProtossRoboticsFacility
       )
@@ -34,13 +43,15 @@ import SC2.Ids.UnitTypeId
 import SC2.Launcher.Participant (Participant (..))
 import SC2.Proto.Data (Alliance (Self), Map (LocalMap))
 import SC2.Proto.Requests qualified as Proto
+import SC2.Spatial (distSquaredI, tilePos, toPoint2D)
+import SC2.TilePos (TilePos)
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
-import Units (toEnum')
+import Units (MapClusters, Unit, dbscan, isGeyser, isMineral, runC, toEnum')
 
 integrationRealGameTests :: Spec
 integrationRealGameTests =
@@ -50,6 +61,11 @@ integrationRealGameTests =
       case env of
         Nothing -> pendingWith "Set SC2_INTEGRATION=1 and SC2_TEST_MAP_PATH to run integration tests"
         Just cfg -> withGame cfg testBuildOrderCompletesBuildings
+    it "matches grid expansion points with SC2 Nexus placement queries" $ do
+      env <- integrationEnv
+      case env of
+        Nothing -> pendingWith "Set SC2_INTEGRATION=1 and SC2_TEST_MAP_PATH to run integration tests"
+        Just cfg -> withGame cfg testNexusPlacementMatchesExpands
 
 data IntegrationEnv = IntegrationEnv
   { ieMapPath :: FilePath
@@ -217,6 +233,86 @@ testBuildOrderCompletesBuildings conn = do
           env
 
   waitUntilBuildOrderComplete conn 8000 injected
+
+testNexusPlacementMatchesExpands :: WS.Connection -> IO ()
+testNexusPlacementMatchesExpands conn = do
+  mapPath <- requiredEnv "SC2_TEST_MAP_PATH"
+  let mapFileName = takeFileName mapPath
+      containerMapPath = "/StarCraftII/maps/" <> mapFileName
+      participants = [Player DummyBot, Computer C.Random A.VeryEasy Nothing]
+  _ <-
+    Proto.sendRequestSync conn $
+      Proto.requestCreateGame (LocalMap (Text.pack containerMapPath) Nothing) participants
+  _ <- Proto.sendRequestSync conn $ Proto.requestJoinGameVsAi C.Protoss
+  responseGameInfo <- Proto.sendRequestSync conn Proto.requestGameInfo
+  responseObservation <- Proto.sendRequestSync conn Proto.requestObservation
+  let gameInfo = responseGameInfo ^. #gameInfo
+      obs = responseObservation ^. #observation . #observation
+      placementGrid = gridFromImage (gameInfo ^. #startRaw . #placementGrid)
+      pathingGrid = gridFromImage (gameInfo ^. #startRaw . #pathingGrid)
+      grid = gridUpdate obs (gridMerge pixelIsRamp placementGrid pathingGrid)
+      heights = gridFromImage (gameInfo ^. #startRaw . #terrainHeight)
+      expected = findExpands obs grid heights
+      resourceFields = runC $ obsUnitsC obs .| filterC (\unit -> isMineral unit || isGeyser unit)
+      marked = dbscan 10 2 resourceFields
+      clusters = clusterUnitsFrom marked
+  querySelected <- mapM (findApiExpansion conn grid) clusters
+  let actual = catMaybes querySelected
+  actual `shouldBe` expected
+
+clusterUnitsFrom :: MapClusters -> [[Unit]]
+clusterUnitsFrom marked =
+  map (map fst) . groupBy ((==) `on` snd) . sortOn snd $ Map.toList marked
+
+findApiExpansion :: WS.Connection -> Grid -> [Unit] -> IO (Maybe TilePos)
+findApiExpansion _ _ [] = pure Nothing
+findApiExpansion conn grid cluster@(firstUnit : _) = do
+  let start = tilePos firstUnit
+      candidates =
+        filter (withinMineralRing cluster) $
+          breadthFirstTiles grid start
+  queryPlacementCandidates conn candidates
+ where
+  withinMineralRing units pos =
+    all (\unit -> let distance = distSquaredI pos unit in distance >= 36 && distance < 81) units
+
+breadthFirstTiles :: Grid -> TilePos -> [TilePos]
+breadthFirstTiles grid start = go (Seq.singleton start) (Set.singleton start)
+ where
+  go Seq.Empty _ = []
+  go (pos Seq.:<| queue) visited =
+    pos : go queue' visited'
+   where
+    neighbors = filter (`Set.notMember` visited) (getAllNeighbors grid pos)
+    visited' = foldr Set.insert visited neighbors
+    queue' = queue Seq.>< Seq.fromList neighbors
+
+queryPlacementCandidates :: WS.Connection -> [TilePos] -> IO (Maybe TilePos)
+queryPlacementCandidates _ [] = pure Nothing
+queryPlacementCandidates conn candidates = search candidates
+ where
+  search [] = pure Nothing
+  search remaining = do
+    let (batch, rest) = splitAt 128 remaining
+        request =
+          defMessage
+            & #query
+              .~ ( defMessage
+                     & #placements
+                       .~ [ defMessage
+                              & #abilityId
+                                .~ fromIntegral (fromEnum PROTOSSBUILDNEXUS)
+                              & #targetPos
+                                .~ toPoint2D pos
+                          | pos <- batch
+                          ]
+                 )
+    response <- Proto.sendRequestSync conn request
+    let results = response ^. #query . #placements
+    length results `shouldBe` length batch
+    case find (\(_, placement) -> placement ^. #result == Error.Success) (zip batch results) of
+      Just (pos, _) -> pure (Just pos)
+      Nothing -> search rest
 
 waitUntilBuildOrderComplete :: WS.Connection -> Int -> BotAgent -> IO ()
 waitUntilBuildOrderComplete conn maxTicks startAgent = go 0 startAgent Nothing

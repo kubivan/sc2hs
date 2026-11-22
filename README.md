@@ -6,7 +6,7 @@ A modern, modular Haskell framework for developing StarCraft II bots with a clea
 
 ## Architecture
 
-The project is organized into three distinct packages:
+The core bot stack consists of these packages:
 
 ### 1. **sc2api** — Minimal Bot API
 The foundation for all bots. Provides everything needed to write a basic bot without opinions about strategy or tactics.
@@ -67,6 +67,9 @@ A complete Protoss bot example using both `sc2api` and `sc2monad`.
 - `ArmyLogic` — Macro logic (squad forming, unit production)
 - `AgentBulidUtils` — Build order utilities and placement finding
 
+### 4. **dummybot** — No-op Bot
+A minimal Protoss `sc2api` agent that sends no actions, useful for match setup and API experiments.
+
 ## Getting Started
 
 ### Prerequisites
@@ -85,6 +88,7 @@ Build a specific package:
 stack build sc2api          # Just the API
 stack build sc2monad        # Framework + tests
 stack build lambdarookie01  # Example bot
+stack build dummybot        # Minimal no-op bot using sc2api
 stack build sc2mapdump      # Fixture generator from live SC2 map
 ```
 
@@ -104,7 +108,7 @@ Run Docker-backed integration scenarios (opt-in):
 
 ```bash
 SC2_INTEGRATION=1 \
-SC2_TEST_MAP_PATH=/absolute/path/to/MyMap.SC2Map \
+SC2_TEST_MAP_PATH="$PWD/lambdarookie01/test/data/maps/BlueshiftLE.SC2Map" \
 stack test lambdarookie01:lambdarookie01-test
 ```
 
@@ -143,6 +147,14 @@ stack run lambdarookie01
 ```
 
 The bot reads configuration from `bot-config.yaml` and connects to StarCraft II.
+
+Run the no-op bot with the same configuration:
+
+```bash
+stack run dummybot -- host
+```
+
+It joins as Protoss and sends no actions; host/join options and configuration paths follow the main bot CLI.
 
 ## Writing Your Own Bot
 

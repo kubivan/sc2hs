@@ -37,6 +37,7 @@ packages:
   - ./sc2api
   - ./sc2monad
   - ./lambdarookie01
+  - ./dummybot
   - ./sc2mapdump
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as

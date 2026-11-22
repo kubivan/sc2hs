@@ -140,6 +140,7 @@ test-suite lambdarookie01-test
     , conduit
     , containers
     , directory
+    , dummybot
     , extra
     , filepath
     , fmt
