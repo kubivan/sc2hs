@@ -14,12 +14,12 @@ import BotDynamicState (BotDynamicState (..))
 import Data.HashMap.Strict qualified as HashMap
 import Data.Map qualified as Map
 import Data.ProtoLens (defMessage)
+import Data.Sequence qualified as Seq
 import Data.Word (Word32, Word64)
+import Istar (istarEmpty)
 import Lens.Micro ((&), (.~))
 import Observation (Cost (..), Observation)
-import Istar (istarEmpty)
 import ResourceFlow (CostRate (..), ResourceRate (..), ResourceRateState (..))
-import Data.Sequence qualified as Seq
 import SC2.Grid (Grid, gridFromLines)
 import SC2.Ids.UnitTypeId (UnitTypeId)
 import SC2.Proto.Data (Alliance, Point)
