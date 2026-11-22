@@ -252,15 +252,16 @@ tryExpand = do
             .| filterC ((== 1) . view #buildProgress)
             .| mapC (\n -> (tilePos $ n ^. #pos, mineralsOfNexus n))
 
-      depleetingBasesCount = countIf (\(_, m) -> m < 8 * 300) nexusesResources
+      depletingBasesCount = countIf (\(_, m) -> m < 8 * 300) nexusesResources
 
   lift . traceM . fmt $ "!!!!!!! MINERALFIELDS:  " +|| length (runC mineralFields) ||+ ""
-  when (length nexusesResources - depleetingBasesCount < 1) $ do
+  let Cost minerals vespene = obsResources obs
+  when (minerals > 2000 || length nexusesResources - depletingBasesCount < 1) $ do
     lift . traceM . fmt $
       "!!! EXPANDING:  "
         +|| nexusesResources
         ||+ "  depleting: "
-        +|| depleetingBasesCount
+        +|| depletingBasesCount
         ||+ " nexues: "
         +|| length nexusesResources
         ||+ ""
@@ -657,13 +658,19 @@ trainMassUnit uid = unlessM isFullLimit $ do
 
   let maxToTrain = floor (min minRatio gasRatio)
       producersLen = length $ runC $ unitsSelf obs .| unitTypeC producerType
+      producersMaxLen =
+        4
+          * ( length $
+                runC $
+                  unitsSelf obs .| unitTypeC ProtossNexus .| filterC ((== 1) . view #buildProgress)
+            )
       producersIdle =
         runC $
           unitsSelf obs .| unitTypeC producerType .| filterC ((== 1) . view #buildProgress) .| unitIdleC
 
   producerCost <- agentUnitCost producerType
   traceM . fmt $ "!!! TRAIN MAX: CAN BUILD " +|| maxToTrain ||+ " " +|| uid ||+ ""
-  if maxToTrain > producersLen
+  if maxToTrain > producersLen && producersLen <= producersMaxLen
     then
       mapM_
         ( \i ->
@@ -674,22 +681,11 @@ trainMassUnit uid = unlessM isFullLimit $ do
         [1 .. (maxToTrain - producersLen)]
     -- spent minerals
     else
-      if gasCost producerCost == 0 && mineralCost resources > 1000
-        then do
-          let mineralsToSpend = mineralCost resources - 1000
-          mapM_
-            ( \i ->
-                spawnIntentUnique
-                  (IntentId (fmt $ "build-additional-" +|| producerType ||+ i ||+ ""))
-                  (intentBuildStructure producerType)
-            )
-            [1 .. mineralsToSpend `div` mineralCost producerCost]
-        else
-          mapM_
-            ( \sp ->
-                spawnIntentUnique (IntentId (fmt $ "train-" +|| uid ||+ (sp ^. #tag) ||+ "")) (intentTrainUnit uid)
-            )
-            producersIdle
+      mapM_
+        ( \sp ->
+            spawnIntentUnique (IntentId (fmt $ "train-" +|| uid ||+ (sp ^. #tag) ||+ "")) (intentTrainUnit uid)
+        )
+        producersIdle
 
 agentUpdateGridIfNeeded :: (HasGrid d, HasObs d) => Observation -> StepMonad d ()
 agentUpdateGridIfNeeded oldObs = do
