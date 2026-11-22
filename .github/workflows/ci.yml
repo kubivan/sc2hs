@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.12.4"
+          cabal-version: "latest"
+          stack-version: "latest"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.stack
+          key: stack-${{ runner.os }}-${{ hashFiles('stack.yaml', 'stack.yaml.lock', '**/*.cabal', '**/package.yaml') }}
+
+      - name: Install Fourmolu
+        run: |
+          cabal install fourmolu-0.19.0.1 --installdir="$HOME/.local/bin" --overwrite-policy=always
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Check formatting
+        run: git ls-files -z -- '*.hs' | xargs -0 fourmolu --mode check
+
+      - name: Build all packages and components
+        run: stack build --test --bench --no-run-tests
+
+      - name: Run tests
+        run: stack test
