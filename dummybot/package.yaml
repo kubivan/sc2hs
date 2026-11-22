@@ -1,0 +1,25 @@
+name: dummybot
+version: 0.1.0.0
+synopsis: No-op StarCraft II bot built on sc2api
+license: MIT
+
+dependencies:
+  - base >= 4.12
+  - sc2api
+  - text
+
+default-extensions:
+  - OverloadedLabels
+  - ImportQualifiedPost
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - DummyBot
+
+executables:
+  dummybot:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+      - dummybot

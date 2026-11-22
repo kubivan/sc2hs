@@ -1,0 +1,43 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.39.6.
+--
+-- see: https://github.com/sol/hpack
+
+name:           dummybot
+version:        0.1.0.0
+synopsis:       No-op StarCraft II bot built on sc2api
+license:        MIT
+build-type:     Simple
+
+library
+  exposed-modules:
+      DummyBot
+  other-modules:
+      Paths_dummybot
+  hs-source-dirs:
+      src
+  default-extensions:
+      OverloadedLabels
+      ImportQualifiedPost
+  build-depends:
+      base >=4.12
+    , sc2api
+    , text
+  default-language: Haskell2010
+
+executable dummybot
+  main-is: Main.hs
+  other-modules:
+      Paths_dummybot
+  hs-source-dirs:
+      app
+  default-extensions:
+      OverloadedLabels
+      ImportQualifiedPost
+  build-depends:
+      base >=4.12
+    , dummybot
+    , sc2api
+    , text
+  default-language: Haskell2010

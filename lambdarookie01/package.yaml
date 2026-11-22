@@ -81,6 +81,7 @@ tests:
       - hspec
       - process
       - directory
+      - dummybot
       - filepath
       - websockets
     ghc-options:
