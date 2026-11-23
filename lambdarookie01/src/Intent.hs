@@ -73,13 +73,16 @@ data TrainUnitPhase
   | TUGathering Cost
   deriving (Show)
 
-{- | Declarative intent composition via andThen (fail-fast sequential) and orElse (fallback-on-failure).
+{- | Declarative intent composition via andThen (fail-fast sequential),
+andThenAfterStart (sequential after a structure appears), and orElse (fallback-on-failure).
 
 Production usage pattern in stepTowardsTechGoal or build-order sequencing:
   buildPylonIntent `andThen` buildAssimilatorIntent `orElse` buildProbeIntent
 
 Semantics:
   - andThen: left completes -> run right; left fails/timeout → fail parent (fail-fast)
+  - andThenAfterStart: left's building appears -> run right; otherwise behaves like andThen
+  - Placement hints pass through sequences but only affect PBuildStructureNear intents
   - orElse: primary fails -> run fallback; primary succeeds -> return success (never switches on NeedPrerequisite)
   - Cleanup: recursive walkthrough combinators; only active branch cleaned (prevents double-cleanup with reserves)
   - Timeout: uniform across all intents via buildPhaseTimedOut (build-phase only, no train timeout)
@@ -87,14 +90,18 @@ Semantics:
 -}
 data IntentProgram d
   = PBuildStructure UnitTypeId BuildStructurePhase
+  | PBuildStructureNear UnitTypeId BuildStructurePhase
   | PTrainUnit UnitTypeId TrainUnitPhase
   | PAndThen (IntentProgram d) (IntentProgram d)
+  | PAndThenAfterStart (IntentProgram d) (IntentProgram d)
   | POrElse (IntentProgram d) (IntentProgram d)
+  | PWithPlacementHint TilePos (IntentProgram d)
   deriving (Show)
 
 data IntentTickResult d
   = Continue (IntentRuntime d)
   | Block (IntentRuntime d)
+  | Started (IntentRuntime d) TilePos
   | Done (IntentRuntime d) IntentStatus
   | NeedPrerequisite (IntentRuntime d) UnitTypeId
 
@@ -104,7 +111,8 @@ data IntentTickResult d
 data StepResult next
   = StepBlock next
   | StepContinue next
-  | StepDone IntentStatus next
+  | StepStarted TilePos next
+  | StepDone IntentStatus next (Maybe TilePos)
   | StepNeed UnitTypeId
 
 instance Functor StepResult where
@@ -112,7 +120,8 @@ instance Functor StepResult where
     case result of
       StepBlock next -> StepBlock (f next)
       StepContinue next -> StepContinue (f next)
-      StepDone status next -> StepDone status (f next)
+      StepStarted pos next -> StepStarted pos (f next)
+      StepDone status next result -> StepDone status (f next) result
       StepNeed uid -> StepNeed uid
 
 type IntentStepResult d = StepResult (IntentProgram d)
@@ -147,7 +156,8 @@ liftIntentStepResult runtime stepResult =
   case stepResult of
     StepBlock nextProgram -> Block (advanceRuntime nextProgram runtime)
     StepContinue nextProgram -> Continue (advanceRuntime nextProgram runtime)
-    StepDone status nextProgram -> Done (advanceRuntime nextProgram runtime) status
+    StepStarted pos nextProgram -> Started (advanceRuntime nextProgram runtime) pos
+    StepDone status nextProgram _ -> Done (advanceRuntime nextProgram runtime) status
     StepNeed uid -> NeedPrerequisite runtime uid
 
 type IntentStore d = Map IntentId (IntentRuntime d)
@@ -168,11 +178,17 @@ feedbackRetentionFrames = 32
 intentBuildStructure :: UnitTypeId -> IntentProgram d
 intentBuildStructure uid = PBuildStructure uid BSReserving
 
+intentBuildStructureNearPrevious :: UnitTypeId -> IntentProgram d
+intentBuildStructureNearPrevious uid = PBuildStructureNear uid BSReserving
+
 intentTrainUnit :: UnitTypeId -> IntentProgram d
 intentTrainUnit uid = PTrainUnit uid TUWaiting
 
 andThen :: IntentProgram d -> IntentProgram d -> IntentProgram d
 andThen = PAndThen
+
+andThenAfterStart :: IntentProgram d -> IntentProgram d -> IntentProgram d
+andThenAfterStart = PAndThenAfterStart
 
 orElse :: IntentProgram d -> IntentProgram d -> IntentProgram d
 orElse = POrElse
@@ -206,13 +222,17 @@ cleanupIntent (PBuildStructure uid phase) =
       releaseLandTarget uid target
     BSAccepted _ target _ _ -> releaseLandTarget uid target
     BSMonitoring _ target -> releaseLandTarget uid target
+cleanupIntent (PBuildStructureNear uid phase) =
+  cleanupIntent (PBuildStructure uid phase)
 cleanupIntent (PTrainUnit _ phase) =
   case phase of
     TUWaiting -> pure ()
     -- Training reserve is released eagerly when the train command is issued.
     TUGathering _ -> pure ()
 cleanupIntent (PAndThen left _) = cleanupIntent left
+cleanupIntent (PAndThenAfterStart left _) = cleanupIntent left
 cleanupIntent (POrElse primary _) = cleanupIntent primary
+cleanupIntent (PWithPlacementHint _ program) = cleanupIntent program
 
 stepBlockResult :: next -> StepMonad d (StepResult next)
 stepBlockResult = pure . StepBlock
@@ -220,8 +240,11 @@ stepBlockResult = pure . StepBlock
 stepContinueResult :: next -> StepMonad d (StepResult next)
 stepContinueResult = pure . StepContinue
 
-stepDoneResult :: next -> IntentStatus -> StepMonad d (StepResult next)
-stepDoneResult next = pure . (`StepDone` next)
+stepStartedResult :: TilePos -> next -> StepMonad d (StepResult next)
+stepStartedResult pos = pure . StepStarted pos
+
+stepDoneResult :: next -> IntentStatus -> Maybe TilePos -> StepMonad d (StepResult next)
+stepDoneResult next status = pure . StepDone status next
 
 stepNeedResult :: UnitTypeId -> StepMonad d (StepResult next)
 stepNeedResult = pure . StepNeed
@@ -235,19 +258,32 @@ stepContinue = stepContinueResult
 stepNeed :: UnitTypeId -> StepMonad d (IntentStepResult d)
 stepNeed = stepNeedResult
 
-andThenStep :: IntentProgram d -> IntentStepResult d -> IntentStepResult d
+andThenStep ::
+  IntentProgram d -> IntentStepResult d -> IntentStepResult d
 andThenStep right leftStep =
   case leftStep of
-    StepDone IntentCompleted _ -> StepContinue right
-    StepDone status activeLeft -> StepDone status (PAndThen activeLeft right)
+    StepDone IntentCompleted _ result ->
+      StepContinue (maybe right (`PWithPlacementHint` right) result)
+    StepDone status activeLeft result -> StepDone status (PAndThen activeLeft right) result
     StepNeed uid -> StepNeed uid
     _ -> fmap (`PAndThen` right) leftStep
+
+andThenAfterStartStep :: IntentProgram d -> IntentStepResult d -> IntentStepResult d
+andThenAfterStartStep right leftStep =
+  case leftStep of
+    StepStarted pos _ -> StepContinue (PWithPlacementHint pos right)
+    StepDone IntentCompleted _ result ->
+      StepContinue (maybe right (`PWithPlacementHint` right) result)
+    StepDone status activeLeft result ->
+      StepDone status (PAndThenAfterStart activeLeft right) result
+    StepNeed uid -> StepNeed uid
+    _ -> fmap (`PAndThenAfterStart` right) leftStep
 
 orElseStep :: IntentProgram d -> IntentStepResult d -> IntentStepResult d
 orElseStep fallback primaryStep =
   case primaryStep of
-    StepDone IntentFailed _ -> StepContinue fallback
-    StepDone status activePrimary -> StepDone status (POrElse activePrimary fallback)
+    StepDone IntentFailed _ _ -> StepContinue fallback
+    StepDone status activePrimary result -> StepDone status (POrElse activePrimary fallback) result
     StepNeed uid -> StepNeed uid
     _ -> fmap (`POrElse` fallback) primaryStep
 
@@ -355,6 +391,15 @@ targetInProgress target uid = do
                       (dist <= 1)
             )
 
+findTargetUnit :: (HasObs d) => Target -> UnitTypeId -> StepMonad d (Maybe Unit)
+findTargetUnit target uid = do
+  obs <- agentObs
+  pure . listToMaybe $
+    runC $
+      unitsSelf obs
+        .| unitTypeC uid
+        .| filterC (\unit -> distSquaredI (unit ^. #pos) target <= 1)
+
 expectingPylons :: (HasObs d) => StepMonad d Bool
 expectingPylons = do
   obs <- agentObs
@@ -378,9 +423,6 @@ buildPhaseTimedOut now startedAt distance =
     -- TODO: naive penalty add some time to reach the target
     && now - startedAt > buildStartTimeoutFrames + distance * 5
 
-liftBuildStepResult :: UnitTypeId -> BuildPhaseStepResult -> IntentStepResult d
-liftBuildStepResult = liftLeafStepResult PBuildStructure
-
 liftTrainStepResult :: UnitTypeId -> TrainPhaseStepResult -> IntentStepResult d
 liftTrainStepResult = liftLeafStepResult PTrainUnit
 
@@ -392,15 +434,16 @@ tickBuildPhase ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
   IntentId ->
   UnitTypeId ->
+  Maybe TilePos ->
   BuildStructurePhase ->
   StepMonad d BuildPhaseStepResult
-tickBuildPhase iid uid currentPhase =
+tickBuildPhase iid uid placementHint currentPhase =
   let goNextFrame = stepBlockResult
       goNextTick = stepContinueResult
       retryNextFrame = goNextFrame currentPhase
       startMonitoring reserved builder target = do
         agentModifyReservedCost (+ reserved)
-        goNextTick (BSMonitoring builder target)
+        stepStartedResult (tilePos target) (BSMonitoring builder target)
    in case currentPhase of
         BSReserving -> do
           ucost <- agentUnitCost uid
@@ -417,7 +460,7 @@ tickBuildPhase iid uid currentPhase =
           case mbBuilder of
             Nothing -> retryNextFrame
             Just builder -> do
-              placement <- findPlacementTarget uid
+              placement <- maybe (findPlacementTarget uid) (findPlacementTargetNear uid) placementHint
               expectingPylonSupport <- expectingPylons
               case placement of
                 Nothing ->
@@ -439,7 +482,7 @@ tickBuildPhase iid uid currentPhase =
           let builderAccepted = unitHasOrder ability
               advanceIssuedPhase
                 | started = startMonitoring reserved builder target
-                | isNothing mbBuilder = stepDoneResult currentPhase IntentFailed
+                | isNothing mbBuilder = stepDoneResult currentPhase IntentFailed Nothing
                 | maybe False builderAccepted mbBuilder = do
                     traceM . fmt $
                       "[intent]["
@@ -454,7 +497,7 @@ tickBuildPhase iid uid currentPhase =
                     let distToTarget = distManhattan (fromJust mbBuilder) target
                     agentModifyReservedCost (+ reserved)
                     goNextFrame (BSAccepted builder target frame (fromIntegral distToTarget))
-                | timedOut = stepDoneResult currentPhase IntentFailed
+                | timedOut = stepDoneResult currentPhase IntentFailed Nothing
                 | otherwise = retryNextFrame
           advanceIssuedPhase
         BSAccepted builder target acceptedFrame distanceToTarget -> do
@@ -464,17 +507,17 @@ tickBuildPhase iid uid currentPhase =
               builderMissing = isNothing (getUnit obs builder)
           started <- targetInProgress target uid
           let advanceAcceptedPhase
-                | started = goNextTick (BSMonitoring builder target)
-                | builderMissing = stepDoneResult currentPhase IntentFailed
-                | timedOut = stepDoneResult currentPhase IntentFailed
+                | started = stepStartedResult (tilePos target) (BSMonitoring builder target)
+                | builderMissing = stepDoneResult currentPhase IntentFailed Nothing
+                | timedOut = stepDoneResult currentPhase IntentFailed Nothing
                 | otherwise = retryNextFrame
           advanceAcceptedPhase
         BSMonitoring _ target -> do
-          -- check if building spawned
-          inProgress <- targetInProgress target uid
-          if inProgress
-            then stepDoneResult currentPhase IntentCompleted
-            else retryNextFrame
+          building <- findTargetUnit target uid
+          case building of
+            Just unit | unit ^. #buildProgress >= 1 ->
+              stepDoneResult currentPhase IntentCompleted (Just (tilePos target))
+            _ -> retryNextFrame
 
 tickBuildStructure ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
@@ -482,7 +525,18 @@ tickBuildStructure ::
   UnitTypeId ->
   BuildStructurePhase ->
   StepMonad d (IntentStepResult d)
-tickBuildStructure iid uid phase = liftBuildStepResult uid <$> tickBuildPhase iid uid phase
+tickBuildStructure iid uid phase =
+  fmap (fmap (PBuildStructure uid)) (tickBuildPhase iid uid Nothing phase)
+
+tickBuildStructureNear ::
+  (HasObs d, HasGrid d, HasReservedCost d) =>
+  IntentId ->
+  UnitTypeId ->
+  Maybe TilePos ->
+  BuildStructurePhase ->
+  StepMonad d (IntentStepResult d)
+tickBuildStructureNear iid uid hint phase =
+  fmap (fmap (PBuildStructureNear uid)) (tickBuildPhase iid uid hint phase)
 
 tickTrainUnit ::
   (HasObs d, HasReservedCost d) =>
@@ -522,21 +576,27 @@ tickTrainPhase _ uid currentPhase =
             Nothing -> retryNextFrame
             Just tag ->
               case getUnit obs tag of
-                Nothing -> stepDoneResult currentPhase IntentFailed
+                Nothing -> stepDoneResult currentPhase IntentFailed Nothing
                 Just executor -> do
                   command [SelfCommand ability [executor]]
                   agentModifyReservedCost (+ reserved)
-                  stepDoneResult currentPhase IntentCompleted
+                  stepDoneResult currentPhase IntentCompleted Nothing
 
 tickProgram ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
+  Maybe TilePos ->
   IntentId ->
   IntentProgram d ->
   StepMonad d (IntentStepResult d)
-tickProgram iid (PBuildStructure uid phase) = tickBuildStructure iid uid phase
-tickProgram iid (PTrainUnit uid phase) = tickTrainUnit iid uid phase
-tickProgram iid (PAndThen left right) = andThenStep right <$> tickProgram iid left
-tickProgram iid (POrElse primary fallback) = orElseStep fallback <$> tickProgram iid primary
+tickProgram _ iid (PBuildStructure uid phase) = tickBuildStructure iid uid phase
+tickProgram hint iid (PBuildStructureNear uid phase) = tickBuildStructureNear iid uid hint phase
+tickProgram hint iid (PTrainUnit uid phase) = tickTrainUnit iid uid phase
+tickProgram hint iid (PAndThen left right) = andThenStep right <$> tickProgram hint iid left
+tickProgram hint iid (PAndThenAfterStart left right) =
+  andThenAfterStartStep right <$> tickProgram hint iid left
+tickProgram hint iid (POrElse primary fallback) = orElseStep fallback <$> tickProgram hint iid primary
+tickProgram _ iid (PWithPlacementHint hint program) =
+  fmap (PWithPlacementHint hint) <$> tickProgram (Just hint) iid program
 
 runIntent ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
@@ -552,6 +612,7 @@ runIntent = stepLoop maxIntentTransitionsPerFrame
     case result of
       Continue rt' -> stepLoop (budget - 1) rt'
       Block rt' -> pure (rt', IntentRunning)
+      Started rt' _ -> stepLoop (budget - 1) rt'
       Done rt' status -> pure (rt', status)
       NeedPrerequisite rt' uid -> pure (rt', IntentNeedsPrerequisite uid)
 
@@ -563,10 +624,13 @@ intentTick rt = do
   traceM . fmt $ "[intent][" +|| intentId rt ||+ "] " +|| intentProgram rt ||+ ""
   case intentProgram rt of
     PBuildStructure _ phase -> traceBuilderOrders (intentId rt) phase
+    PBuildStructureNear _ phase -> traceBuilderOrders (intentId rt) phase
     PTrainUnit _ _ -> pure ()
     PAndThen _ _ -> pure ()
+    PAndThenAfterStart _ _ -> pure ()
     POrElse _ _ -> pure ()
-  liftIntentStepResult rt <$> tickProgram (intentId rt) (intentProgram rt)
+    PWithPlacementHint _ _ -> pure ()
+  liftIntentStepResult rt <$> tickProgram Nothing (intentId rt) (intentProgram rt)
 
 spawnIntentUnique :: (HasBuildIntents d, HasObs d) => IntentId -> IntentProgram d -> StepMonad d ()
 spawnIntentUnique iid intent = do

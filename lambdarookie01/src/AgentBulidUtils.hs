@@ -139,6 +139,22 @@ findPlacementTarget uid = do
       then TargetUnit <$> findFreeGeyser obs
       else TargetPos <$> findPlacementPos si obs (expandsPos si) grid (heightMap si) uid
 
+findPlacementTargetNear ::
+  (HasObs d, HasGrid d) => UnitTypeId -> TilePos -> StepMonad d (Maybe Target)
+findPlacementTargetNear uid origin
+  | uid == ProtossAssimilator = findPlacementTarget uid
+  | otherwise = do
+      grid <- agentGrid
+      si <- agentStatic
+      pure $
+        TargetPos
+          <$> findPlacementPointInRadius
+            grid
+            (heightMap si)
+            (getFootprint uid)
+            origin
+            pylonRadius
+
 -- ##################################### UNIT UTILS #####################################################################
 
 getOverWorkersFrom :: [Units.Unit] -> [Units.Unit] -> [Units.Unit]
