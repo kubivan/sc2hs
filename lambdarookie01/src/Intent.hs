@@ -98,13 +98,6 @@ data IntentProgram d
   | PWithPlacementHint TilePos (IntentProgram d)
   deriving (Show)
 
-data IntentTickResult d
-  = Continue (IntentRuntime d)
-  | Block (IntentRuntime d)
-  | Started (IntentRuntime d) TilePos
-  | Done (IntentRuntime d) IntentStatus
-  | NeedPrerequisite (IntentRuntime d) UnitTypeId
-
 -- A single tick is a small transition algebra: stay blocked until next frame,
 -- continue immediately in the current frame, finish, or request a prerequisite.
 -- This fits behavior-tree style sequence/fallback composition better than Monad.
@@ -150,15 +143,6 @@ data IntentRuntime d = IntentRuntime
 
 advanceRuntime :: IntentProgram d -> IntentRuntime d -> IntentRuntime d
 advanceRuntime nextProgram runtime = runtime{intentProgram = nextProgram}
-
-liftIntentStepResult :: IntentRuntime d -> IntentStepResult d -> IntentTickResult d
-liftIntentStepResult runtime stepResult =
-  case stepResult of
-    StepBlock nextProgram -> Block (advanceRuntime nextProgram runtime)
-    StepContinue nextProgram -> Continue (advanceRuntime nextProgram runtime)
-    StepStarted pos nextProgram -> Started (advanceRuntime nextProgram runtime) pos
-    StepDone status nextProgram _ -> Done (advanceRuntime nextProgram runtime) status
-    StepNeed uid -> NeedPrerequisite runtime uid
 
 type IntentStore d = Map IntentId (IntentRuntime d)
 type IntentOutcomeStore = Map IntentId IntentStatus
@@ -610,16 +594,16 @@ runIntent = stepLoop maxIntentTransitionsPerFrame
   stepLoop budget rt = do
     result <- intentTick rt
     case result of
-      Continue rt' -> stepLoop (budget - 1) rt'
-      Block rt' -> pure (rt', IntentRunning)
-      Started rt' _ -> stepLoop (budget - 1) rt'
-      Done rt' status -> pure (rt', status)
-      NeedPrerequisite rt' uid -> pure (rt', IntentNeedsPrerequisite uid)
+      StepContinue nextProgram -> stepLoop (budget - 1) (advanceRuntime nextProgram rt)
+      StepBlock nextProgram -> pure (advanceRuntime nextProgram rt, IntentRunning)
+      StepStarted _ nextProgram -> stepLoop (budget - 1) (advanceRuntime nextProgram rt)
+      StepDone status nextProgram _ -> pure (advanceRuntime nextProgram rt, status)
+      StepNeed uid -> pure (rt, IntentNeedsPrerequisite uid)
 
 intentTick ::
   (HasObs d, HasGrid d, HasReservedCost d) =>
   IntentRuntime d ->
-  StepMonad d (IntentTickResult d)
+  StepMonad d (IntentStepResult d)
 intentTick rt = do
   traceM . fmt $ "[intent][" +|| intentId rt ||+ "] " +|| intentProgram rt ||+ ""
   case intentProgram rt of
@@ -630,7 +614,7 @@ intentTick rt = do
     PAndThenAfterStart _ _ -> pure ()
     POrElse _ _ -> pure ()
     PWithPlacementHint _ _ -> pure ()
-  liftIntentStepResult rt <$> tickProgram Nothing (intentId rt) (intentProgram rt)
+  tickProgram Nothing (intentId rt) (intentProgram rt)
 
 spawnIntentUnique :: (HasBuildIntents d, HasObs d) => IntentId -> IntentProgram d -> StepMonad d ()
 spawnIntentUnique iid intent = do
