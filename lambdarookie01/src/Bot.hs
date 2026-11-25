@@ -657,7 +657,14 @@ trainMassUnit uid = unlessM isFullLimit $ do
       producerType = abilityExecutor HashMap.! ability
 
   let maxToTrain = floor (min minRatio gasRatio)
-      producersLen = length $ runC $ unitsSelf obs .| unitTypeC producerType
+      producersLen =
+        (length $ runC $ unitsSelf obs .| unitTypeC producerType)
+          + ( length $
+                runC $
+                  unitsSelf obs
+                    .| unitTypeC ProtossProbe
+                    .| filterC (\u -> unitHasOrder (unitToAbility (unitTraits si) producerType) u)
+            )
       producersMaxLen =
         4
           * ( length $
@@ -670,6 +677,7 @@ trainMassUnit uid = unlessM isFullLimit $ do
 
   producerCost <- agentUnitCost producerType
   traceM . fmt $ "!!! TRAIN MAX: CAN BUILD " +|| maxToTrain ||+ " " +|| uid ||+ ""
+  traceM . fmt $ "!!! BUILD PRODUCERS:  " +|| producersLen ||+ " " +|| uid ||+ ""
   if maxToTrain > producersLen && producersLen <= producersMaxLen
     then
       mapM_
