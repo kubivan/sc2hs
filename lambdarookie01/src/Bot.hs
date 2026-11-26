@@ -773,7 +773,7 @@ instance Agent BotAgent where
     unless (null errors) $
       traceM $
         "!!! action errors: " <> formatActionErrors errors
-    -- unless (null obs ^. #actions) $ traceM $ "!!!actions: " <> show (obs ^. #actions)
+    traceM $ "!!! actions: " <> show (obs ^. #actions)
     pure tracedResult
 
 agentStepPhase :: BotPhase -> StepMonad BotDynamicState BotPhase
