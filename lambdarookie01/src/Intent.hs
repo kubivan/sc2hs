@@ -9,7 +9,7 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.List (find, sortBy)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromJust, isNothing, listToMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Word (Word32)
 import Debug.Trace (trace, traceM)
@@ -62,6 +62,7 @@ data BuildStructurePhase
   = BSReserving
   | BSWaitResources Cost
   | BSGathering Cost
+  | BSMove Cost UnitTag Target Word32
   | BSIssued Cost UnitTag Target Word32
   | -- builder, unit, startFrame, distance
     BSAccepted UnitTag Target Word32 Word32
@@ -201,6 +202,8 @@ cleanupIntent (PBuildStructure uid phase) =
     BSReserving -> pure ()
     BSWaitResources cost -> agentModifyReservedCost (+ cost)
     BSGathering cost -> agentModifyReservedCost (+ cost)
+    BSMove cost _ target _ -> do
+      agentModifyReservedCost (+ cost)
     BSIssued cost _ target _ -> do
       agentModifyReservedCost (+ cost)
       releaseLandTarget uid target
@@ -324,6 +327,18 @@ commandBuild builder uid target = do
     TargetUnit targetUnit ->
       command [UnitCommand ability [builder] targetUnit]
 
+commandMove ::
+  (HasObs d) =>
+  Unit ->
+  Target ->
+  StepMonad d ()
+commandMove builder target = do
+  case target of
+    TargetPos pos -> do
+      command [PointCommand MOVE [builder] (toPoint2D pos)]
+    TargetUnit targetUnit ->
+      command [PointCommand MOVE [builder] (toPoint2D . tilePos $ targetUnit)]
+
 unitHasOrder :: AbilityId -> Unit -> Bool
 unitHasOrder order u = order `elem` unitOrders u
 
@@ -334,6 +349,7 @@ traceBuilderOrders :: (HasObs d) => IntentId -> BuildStructurePhase -> StepMonad
 traceBuilderOrders iid phase =
   case phase of
     BSIssued _ builder _ _ -> logOrders builder
+    BSMove _ builder _ _ -> logOrders builder
     BSAccepted builder _ _ _ -> logOrders builder
     BSMonitoring builder _ -> logOrders builder
     _ -> pure ()
@@ -452,9 +468,22 @@ tickBuildPhase iid uid placementHint currentPhase =
                     then retryNextFrame
                     else stepNeedResult ProtossPylon
                 Just target -> do
-                  commandBuild builder uid target
+                  commandMove builder target
                   frame <- (^. #gameLoop) <$> agentObs
-                  goNextFrame (BSIssued reserved (builder ^. #tag) target frame)
+                  goNextFrame (BSMove reserved (builder ^. #tag) target frame)
+        BSMove reserved builder target startFrame -> do
+          frame <- (^. #gameLoop) <$> agentObs
+          mbBuilder <- (`getUnit` builder) <$> agentObs
+          let timedOut = buildPhaseTimedOut frame startFrame 0
+              distToTarget = maybe 999999 (`distManhattan` target) mbBuilder
+              advanceIssuedPhase
+                | isNothing mbBuilder = stepDoneResult currentPhase IntentFailed Nothing
+                | distToTarget < 5 = do
+                    commandBuild (fromJust mbBuilder) uid target
+                    goNextFrame (BSIssued reserved builder target frame)
+                | timedOut = stepDoneResult currentPhase IntentFailed Nothing
+                | otherwise = retryNextFrame
+          advanceIssuedPhase
         BSIssued reserved builder target startFrame -> do
           obs <- agentObs
           si <- agentStatic
@@ -463,11 +492,10 @@ tickBuildPhase iid uid placementHint currentPhase =
               mbBuilder = getUnit obs builder
               timedOut = buildPhaseTimedOut frame startFrame 0
           started <- targetInProgress target uid
-          let builderAccepted = unitHasOrder ability
-              advanceIssuedPhase
+          let advanceIssuedPhase
                 | started = startMonitoring reserved builder target
                 | isNothing mbBuilder = stepDoneResult currentPhase IntentFailed Nothing
-                | maybe False builderAccepted mbBuilder = do
+                | maybe False (unitHasOrder ability) mbBuilder = do
                     traceM . fmt $
                       "[intent]["
                         +|| iid
@@ -499,8 +527,9 @@ tickBuildPhase iid uid placementHint currentPhase =
         BSMonitoring _ target -> do
           building <- findTargetUnit target uid
           case building of
-            Just unit | unit ^. #buildProgress >= 1 ->
-              stepDoneResult currentPhase IntentCompleted (Just (tilePos target))
+            Just unit
+              | unit ^. #buildProgress >= 1 ->
+                  stepDoneResult currentPhase IntentCompleted (Just (tilePos target))
             _ -> retryNextFrame
 
 tickBuildStructure ::
