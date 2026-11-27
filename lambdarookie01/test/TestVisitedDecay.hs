@@ -17,8 +17,11 @@ visitedDecayTests = describe "VisitedDecay" $ do
     visitedDecayAge 150 visits (0, 0) `shouldBe` 50
 
   it "resets the visited tile while preserving other visit times" $ do
-    let visits = visitedDecayVisit 200 (1, 0) $
-          visitedDecayVisit 100 (0, 0) $ visitedDecayEmpty $ gridFromLines ["  "]
+    let visits =
+          visitedDecayVisit 200 (1, 0) $
+            visitedDecayVisit 100 (0, 0) $
+              visitedDecayEmpty $
+                gridFromLines ["  "]
         revisited = visitedDecayVisit 300 (0, 0) visits
     visitedDecayAge 350 revisited (0, 0) `shouldBe` 50
     visitedDecayAge 350 revisited (1, 0) `shouldBe` 150

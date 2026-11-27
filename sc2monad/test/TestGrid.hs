@@ -47,8 +47,10 @@ gridUnitTests = do
       let grid = gridFromLines ["#####", "# # #", "# # #", "#####"]
           start = (1, 1)
           distances = gridDistances grid start
-          pathLength dest = length $ bfsPath $
-            gridBfs grid start (getAllNotSharpNeighbors grid) (const (== dest)) (const (const False))
+          pathLength dest =
+            length $
+              bfsPath $
+                gridBfs grid start (getAllNotSharpNeighbors grid) (const (== dest)) (const (const False))
       map (\pos -> Map.findWithDefault 0 pos distances) [(x, y) | x <- [0 .. 4], y <- [0 .. 3]]
         `shouldBe` map pathLength [(x, y) | x <- [0 .. 4], y <- [0 .. 3]]
 
